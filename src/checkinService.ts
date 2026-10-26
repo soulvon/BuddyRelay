@@ -246,6 +246,7 @@ export class CheckinService {
           await store.updateStatus(account.id, account.status, {
             todayCheckedIn: true,
             checkinStreak: status.streakDays,
+            totalCredits: status.totalCredits,
             lastCheckinDate: status.lastCheckinDate || new Date().toISOString().slice(0, 10),
             lastCheckinTime: Date.now()
           });
@@ -257,9 +258,11 @@ export class CheckinService {
       const execResult = await this.executeDailyCheckin(account);
 
       if (execResult.success && store) {
+        const updatedCredits = (status.totalCredits || 0) + (execResult.creditAwarded || 0);
         await store.updateStatus(account.id, account.status, {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays || status.streakDays + 1,
+          totalCredits: updatedCredits,
           lastCheckinDate: new Date().toISOString().slice(0, 10),
           lastCheckinTime: Date.now()
         });
@@ -278,6 +281,49 @@ export class CheckinService {
       }
       return execResult;
     }
+  }
+
+  /**
+   * 4. 同步单个账号状态与额度积分至 Store
+   */
+  public async syncAccountStatus(
+    account: CodeBuddyAccount,
+    store?: AccountStore
+  ): Promise<CheckinStatusResult> {
+    const status = await this.queryStatus(account);
+    if (store) {
+      await store.updateStatus(account.id, account.status, {
+        todayCheckedIn: status.todayCheckedIn,
+        checkinStreak: status.streakDays,
+        totalCredits: status.totalCredits,
+        lastCheckinDate: status.lastCheckinDate,
+        lastCheckinTime: Date.now()
+      });
+    }
+    return status;
+  }
+
+  /**
+   * 5. 批量同步号池状态与额度积分
+   */
+  public async batchSyncStatus(
+    accounts: CodeBuddyAccount[],
+    store?: AccountStore
+  ): Promise<number> {
+    let synced = 0;
+    for (const acc of accounts) {
+      if (acc.status === 'disabled' || acc.status === 'expired') {
+        continue;
+      }
+      try {
+        await this.syncAccountStatus(acc, store);
+        synced++;
+      } catch (_) {
+        // 忽略单个网络超时
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    return synced;
   }
 
   /**

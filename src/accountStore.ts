@@ -46,6 +46,8 @@ export interface CodeBuddyAccount {
   lastCheckinDate?: string;
   /** 最近签到时间戳 */
   lastCheckinTime?: number;
+  /** 额度积分 / 算力点 */
+  totalCredits?: number;
   /** 创建时间戳 */
   createdAt: number;
   /** 最近一次使用/切换时间戳 */

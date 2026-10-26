@@ -27,61 +27,77 @@
     "views": {
       "buddy-relay-sidebar": [
         {
-          "id": "buddy-relay.sessionView",
-          "name": "工作区会话与账号",
-          "type": "tree"
-        },
-        {
-          "id": "buddy-relay.environmentView",
-          "name": "多环境配置池",
-          "type": "tree"
+          "type": "webview",
+          "id": "buddy-relay.sidebarView",
+          "name": "账号与会话中枢"
         }
       ]
     },
     "commands": [
       {
-        "command": "buddy-relay.switchAccount",
-        "title": "切换账号",
+        "command": "buddy-relay.showAccountQuickPick",
+        "title": "快速切号菜单",
         "category": "BuddyRelay",
         "icon": "$(account)"
       },
       {
+        "command": "buddy-relay.switchAccount",
+        "title": "切换账号",
+        "category": "BuddyRelay",
+        "icon": "$(arrow-swap)"
+      },
+      {
         "command": "buddy-relay.checkin",
-        "title": "一键签到",
+        "title": "一键全员签到",
         "category": "BuddyRelay",
         "icon": "$(check)"
       },
       {
+        "command": "buddy-relay.addAccountOAuth",
+        "title": "添加账号(OAuth)",
+        "category": "BuddyRelay",
+        "icon": "$(add)"
+      },
+      {
         "command": "buddy-relay.importCockpit",
-        "title": "导入Cockpit",
+        "title": "从Cockpit导入",
         "category": "BuddyRelay",
         "icon": "$(cloud-download)"
       },
       {
         "command": "buddy-relay.refreshStatus",
-        "title": "刷新状态",
+        "title": "刷新状态与配额",
         "category": "BuddyRelay",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "buddy-relay.deleteAccount",
+        "title": "删除账号",
+        "category": "BuddyRelay",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "buddy-relay.refreshStatus",
-          "when": "view == buddy-relay.sessionView",
-          "group": "navigation"
+          "when": "view == buddy-relay.sidebarView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "buddy-relay.checkin",
+          "when": "view == buddy-relay.sidebarView",
+          "group": "navigation@2"
         },
         {
           "command": "buddy-relay.importCockpit",
-          "when": "view == buddy-relay.sessionView",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
+          "when": "view == buddy-relay.sidebarView",
+          "group": "navigation@3"
+        },
         {
-          "command": "buddy-relay.switchAccount",
-          "when": "view == buddy-relay.sessionView",
-          "group": "inline"
+          "command": "buddy-relay.addAccountOAuth",
+          "when": "view == buddy-relay.sidebarView",
+          "group": "navigation@4"
         }
       ]
     },
@@ -92,7 +108,12 @@
         "buddyRelay.autoCheckin": {
           "type": "boolean",
           "default": true,
-          "description": "是否在工作区启动时自动保持会话活跃并签到"
+          "description": "是否开启定时自动签到与领算力积分"
+        },
+        "buddyRelay.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 15,
+          "description": "账号状态与额度自动刷新间隔 (分钟)"
         },
         "buddyRelay.cockpitEndpoint": {
           "type": "string",
@@ -104,7 +125,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
     "build": "npm run compile",
     "package": "vsce package"

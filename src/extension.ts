@@ -5,280 +5,323 @@ import { CheckinService } from './checkinService';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { AutoSwitcher } from './autoSwitcher';
 import { OAuthService } from './oauthService';
+import { StatusBarManager } from './statusBar';
+import { SidebarProvider } from './sidebarProvider';
 
-class SessionItem extends vscode.TreeItem {
-  constructor(
-    public readonly account: CodeBuddyAccount,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState
-  ) {
-    super(account.nickname || account.email, collapsibleState);
-    const streak = account.checkinStreak || 0;
-    const checkedToday = account.todayCheckedIn ? '今日已签' : '今日未签';
-    this.tooltip = `昵称: ${account.nickname}\n账号: ${account.email}\nUID: ${account.uid}\n状态: ${account.status}\n加油站: 连续 ${streak} 天 (${checkedToday})`;
-    this.description = `${account.email} [${account.status}]`;
-    this.contextValue = 'sessionItem';
-
-    if (account.status === 'active') {
-      this.iconPath = new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('testing.iconPassed'));
-    } else if (account.status === 'rate_limited') {
-      this.iconPath = new vscode.ThemeIcon('watch', new vscode.ThemeColor('editorWarning.foreground'));
-    } else if (account.status === 'expired' || account.status === 'disabled') {
-      this.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
-    } else {
-      this.iconPath = new vscode.ThemeIcon('circle-outline');
-    }
-  }
-}
-
-class EnvironmentItem extends vscode.TreeItem {
-  constructor(
-    public readonly envName: string,
-    public readonly nodeCount: number,
-    public readonly detailText: string
-  ) {
-    super(envName, vscode.TreeItemCollapsibleState.None);
-    this.description = `${nodeCount} 个会话节点`;
-    this.tooltip = detailText;
-    this.iconPath = new vscode.ThemeIcon('server-environment');
-  }
-}
-
-class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<SessionItem | undefined | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-  constructor(private store: AccountStore) {
-    this.store.on('change', () => this.refresh());
-  }
-
-  getTreeItem(element: SessionItem): vscode.TreeItem {
-    return element;
-  }
-
-  getChildren(): Thenable<SessionItem[]> {
-    const list = this.store.getAll();
-    return Promise.resolve(
-      list.map(acc => new SessionItem(acc, vscode.TreeItemCollapsibleState.None))
-    );
-  }
-
-  refresh(): void {
-    this._onDidChangeTreeData.fire();
-  }
-
-  getActiveAccount(): CodeBuddyAccount | undefined {
-    return this.store.getActive();
-  }
-}
-
-class EnvironmentTreeDataProvider implements vscode.TreeDataProvider<EnvironmentItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<EnvironmentItem | undefined | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-  constructor(private store: AccountStore) {
-    this.store.on('change', () => this.refresh());
-  }
-
-  getTreeItem(element: EnvironmentItem): vscode.TreeItem {
-    return element;
-  }
-
-  getChildren(): Thenable<EnvironmentItem[]> {
-    const all = this.store.getAll();
-    const activeCount = all.filter(a => a.status === 'active').length;
-    const idleCount = all.filter(a => a.status === 'idle').length;
-    const limitedCount = all.filter(a => a.status === 'rate_limited').length;
-
-    const items = [
-      new EnvironmentItem('生产热切池 (Active & Ready)', activeCount + idleCount, `活跃: ${activeCount}, 就绪待命: ${idleCount}`),
-      new EnvironmentItem('429 冷却缓冲队列', limitedCount, `当前冷却中节点: ${limitedCount}`),
-      new EnvironmentItem('5.7GB 物理穿透联结', all.length, `NTFS Junction 映射节点数: ${all.length}`)
-    ];
-    return Promise.resolve(items);
-  }
-
-  refresh(): void {
-    this._onDidChangeTreeData.fire();
-  }
-}
-
-let statusBarItem: vscode.StatusBarItem;
+let checkinTimer: NodeJS.Timeout | null = null;
+let quotaRefreshTimer: NodeJS.Timeout | null = null;
+let statusBarManager: StatusBarManager | null = null;
+let autoSwitcherInstance: AutoSwitcher | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
-  // 1. 初始化核心模块
+  console.log('[BuddyRelay] 正在启动会话保护与交互体系...');
+
+  // 1. 初始化核心存储与调度服务
   const store = new AccountStore(context);
   const switcher = new SeamlessSwitcher();
   const oauthService = new OAuthService();
   const checkinService = new CheckinService();
+  const importer = new CockpitImporter();
   const autoSwitcher = new AutoSwitcher(store, switcher, oauthService);
+  autoSwitcherInstance = autoSwitcher;
 
-  // 2. 自动检查并打底载入 Cockpit 账号池
-  if (store.count() === 0) {
-    try {
-      const importer = new CockpitImporter();
-      const importRes = await importer.importToStore(store);
-      if (importRes.success) {
-        vscode.window.showInformationMessage(`BuddyRelay: 自动初始化成功导入 ${importRes.decryptedCount} 个 Cockpit Tools 账号`);
+  // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
+  statusBarManager = new StatusBarManager(store, switcher);
+  const sidebarProvider = new SidebarProvider(
+    context.extensionUri,
+    store,
+    switcher,
+    checkinService,
+    importer,
+    oauthService
+  );
+
+  // 注册 Webview 视图提供者
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      SidebarProvider.viewType,
+      sidebarProvider,
+      {
+        webviewOptions: {
+          retainContextWhenHidden: true
+        }
       }
-    } catch (_) {}
-  }
+    ),
+    statusBarManager
+  );
 
   // 3. 自愈检查 main.js Patch v4
   try {
     const patchRes = switcher.healPatch();
     if (patchRes.success) {
-      console.log('[BuddyRelay] ' + patchRes.message);
+      console.log(`[BuddyRelay] ${patchRes.message}`);
+    } else {
+      console.warn(`[BuddyRelay] Patch 自愈提示: ${patchRes.message}`);
     }
   } catch (err: any) {
-    console.warn('[BuddyRelay] Patch v4 自愈警告: ' + err.message);
+    console.warn(`[BuddyRelay] Patch v4 自检异常: ${err.message}`);
   }
 
-  // 4. 注册视图
-  const sessionProvider = new SessionTreeDataProvider(store);
-  const environmentProvider = new EnvironmentTreeDataProvider(store);
+  // 4. 初次启动号池打底检测：若为空则尝试自动导入 Cockpit Tools
+  if (store.count() === 0) {
+    try {
+      const verify = importer.verifyCockpitStorage();
+      if (verify.hasKey && verify.accountFilesCount > 0) {
+        const importRes = await importer.importToStore(store);
+        if (importRes.success) {
+          vscode.window.showInformationMessage(
+            `BuddyRelay: 自动初始化成功导入 ${importRes.decryptedCount} 个 Cockpit 账号`
+          );
+          // 后台异步同步额度
+          checkinService.batchSyncStatus(store.getAll(), store).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  } else {
+    // 号池非空时，静默后台同步一次各账号配额与签到状态
+    setTimeout(() => {
+      checkinService.batchSyncStatus(store.getAll(), store).catch(() => {});
+    }, 2000);
+  }
 
-  vscode.window.registerTreeDataProvider('buddy-relay.sessionView', sessionProvider);
-  vscode.window.registerTreeDataProvider('buddy-relay.environmentView', environmentProvider);
+  // 5. 注册命令列表
+  // (1) 状态栏点击弹出 QuickPick
+  const showQuickPickCmd = vscode.commands.registerCommand(
+    'buddy-relay.showAccountQuickPick',
+    async () => {
+      if (statusBarManager) {
+        await statusBarManager.showQuickPick();
+      }
+    }
+  );
 
-  // 5. 注册状态栏
-  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBarItem.command = 'buddy-relay.switchAccount';
-  context.subscriptions.push(statusBarItem);
-  updateStatusBar(sessionProvider);
-  statusBarItem.show();
-
-  store.on('change', () => {
-    updateStatusBar(sessionProvider);
-  });
-
-  // 6. 命令：切换账号
-  const switchAccountCmd = vscode.commands.registerCommand('buddy-relay.switchAccount', async (item?: SessionItem) => {
-    let target: CodeBuddyAccount | undefined;
-
-    if (item && item.account) {
-      target = item.account;
-    } else {
-      const accounts = store.getAll();
-      if (accounts.length === 0) {
-        const act = await vscode.window.showWarningMessage('号池为空，是否立即从 Cockpit Tools 导入？', '一键导入', '取消');
-        if (act === '一键导入') {
-          await vscode.commands.executeCommand('buddy-relay.importCockpit');
+  // (2) 切换账号 (兼容命令行参数与 QuickPick 唤起)
+  const switchAccountCmd = vscode.commands.registerCommand(
+    'buddy-relay.switchAccount',
+    async (accountOrId?: CodeBuddyAccount | string) => {
+      if (!accountOrId) {
+        if (statusBarManager) {
+          await statusBarManager.showQuickPick();
         }
         return;
       }
 
-      const picks = accounts.map(a => ({
-        label: a.nickname || a.email,
-        description: `[${a.status}] ${a.email}`,
-        detail: `UID: ${a.uid.slice(0, 8)}... | 连续签到: ${a.checkinStreak || 0}天 ${a.status === 'active' ? '(当前活跃)' : ''}`,
-        account: a
-      }));
-
-      const selected = await vscode.window.showQuickPick(picks, {
-        placeHolder: '选择要无感热切的目标 CodeBuddy 账号'
-      });
-      if (selected) {
-        target = selected.account;
-      }
-    }
-
-    if (target) {
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: `BuddyRelay: 正在无缝热切至 ${target.nickname || target.email}...`,
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ message: '检查 Patch v4 与会话物理穿透...' });
-        const res = await switcher.switchAccount(target!, store);
-        if (res.success) {
-          vscode.window.showInformationMessage(`BuddyRelay: 已平滑切换至账号 ${target!.nickname} (${target!.email})`);
-        } else {
-          vscode.window.showErrorMessage(`BuddyRelay: 热切失败 - ${res.message}`);
-        }
-      });
-    }
-  });
-
-  // 7. 命令：一键签到
-  const checkinCmd = vscode.commands.registerCommand('buddy-relay.checkin', async () => {
-    const accounts = store.getAll();
-    if (accounts.length === 0) {
-      vscode.window.showWarningMessage('BuddyRelay: 号池中暂无账号可供签到');
-      return;
-    }
-
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'BuddyRelay: 正在执行 Buddy 加油站批量签到...',
-      cancellable: false
-    }, async (progress) => {
-      progress.report({ message: `正在为 ${accounts.length} 个账号同步状态并领算力...` });
-      const report = await checkinService.batchCheckin(accounts, store);
-      vscode.window.showInformationMessage(
-        `BuddyRelay: 签到完成！新领算力: ${report.totalCreditsAwarded}点 | 成功: ${report.successCount} | 今日已领: ${report.alreadyCheckedInCount} | 失败: ${report.failedCount}`
-      );
-    });
-  });
-
-  // 8. 命令：一键从 Cockpit Tools 导入
-  const importCockpitCmd = vscode.commands.registerCommand('buddy-relay.importCockpit', async () => {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'BuddyRelay: 正在读取 Cockpit Tools 安全凭据并解密...',
-      cancellable: false
-    }, async () => {
-      const importer = new CockpitImporter();
-      const check = importer.verifyCockpitStorage();
-      if (!check.hasKey) {
-        vscode.window.showErrorMessage(`BuddyRelay: 未找到 Cockpit 存储密钥 (${check.message})`);
-        return;
-      }
-
-      const res = await importer.importToStore(store);
-      if (res.success) {
-        vscode.window.showInformationMessage(`BuddyRelay: 成功解密并导入 ${res.decryptedCount} 个 Cockpit Tools 账号！`);
+      let target: CodeBuddyAccount | undefined;
+      if (typeof accountOrId === 'string') {
+        target = store.get(accountOrId) || store.find(accountOrId);
       } else {
-        vscode.window.showErrorMessage(`BuddyRelay: 导入失败 - ${res.errors.map(e => e.error).join('; ')}`);
+        target = accountOrId;
       }
-    });
+
+      if (!target) {
+        vscode.window.showErrorMessage('未找到指定的 CodeBuddy 账号');
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `BuddyRelay: 正在无缝热切至 ${target.nickname || target.email}...`,
+          cancellable: false
+        },
+        async (progress) => {
+          progress.report({ message: '检查 Patch v4 与会话物理穿透...' });
+          const res = await switcher.switchAccount(target!, store);
+          if (res.success) {
+            vscode.window.showInformationMessage(
+              `BuddyRelay: 已平滑切换至账号 ${target!.nickname || target!.email}`
+            );
+          } else {
+            vscode.window.showErrorMessage(`BuddyRelay: 热切失败 - ${res.message}`);
+          }
+        }
+      );
+    }
+  );
+
+  // (3) 一键签到
+  const checkinCmd = vscode.commands.registerCommand('buddy-relay.checkin', async () => {
+    await sidebarProvider.handleBatchCheckin();
   });
 
-  // 9. 命令：刷新状态
-  const refreshStatusCmd = vscode.commands.registerCommand('buddy-relay.refreshStatus', async () => {
-    store.load();
-    sessionProvider.refresh();
-    environmentProvider.refresh();
-    updateStatusBar(sessionProvider);
-    vscode.window.showInformationMessage('BuddyRelay: 状态与号池已刷新');
-  });
+  // (4) 从 Cockpit 导入
+  const importCockpitCmd = vscode.commands.registerCommand(
+    'buddy-relay.importCockpit',
+    async () => {
+      await sidebarProvider.handleImportCockpit();
+    }
+  );
 
-  // 10. 启动 429 与健康调度监视器
-  autoSwitcher.startMonitor(60 * 1000);
+  // (5) 添加账号 (OAuth)
+  const addAccountOAuthCmd = vscode.commands.registerCommand(
+    'buddy-relay.addAccountOAuth',
+    async () => {
+      await sidebarProvider.handleAddAccountOAuth();
+    }
+  );
+
+  // (6) 删除账号
+  const deleteAccountCmd = vscode.commands.registerCommand(
+    'buddy-relay.deleteAccount',
+    async (accountOrId?: CodeBuddyAccount | string) => {
+      if (accountOrId) {
+        const id = typeof accountOrId === 'string' ? accountOrId : accountOrId.id;
+        await sidebarProvider.handleDeleteAccount(id);
+      } else {
+        const accounts = store.getAll();
+        if (accounts.length === 0) {
+          vscode.window.showInformationMessage('当前号池为空，无账号可删除');
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          accounts.map((a) => ({
+            label: a.nickname || a.email,
+            description: a.email,
+            detail: `UID: ${a.uid.slice(0, 8)}... | 状态: ${a.status}`,
+            account: a
+          })),
+          { placeHolder: '选择要从号池中移除的账号' }
+        );
+        if (picked) {
+          await sidebarProvider.handleDeleteAccount(picked.account.id);
+        }
+      }
+    }
+  );
+
+  // (7) 刷新状态
+  const refreshStatusCmd = vscode.commands.registerCommand(
+    'buddy-relay.refreshStatus',
+    async () => {
+      await sidebarProvider.handleRefreshStatus();
+    }
+  );
 
   context.subscriptions.push(
+    showQuickPickCmd,
     switchAccountCmd,
     checkinCmd,
     importCockpitCmd,
-    refreshStatusCmd,
-    {
-      dispose: () => autoSwitcher.stopMonitor()
-    }
+    addAccountOAuthCmd,
+    deleteAccountCmd,
+    refreshStatusCmd
   );
+
+  // 6. 启动后台 429 冷却自愈与 Token 自动续期监视器
+  autoSwitcher.startMonitor(60 * 1000);
+
+  // 监听自动轮换事件给操盘手明确反馈
+  autoSwitcher.on('rotation', (ev) => {
+    const reasonText =
+      ev.reason === 'rate_limited_429'
+        ? '触发 429 速率限制'
+        : ev.reason === 'quota_exhausted'
+        ? '额度见底'
+        : '调度轮换';
+    vscode.window.showWarningMessage(
+      `BuddyRelay: ${reasonText}，已自动平滑轮换至备用账号: ${
+        ev.targetAccount.nickname || ev.targetAccount.email
+      }`
+    );
+    statusBarManager?.update();
+    sidebarProvider.postStateToWebview();
+  });
+
+  // 7. 定时任务：自动签到任务与配额刷新任务
+  setupScheduledTasks(store, checkinService);
+
+  console.log('[BuddyRelay] 界面与调度体系已就绪');
 }
 
-function updateStatusBar(sessionProvider: SessionTreeDataProvider) {
-  const active = sessionProvider.getActiveAccount();
-  if (active) {
-    statusBarItem.text = `$(shield) Buddy: ${active.nickname || active.email}`;
-    statusBarItem.tooltip = `当前活跃账号: ${active.nickname} (${active.email})\nUID: ${active.uid}\n连续签到: ${active.checkinStreak || 0}天\n点击切换账号`;
-  } else {
-    statusBarItem.text = `$(shield) Buddy: 未就绪`;
-    statusBarItem.tooltip = '点击切换或导入账号';
+/**
+ * 配置定时自动签到与配额刷新守护任务
+ */
+function setupScheduledTasks(
+  store: AccountStore,
+  checkinService: CheckinService
+): void {
+  // 1. 启动时执行一次自动签到检测 (若开启)
+  const config = vscode.workspace.getConfiguration('buddyRelay');
+  const autoCheckinEnabled = config.get<boolean>('autoCheckin', true);
+  if (autoCheckinEnabled) {
+    setTimeout(async () => {
+      await performDailyCheckinIfNeeded(store, checkinService);
+    }, 5000);
+  }
+
+  // 2. 定时自动签到守护 (每 4 小时检查一次跨天漏签)
+  checkinTimer = setInterval(async () => {
+    const cfg = vscode.workspace.getConfiguration('buddyRelay');
+    if (cfg.get<boolean>('autoCheckin', true)) {
+      await performDailyCheckinIfNeeded(store, checkinService);
+    }
+  }, 4 * 60 * 60 * 1000);
+
+  // 3. 定时配额与状态刷新任务 (默认每 15 分钟)
+  const refreshMinutes = Math.max(
+    5,
+    config.get<number>('refreshIntervalMinutes', 15)
+  );
+  quotaRefreshTimer = setInterval(async () => {
+    try {
+      const active = store.getActive();
+      if (active) {
+        await checkinService.syncAccountStatus(active, store);
+      }
+      statusBarManager?.update();
+    } catch (_) {}
+  }, refreshMinutes * 60 * 1000);
+}
+
+/**
+ * 检查今日是否有未签到账号并自动执行签到
+ */
+async function performDailyCheckinIfNeeded(
+  store: AccountStore,
+  checkinService: CheckinService
+): Promise<void> {
+  const accounts = store.getAll();
+  const today = new Date().toISOString().slice(0, 10);
+  const needCheckin = accounts.filter(
+    (acc) =>
+      acc.status !== 'disabled' &&
+      acc.status !== 'expired' &&
+      (!acc.todayCheckedIn || acc.lastCheckinDate !== today)
+  );
+
+  if (needCheckin.length === 0) {
+    return;
+  }
+
+  console.log(`[BuddyRelay] 自动签到任务启动: 发现 ${needCheckin.length} 个账号需完成今日签到`);
+  try {
+    const report = await checkinService.batchCheckin(needCheckin, store);
+    if (report.successCount > 0) {
+      vscode.window.showInformationMessage(
+        `BuddyRelay: 定时自动签到完成，为 ${report.successCount} 个账号共新领 ${report.totalCreditsAwarded} 点算力`
+      );
+    }
+    statusBarManager?.update();
+  } catch (err: any) {
+    console.warn(`[BuddyRelay] 定时自动签到异常: ${err.message}`);
   }
 }
 
 export function deactivate() {
-  if (statusBarItem) {
-    statusBarItem.dispose();
+  if (checkinTimer) {
+    clearInterval(checkinTimer);
+    checkinTimer = null;
+  }
+  if (quotaRefreshTimer) {
+    clearInterval(quotaRefreshTimer);
+    quotaRefreshTimer = null;
+  }
+  if (autoSwitcherInstance) {
+    autoSwitcherInstance.stopMonitor();
+    autoSwitcherInstance = null;
+  }
+  if (statusBarManager) {
+    statusBarManager.dispose();
+    statusBarManager = null;
   }
 }
