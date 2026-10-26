@@ -1,0 +1,118 @@
+{
+  "name": "buddy-relay",
+  "displayName": "BuddyRelay",
+  "description": "企业级工作区会话保护与多环境平滑轮换工具",
+  "version": "0.1.0",
+  "publisher": "enterprise",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "buddy-relay-sidebar",
+          "title": "BuddyRelay",
+          "icon": "resources/relay.svg"
+        }
+      ]
+    },
+    "views": {
+      "buddy-relay-sidebar": [
+        {
+          "id": "buddy-relay.sessionView",
+          "name": "工作区会话与账号",
+          "type": "tree"
+        },
+        {
+          "id": "buddy-relay.environmentView",
+          "name": "多环境配置池",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "buddy-relay.switchAccount",
+        "title": "切换账号",
+        "category": "BuddyRelay",
+        "icon": "$(account)"
+      },
+      {
+        "command": "buddy-relay.checkin",
+        "title": "一键签到",
+        "category": "BuddyRelay",
+        "icon": "$(check)"
+      },
+      {
+        "command": "buddy-relay.importCockpit",
+        "title": "导入Cockpit",
+        "category": "BuddyRelay",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "buddy-relay.refreshStatus",
+        "title": "刷新状态",
+        "category": "BuddyRelay",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "buddy-relay.refreshStatus",
+          "when": "view == buddy-relay.sessionView",
+          "group": "navigation"
+        },
+        {
+          "command": "buddy-relay.importCockpit",
+          "when": "view == buddy-relay.sessionView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "buddy-relay.switchAccount",
+          "when": "view == buddy-relay.sessionView",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "BuddyRelay 配置",
+      "properties": {
+        "buddyRelay.autoCheckin": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在工作区启动时自动保持会话活跃并签到"
+        },
+        "buddyRelay.cockpitEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "Cockpit 外部环境配置导入源地址"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.3.3"
+  }
+}
