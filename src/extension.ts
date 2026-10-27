@@ -4,12 +4,14 @@ import { CockpitImporter } from './cockpitImporter';
 import { CheckinService } from './checkinService';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { AutoSwitcher } from './autoSwitcher';
+import { CheckinScheduler } from './checkinScheduler';
 import { OAuthService } from './oauthService';
 import { StatusBarManager } from './statusBar';
 import { SidebarProvider } from './sidebarProvider';
 
 let checkinTimer: NodeJS.Timeout | null = null;
 let quotaRefreshTimer: NodeJS.Timeout | null = null;
+let checkinScheduler: CheckinScheduler | null = null;
 let statusBarManager: StatusBarManager | null = null;
 let autoSwitcherInstance: AutoSwitcher | null = null;
 
@@ -24,6 +26,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const importer = new CockpitImporter();
   const autoSwitcher = new AutoSwitcher(store, switcher, oauthService);
   autoSwitcherInstance = autoSwitcher;
+  const checkinScheduler = new CheckinScheduler(store, checkinService);
 
   // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
   statusBarManager = new StatusBarManager(store, switcher);
@@ -69,10 +72,10 @@ export async function activate(context: vscode.ExtensionContext) {
       if (verify.hasKey && verify.accountFilesCount > 0) {
         const importRes = await importer.importToStore(store);
         if (importRes.success) {
-          vscode.window.showInformationMessage(
+          sidebarProvider.sendNotify(
+            'success',
             `BuddyRelay: 自动初始化成功导入 ${importRes.decryptedCount} 个 Cockpit 账号`
           );
-          // 后台异步同步额度
           checkinService.batchSyncStatus(store.getAll(), store).catch(() => {});
         }
       }
@@ -128,11 +131,12 @@ export async function activate(context: vscode.ExtensionContext) {
           progress.report({ message: '检查 Patch v4 与会话物理穿透...' });
           const res = await switcher.switchAccount(target!, store);
           if (res.success) {
-            vscode.window.showInformationMessage(
+            sidebarProvider.sendNotify(
+              'success',
               `BuddyRelay: 已平滑切换至账号 ${target!.nickname || target!.email}`
             );
           } else {
-            vscode.window.showErrorMessage(`BuddyRelay: 热切失败 - ${res.message}`);
+            sidebarProvider.sendNotify('error', `BuddyRelay: 热切失败 - ${res.message}`);
           }
         }
       );
@@ -167,24 +171,6 @@ export async function activate(context: vscode.ExtensionContext) {
       if (accountOrId) {
         const id = typeof accountOrId === 'string' ? accountOrId : accountOrId.id;
         await sidebarProvider.handleDeleteAccount(id);
-      } else {
-        const accounts = store.getAll();
-        if (accounts.length === 0) {
-          vscode.window.showInformationMessage('当前号池为空，无账号可删除');
-          return;
-        }
-        const picked = await vscode.window.showQuickPick(
-          accounts.map((a) => ({
-            label: a.nickname || a.email,
-            description: a.email,
-            detail: `UID: ${a.uid.slice(0, 8)}... | 状态: ${a.status}`,
-            account: a
-          })),
-          { placeHolder: '选择要从号池中移除的账号' }
-        );
-        if (picked) {
-          await sidebarProvider.handleDeleteAccount(picked.account.id);
-        }
       }
     }
   );
@@ -207,49 +193,69 @@ export async function activate(context: vscode.ExtensionContext) {
     refreshStatusCmd
   );
 
-  // 6. 启动后台 429 冷却自愈与 Token 自动续期监视器
-  autoSwitcher.startMonitor(60 * 1000);
-
-  // 监听自动轮换事件给操盘手明确反馈
-  autoSwitcher.on('rotation', (ev) => {
+  // 6. 自动轮换事件 → webview toast 通知
+  autoSwitcher.on('rotation', (ev: any) => {
     const reasonText =
       ev.reason === 'rate_limited_429'
         ? '触发 429 速率限制'
         : ev.reason === 'quota_exhausted'
         ? '额度见底'
         : '调度轮换';
-    vscode.window.showWarningMessage(
-      `BuddyRelay: ${reasonText}，已自动平滑轮换至备用账号: ${
-        ev.targetAccount.nickname || ev.targetAccount.email
-      }`
+    sidebarProvider.sendNotify(
+      'success',
+      `BuddyRelay: ${reasonText}，已自动无感切换至 ${ev.targetAccount.nickname || ev.targetAccount.email}`
     );
     statusBarManager?.update();
     sidebarProvider.postStateToWebview();
   });
 
-  // 7. 定时任务：自动签到任务与配额刷新任务
-  setupScheduledTasks(store, checkinService);
+  // 7. 定时任务：定点自动签到 + 额度守卫自动切换 + 配额刷新
+  setupScheduledTasks(store, checkinService, autoSwitcher, checkinScheduler, sidebarProvider);
 
   console.log('[BuddyRelay] 界面与调度体系已就绪');
 }
 
 /**
- * 配置定时自动签到与配额刷新守护任务
+ * 配置定时自动签到（Cockpit Tools 式定点+随机抖动）与额度守卫自动切换
  */
 function setupScheduledTasks(
   store: AccountStore,
-  checkinService: CheckinService
+  checkinService: CheckinService,
+  autoSwitcher: AutoSwitcher,
+  checkinScheduler: CheckinScheduler,
+  sidebarProvider: SidebarProvider
 ): void {
-  // 1. 启动时执行一次自动签到检测 (若开启)
   const config = vscode.workspace.getConfiguration('buddyRelay');
-  const autoCheckinEnabled = config.get<boolean>('autoCheckin', true);
-  if (autoCheckinEnabled) {
+
+  // 1. 定点签到调度器（每日 HH:mm + 随机抖动 + 拟人化间隔）
+  checkinScheduler.onScheduleSummary((success, total, awarded) => {
+    sidebarProvider.sendNotify(
+      'success',
+      `BuddyRelay: 定时自动签到完成 ${success}/${total}，共新领 ${awarded} 点算力`
+    );
+    statusBarManager?.update();
+    sidebarProvider.postStateToWebview();
+    // 签到完成后顺手跑一轮成长任务（报名+领奖），配置可关
+    if (
+      vscode.workspace
+        .getConfiguration('buddyRelay')
+        .get<boolean>('growthTasks.autoAfterCheckin', true)
+    ) {
+      sidebarProvider.handleTaskRunAuto().catch(() => {});
+    }
+  });
+  if (config.get<boolean>('autoCheckin', true)) {
+    checkinScheduler.start();
+  }
+
+  // 2. 启动时漏签兜底（覆盖"关机错过定点"的场景）
+  if (config.get<boolean>('autoCheckin', true)) {
     setTimeout(async () => {
       await performDailyCheckinIfNeeded(store, checkinService);
     }, 5000);
   }
 
-  // 2. 定时自动签到守护 (每 4 小时检查一次跨天漏签)
+  // 3. 每 4 小时跨天漏签守护（兜底中的兜底）
   checkinTimer = setInterval(async () => {
     const cfg = vscode.workspace.getConfiguration('buddyRelay');
     if (cfg.get<boolean>('autoCheckin', true)) {
@@ -257,7 +263,30 @@ function setupScheduledTasks(
     }
   }, 4 * 60 * 60 * 1000);
 
-  // 3. 定时配额与状态刷新任务 (默认每 15 分钟)
+  // 4. 额度守卫：当前账号算力占比 ≤ 阈值时自动无感切换（配置驱动）
+  const getAutoSwitchConfig = () => {
+    const cfg = vscode.workspace.getConfiguration('buddyRelay');
+    if (!cfg.get<boolean>('autoSwitch.enabled', true)) {
+      return null;
+    }
+    return {
+      enabled: true,
+      thresholdPercent: Math.max(
+        0,
+        Math.min(90, cfg.get<number>('autoSwitch.quotaThresholdPercent', 10))
+      ),
+      cooldownMinutes: Math.max(
+        1,
+        cfg.get<number>('autoSwitch.cooldownMinutes', 5)
+      )
+    };
+  };
+  autoSwitcher.startQuotaGuard(getAutoSwitchConfig);
+
+  // 5. 健康巡检（429 冷却恢复 + Token 临期自动刷新）
+  autoSwitcher.startMonitor(60 * 1000);
+
+  // 6. 定时配额与状态刷新任务
   const refreshMinutes = Math.max(
     5,
     config.get<number>('refreshIntervalMinutes', 15)
@@ -271,6 +300,20 @@ function setupScheduledTasks(
       statusBarManager?.update();
     } catch (_) {}
   }, refreshMinutes * 60 * 1000);
+
+  // 7. 配置热更新：签到配置变化时重排调度器
+  vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('buddyRelay.autoCheckin')) {
+      const cfg = vscode.workspace.getConfiguration('buddyRelay');
+      if (cfg.get<boolean>('autoCheckin', true)) {
+        checkinScheduler.start();
+        console.log('[BuddyRelay] 自动签到配置变更，调度器已重排');
+      } else {
+        checkinScheduler.stop();
+        console.log('[BuddyRelay] 自动签到已关闭，调度器停止');
+      }
+    }
+  });
 }
 
 /**
@@ -297,8 +340,8 @@ async function performDailyCheckinIfNeeded(
   try {
     const report = await checkinService.batchCheckin(needCheckin, store);
     if (report.successCount > 0) {
-      vscode.window.showInformationMessage(
-        `BuddyRelay: 定时自动签到完成，为 ${report.successCount} 个账号共新领 ${report.totalCreditsAwarded} 点算力`
+      console.log(
+        `[BuddyRelay] 兜底签到完成，为 ${report.successCount} 个账号共新领 ${report.totalCreditsAwarded} 点算力`
       );
     }
     statusBarManager?.update();
@@ -315,6 +358,10 @@ export function deactivate() {
   if (quotaRefreshTimer) {
     clearInterval(quotaRefreshTimer);
     quotaRefreshTimer = null;
+  }
+  if (checkinScheduler) {
+    checkinScheduler.stop();
+    checkinScheduler = null;
   }
   if (autoSwitcherInstance) {
     autoSwitcherInstance.stopMonitor();

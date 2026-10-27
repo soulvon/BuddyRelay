@@ -7,6 +7,14 @@ import type * as vscode from 'vscode';
 /**
  * CodeBuddy 账号数据模型
  */
+export interface QuotaPackageItem {
+  title: string;
+  count: number;
+  remain: number;
+  total: number;
+  percent: number;
+}
+
 export interface CodeBuddyAccount {
   /** 账号唯一标识 (Cockpit 格式如 codebuddy_cn_xxx 或 uid) */
   id: string;
@@ -48,6 +56,10 @@ export interface CodeBuddyAccount {
   lastCheckinTime?: number;
   /** 额度积分 / 算力点 */
   totalCredits?: number;
+  /** 基础体验包配额信息 (Cockpit Tools 口径) */
+  basePackage?: QuotaPackageItem;
+  /** 活动赠送包配额信息 (Cockpit Tools 口径) */
+  activityPackage?: QuotaPackageItem;
   /** 创建时间戳 */
   createdAt: number;
   /** 最近一次使用/切换时间戳 */

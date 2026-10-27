@@ -1,9 +1,18 @@
 {
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
-  "description": "企业级工作区会话保护与多环境平滑轮换工具",
+  "description": "CodeBuddy CN 智能无感切号与号池增强套件：进程级无感换号、NTFS 会话零拷贝保活、额度自动守护、Cockpit 导入与成长中心全自动收成。",
   "version": "0.1.0",
-  "publisher": "enterprise",
+  "publisher": "soulvon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soulvon/BuddyRelay"
+  },
+  "bugs": {
+    "url": "https://github.com/soulvon/BuddyRelay/issues"
+  },
+  "homepage": "https://github.com/soulvon/BuddyRelay#readme",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -29,7 +38,7 @@
         {
           "type": "webview",
           "id": "buddy-relay.sidebarView",
-          "name": "账号与会话中枢"
+          "name": "BuddyRelay"
         }
       ]
     },
@@ -119,21 +128,75 @@
           "type": "string",
           "default": "",
           "description": "Cockpit 外部环境配置导入源地址"
+        },
+        "buddyRelay.autoCheckin.dailyTime": {
+          "type": "string",
+          "default": "00:10",
+          "description": "每日自动签到时间（HH:mm，24 小时制）"
+        },
+        "buddyRelay.autoCheckin.randomJitterMinutes": {
+          "type": "number",
+          "default": 30,
+          "description": "签到随机延迟窗口（分钟），错开整点更像真人操作"
+        },
+        "buddyRelay.autoCheckin.perAccountDelaySeconds": {
+          "type": "number",
+          "default": 15,
+          "description": "多账号逐个签到之间的随机间隔上限（秒）"
+        },
+        "buddyRelay.autoSwitch.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用额度见底自动无感切换"
+        },
+        "buddyRelay.autoSwitch.quotaThresholdPercent": {
+          "type": "number",
+          "default": 10,
+          "description": "当前账号剩余算力占比 ≤ 该百分比时自动切换到备用账号"
+        },
+        "buddyRelay.autoSwitch.strategy": {
+          "type": "string",
+          "enum": [
+            "highest_quota",
+            "lru",
+            "round_robin",
+            "health_priority"
+          ],
+          "enumDescriptions": [
+            "优先剩余算力最多的账号",
+            "最近最少使用优先",
+            "按号池顺序轮换",
+            "优先连续签到天数多的账号"
+          ],
+          "default": "highest_quota",
+          "description": "自动切换时的候选账号挑选策略"
+        },
+        "buddyRelay.autoSwitch.cooldownMinutes": {
+          "type": "number",
+          "default": 5,
+          "description": "两次自动切换之间的最小间隔（分钟），防止反复横跳"
+        },
+        "buddyRelay.growthTasks.autoAfterCheckin": {
+          "type": "boolean",
+          "default": true,
+          "description": "每日自动签到完成后自动跑一轮成长任务（报名+领奖）"
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs",
     "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile",
-    "package": "vsce package"
+    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs",
+    "package": "vsce package",
+    "guard": "node scripts/check_ui_guards.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.1",
     "typescript": "^5.3.3"
-  }
+  },
+  "icon": "resources/icon.png"
 }

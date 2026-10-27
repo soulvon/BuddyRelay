@@ -1,9 +1,30 @@
+# 源码（vsix 只需要编译后的 out/ 与静态资源）
+src/**
+**/*.ts
+!out/**/*.d.ts
+
+# 构建与开发配置
+tsconfig.json
 .vscode/**
 .vscode-test/**
-src/**
-test_*.js
-**/*.map
-tsconfig.json
 .git/**
+.github/**
 .gitignore
+.vscodeignore
 AGENTS.md
+
+# 工具脚本与测试文件（仅本地开发与门控用，不进入发布包）
+scripts/**
+test_*.js
+_test_*.js
+dist/**
+
+# 编译映射与日志
+**/*.js.map
+*.log
+node_modules/**
+*.vsix
+
+# 系统文件
+.DS_Store
+Thumbs.db

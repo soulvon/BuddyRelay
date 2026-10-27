@@ -77,9 +77,12 @@ export function httpRequest<T = any>(
     };
 
     const req = client.request(reqOptions, (res) => {
-      let raw = '';
-      res.on('data', chunk => { raw += chunk; });
+      const chunks: Buffer[] = [];
+      res.on('data', chunk => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
       res.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
         let parsedData: any = raw;
         try {
           parsedData = JSON.parse(raw);
@@ -135,7 +138,8 @@ export class OAuthService {
         'Content-Type': 'application/json',
         ...DEFAULT_HEADERS.NO_AUTH_HEADERS
       },
-      body: {}
+      body: {},
+      timeout: 10000
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data?.state) {

@@ -1,8 +1,11 @@
+node_modules
 out
 dist
-node_modules
 .vscode-test
 *.vsix
+*.log
+_test_*.js
+test_*.js
+tmp/
 .DS_Store
 Thumbs.db
-*.log

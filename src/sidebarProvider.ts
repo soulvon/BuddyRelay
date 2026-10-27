@@ -1,9 +1,12 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { AccountStore, CodeBuddyAccount } from './accountStore';
+import { AccountStore, CodeBuddyAccount, QuotaPackageItem } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { CheckinService } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
 import { OAuthService } from './oauthService';
+import { GrowthTaskService, GrowthTask } from './growthTaskService';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -14,9 +17,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private checkinService: CheckinService;
   private importer: CockpitImporter;
   private oauthService: OAuthService;
+  private growthTasks: GrowthTaskService;
   private extensionUri: vscode.Uri;
   private isOperating: boolean = false;
   private currentOperationMessage: string = '';
+  private _abortTaskBatch: boolean = false;
 
   constructor(
     extensionUri: vscode.Uri,
@@ -32,6 +37,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.checkinService = checkinService;
     this.importer = importer;
     this.oauthService = oauthService;
+    this.growthTasks = new GrowthTaskService();
 
     // 监听号池状态变化并主动推流给 Webview
     this.store.on('change', () => {
@@ -87,6 +93,44 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'refreshStatus':
           await this.handleRefreshStatus();
           break;
+
+        case 'importJson':
+          await this.handleImportJson(String(message.text || ''));
+          break;
+
+        case 'importLocal':
+          await this.handleImportLocal();
+          break;
+
+        case 'taskList':
+          await this.handleTaskList(
+            message.accountId ? String(message.accountId) : undefined
+          );
+          break;
+
+        case 'taskRunAuto':
+          await this.handleTaskRunAuto(
+            Array.isArray(message.accountIds) ? message.accountIds.map(String) : null
+          );
+          break;
+
+        case 'taskAcceptAll':
+          await this.handleTaskAcceptAll(
+            Array.isArray(message.accountIds) ? message.accountIds.map(String) : null
+          );
+          break;
+
+        case 'taskClaim':
+          await this.handleTaskClaim(
+            String(message.taskCode || ''),
+            message.accountId ? String(message.accountId) : undefined
+          );
+          break;
+
+        case 'taskStop':
+          this._abortTaskBatch = true;
+          this.sendNotify('error', '已请求中止任务批处理');
+          break;
       }
     });
 
@@ -117,20 +161,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage({
       command: 'updateState',
       data: {
-        accounts: accounts.map((acc) => ({
-          id: acc.id,
-          uid: acc.uid,
-          email: acc.email,
-          nickname: acc.nickname || acc.email,
-          paymentType: acc.paymentType || 'free',
-          status: acc.status,
-          isActive: active ? active.id === acc.id : false,
-          totalCredits: acc.totalCredits ?? 0,
-          checkinStreak: acc.checkinStreak ?? 0,
-          todayCheckedIn: Boolean(acc.todayCheckedIn),
-          rateLimitUntil: acc.rateLimitUntil,
-          lastUsed: acc.lastUsed
-        })),
+        accounts: accounts.map((acc) => {
+          const actRemain = typeof acc.totalCredits === 'number' ? acc.totalCredits : 0;
+          const basePkg: QuotaPackageItem = acc.basePackage || {
+            title: '基础体验包',
+            count: 1,
+            remain: 0,
+            total: 500,
+            percent: 0
+          };
+
+          const actPkg: QuotaPackageItem = acc.activityPackage || {
+            title: '活动赠送包',
+            count: 30,
+            remain: actRemain,
+            total: 3000,
+            percent: actRemain > 0 ? Math.min(100, Math.round((actRemain / 3000) * 100)) : 0
+          };
+
+          return {
+            id: acc.id,
+            uid: acc.uid,
+            email: acc.email,
+            nickname: acc.nickname || acc.email,
+            paymentType: acc.paymentType || 'free',
+            status: acc.status,
+            isActive: active ? active.id === acc.id : false,
+            totalCredits: acc.totalCredits ?? 0,
+            basePackage: basePkg,
+            activityPackage: actPkg,
+            checkinStreak: acc.checkinStreak ?? 0,
+            todayCheckedIn: Boolean(acc.todayCheckedIn),
+            rateLimitUntil: acc.rateLimitUntil,
+            lastUsed: acc.lastUsed
+          };
+        }),
         activeId: active?.id || null,
         stats: {
           total: accounts.length,
@@ -153,22 +218,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleSwitchAccount(accountId: string): Promise<void> {
     const target = this.store.get(accountId);
     if (!target) {
-      vscode.window.showErrorMessage('目标账号不存在或已被移除');
+      this.sendNotify('error', '目标账号不存在或已被移除');
       return;
     }
 
     this.setOperating(true, `正在热切至账号 ${target.nickname || target.email}...`);
+
     try {
       const res = await this.switcher.switchAccount(target, this.store);
       if (res.success) {
-        vscode.window.showInformationMessage(
+        this.sendNotify('success', 
           `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email}`
         );
       } else {
-        vscode.window.showErrorMessage(`BuddyRelay: 热切失败 - ${res.message}`);
+        this.sendNotify('error', `切号异常: ${res.message}`);
       }
     } catch (err: any) {
-      vscode.window.showErrorMessage(`BuddyRelay: 切号异常: ${err.message}`);
+      this.sendNotify('error', `切号失败: ${err.message}`);
     } finally {
       this.setOperating(false);
     }
@@ -180,7 +246,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleCheckinAccount(accountId: string): Promise<void> {
     const target = this.store.get(accountId);
     if (!target) {
-      vscode.window.showErrorMessage('目标账号不存在');
       return;
     }
 
@@ -188,23 +253,92 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const res = await this.checkinService.checkinAccount(target, this.store);
       if (res.success) {
-        vscode.window.showInformationMessage(
-          `BuddyRelay: ${target.nickname} - ${res.message}`
+        this.sendNotify('success', 
+          `[${target.nickname || target.email}] ${res.message}`
         );
       } else {
-        vscode.window.showWarningMessage(
-          `BuddyRelay: ${target.nickname} 签到异常: ${res.message}`
+        this.sendNotify('error', 
+          `[${target.nickname || target.email}] 签到失败: ${res.error || res.message}`
         );
       }
     } catch (err: any) {
-      vscode.window.showErrorMessage(`BuddyRelay: 签到错误: ${err.message}`);
+      this.sendNotify('error', `签到异常: ${err.message}`);
     } finally {
       this.setOperating(false);
     }
   }
 
   /**
-   * 3. 删除账号
+   * 3. 一键全员签到
+   */
+  public async handleBatchCheckin(): Promise<void> {
+    const accounts = this.store.getAll();
+    if (accounts.length === 0) {
+      this.sendNotify('success', '号池为空，暂无需要签到的账号');
+      return;
+    }
+
+    this.setOperating(true, `正在执行一键全员签到 (共 ${accounts.length} 个账号)...`);
+    try {
+      const report = await this.checkinService.batchCheckin(accounts, this.store);
+      this.sendNotify('success', 
+        `BuddyRelay: 签到完成！新领积分: ${report.totalCreditsAwarded}点 | 成功: ${report.successCount} | 今日已签: ${report.alreadyCheckedInCount} | 失败: ${report.failedCount}`
+      );
+    } catch (err: any) {
+      this.sendNotify('error', `批量签到异常: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  /**
+   * 4. 从 Cockpit 导入账号
+   */
+  public async handleImportCockpit(): Promise<void> {
+    this.setOperating(true, '正在扫描并解密 Cockpit Tools 账号池...');
+    try {
+      const res = await this.importer.importToStore(this.store);
+      if (res.success) {
+        this.sendNotify('success', 
+          `BuddyRelay: 成功从 Cockpit 导入 ${res.decryptedCount} 个可用账号`
+        );
+        this.checkinService.batchSyncStatus(this.store.getAll(), this.store).catch(() => {});
+      } else {
+        this.sendNotify('error', `从 Cockpit 导入完成: 导入 ${res.decryptedCount}/${res.totalFound} 个账号`);
+      }
+    } catch (err: any) {
+      this.sendNotify('error', `导入 Cockpit 异常: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  /**
+   * 5. 官方 OAuth 登录添加账号
+   */
+  public async handleAddAccountOAuth(): Promise<void> {
+    this.setOperating(true, '正在请求 CodeBuddy 官方登录授权...');
+    try {
+      const account = await this.oauthService.loginAndSave(this.store, {
+        onAuthUrl: (url) => {
+          // 唤起系统默认浏览器打开官方授权页
+          vscode.env.openExternal(vscode.Uri.parse(url));
+          this.setOperating(true, '已打开授权页，请在浏览器中扫码或确认登录...');
+        }
+      });
+      this.sendNotify('success', 
+        `BuddyRelay: 账号 [${account.nickname || account.email}] 授权成功并加入号池！`
+      );
+      this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
+    } catch (err: any) {
+      this.sendNotify('error', `OAuth 授权登录失败: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  /**
+   * 6. 删除账号
    */
   public async handleDeleteAccount(accountId: string): Promise<void> {
     const target = this.store.get(accountId);
@@ -213,806 +347,664 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const confirm = await vscode.window.showWarningMessage(
-      `确定要从号池中移除账号 "${target.nickname || target.email}" 吗？`,
+      `确定要从号池中移除账号 [${target.nickname || target.email}] 吗？`,
       { modal: true },
-      '确认移除',
-      '取消'
+      '确定移除'
     );
 
-    if (confirm === '确认移除') {
+    if (confirm === '确定移除') {
       await this.store.delete(accountId);
-      vscode.window.showInformationMessage(
-        `BuddyRelay: 已成功从号池中移除账号 ${target.nickname || target.email}`
-      );
+      this.sendNotify('success', `已移除账号 [${target.nickname || target.email}]`);
     }
   }
 
   /**
-   * 4. 添加账号 (OAuth 授权登录)
+   * 7. 刷新状态与额度
    */
-  public async handleAddAccountOAuth(): Promise<void> {
-    this.setOperating(true, '正在初始化官方授权凭据...');
+  public async handleRefreshStatus(): Promise<void> {
+    this.setOperating(true, '正在刷新号池状态与实时配额...');
     try {
-      const authState = await this.oauthService.createAuthState('ide');
-      const uri = vscode.Uri.parse(authState.authUrl);
+      await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
+      this.sendNotify('success', 'BuddyRelay: 全量账号额度与签到状态刷新完毕');
+    } catch (err: any) {
+      this.sendNotify('error', `刷新状态失败: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
 
-      // 唤起系统浏览器
-      await vscode.env.openExternal(uri);
+  /**
+   * 批量执行进度推流（模态框进度区逐号一行）
+   */
+  private sendTaskProgress(
+    text: string,
+    level: 'doing' | 'ok' | 'fail',
+    percent?: number,
+    accountIndex?: number,
+    totalAccounts?: number
+  ): void {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.postMessage({
+      command: 'taskProgress',
+      text,
+      level,
+      percent: typeof percent === 'number' ? percent : undefined,
+      accountIndex,
+      totalAccounts
+    });
+  }
 
-      this.setOperating(true, '已打开浏览器，等待您完成扫码或授权确认...');
+  /**
+   * 批量执行结果统计推流（驱动独立进度弹窗切换至统计卡片）
+   */
+  private sendTaskBatchSummary(summary: {
+    mode: 'auto' | 'accept';
+    totalAccounts: number;
+    processedAccounts: number;
+    stopped: boolean;
+    durationSec: number;
+    totalAccepted: number;
+    totalClaimed: number;
+    totalCredits: number;
+    totalEnergy: number;
+    totalSkipped: number;
+    totalFailures: number;
+    details: Array<{ accountName: string; status: 'ok' | 'fail' | 'skipped' | 'stopped'; message: string }>;
+  }): void {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.postMessage({
+      command: 'taskBatchSummary',
+      data: summary
+    });
+  }
 
-      vscode.window.showInformationMessage(
-        'BuddyRelay: 已在浏览器中打开官方授权页，请在网页中确认登录。',
-        '再次打开授权页'
-      ).then(action => {
-        if (action === '再次打开授权页') {
-          vscode.env.openExternal(uri);
+  private async cancellableSleep(ms: number): Promise<void> {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (this._abortTaskBatch) {
+        break;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return this.cancellableSleep(ms);
+  }
+
+  /**
+   * 拉取指定账号（或激活账号）成长任务列表并推流给 Webview
+   */
+  public async handleTaskList(accountId?: string): Promise<void> {
+    let target = accountId ? this.store.get(accountId) : null;
+    if (!target) {
+      target = this.store.getActive() || this.store.getAll()[0];
+    }
+    if (!target) {
+      this.sendNotify('error', '号池为空，无法读取成长任务');
+      return;
+    }
+    const name = target.nickname || target.email;
+    this.setOperating(true, `正在读取 [${name}] 的成长任务与资产...`);
+    try {
+      const [tasks, assetSummary] = await Promise.all([
+        this.growthTasks.listTasks(target),
+        this.growthTasks.getGrowthAssetSummary(target)
+      ]);
+      this.pushTasksToWebview(tasks, target.id, name, assetSummary);
+    } catch (err: any) {
+      this.sendNotify('error', `读取任务失败: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  private pushTasksToWebview(
+    tasks: GrowthTask[],
+    accountId?: string,
+    accountName?: string,
+    assetSummary?: any
+  ): void {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.postMessage({
+      command: 'updateTasks',
+      data: {
+        accountId,
+        accountName,
+        assetSummary,
+        tasks: tasks.map(t => ({
+          taskCode: t.taskCode,
+          title: t.title,
+          acceptStatus: t.acceptStatus,
+          claimed: t.claimed,
+          locked: t.locked,
+          current: t.current,
+          target: t.target,
+          manualOnly: t.manualOnly,
+          source: t.source
+        }))
+      }
+    });
+  }
+
+  /**
+   * 一键完成可自动任务：领养Buddy → 批量报名 → 领取全部达标奖励
+   */
+  public async handleTaskRunAuto(accountIds?: string[] | null): Promise<void> {
+    this._abortTaskBatch = false;
+    const startTime = Date.now();
+
+    // 解析目标账号：勾选列表优先，否则回退当前激活账号
+    let targets: CodeBuddyAccount[] = [];
+    if (accountIds && accountIds.length > 0) {
+      for (const id of accountIds) {
+        const acc = this.store.get(id);
+        if (acc) {
+          targets.push(acc);
         }
-      });
-
-      // 轮询等待登录结果
-      const tokenData = await this.oauthService.pollToken(authState.state, {
-        timeoutMs: 120000
-      });
-
-      this.setOperating(true, '已收到授权凭证，正在同步个人资料与加油站信息...');
-      const profile = await this.oauthService.fetchAccountProfile(
-        authState.state,
-        tokenData.accessToken
-      );
-
-      const now = Date.now();
-      const account: CodeBuddyAccount = {
-        id: `codebuddy_cn_${profile.uid.replace(/-/g, '')}`,
-        uid: profile.uid,
-        email: profile.email || profile.phoneNumber || profile.nickname,
-        nickname: profile.nickname,
-        accessToken: tokenData.accessToken,
-        refreshToken: tokenData.refreshToken,
-        tokenType: tokenData.tokenType || 'Bearer',
-        expiresAt: now + (tokenData.expiresIn || 7200) * 1000,
-        domain: tokenData.domain || 'www.codebuddy.cn',
-        paymentType: 'free',
-        authRaw: tokenData,
-        profileRaw: profile,
-        status: 'idle',
-        createdAt: now,
-        lastUsed: now
-      };
-
-      await this.store.upsert(account);
-
-      // 同步一次加油站状态与积分
-      try {
-        await this.checkinService.syncAccountStatus(account, this.store);
-      } catch (_) {}
-
-      vscode.window.showInformationMessage(
-        `BuddyRelay: 账号 "${account.nickname}" 添加成功！`
-      );
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`BuddyRelay: OAuth 登录失败: ${err.message}`);
-    } finally {
-      this.setOperating(false);
-    }
-  }
-
-  /**
-   * 5. 从 Cockpit Tools 导入账号
-   */
-  public async handleImportCockpit(): Promise<void> {
-    this.setOperating(true, '正在探测并解密 Cockpit Tools 账号池...');
-    try {
-      const check = this.importer.verifyCockpitStorage();
-      if (!check.hasKey) {
-        vscode.window.showErrorMessage(
-          `未检测到 Cockpit 密钥文件 (${this.importer['keyFilePath']})`
-        );
-        return;
       }
-
-      const res = await this.importer.importToStore(this.store);
-      if (res.success) {
-        // 同步积分状态
-        const accounts = this.store.getAll();
-        this.setOperating(true, `已导入 ${res.decryptedCount} 个账号，正在更新加油站额度...`);
-        await this.checkinService.batchSyncStatus(accounts, this.store);
-
-        vscode.window.showInformationMessage(
-          `BuddyRelay: 成功导入 ${res.decryptedCount} 个 Cockpit 账号，额度已同步！`
-        );
-      } else {
-        vscode.window.showErrorMessage(
-          `Cockpit 导入失败: ${res.errors.map((e) => e.error).join('; ')}`
-        );
+    } else {
+      const active = this.store.getActive();
+      if (active) {
+        targets.push(active);
       }
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Cockpit 导入异常: ${err.message}`);
-    } finally {
-      this.setOperating(false);
     }
-  }
 
-  /**
-   * 6. 一键全员签到
-   */
-  public async handleBatchCheckin(): Promise<void> {
-    const accounts = this.store.getAll();
-    if (accounts.length === 0) {
-      vscode.window.showWarningMessage('号池中暂无可用账号，请先添加或导入账号');
+    if (targets.length === 0) {
+      this.sendNotify('error', '没有可执行的账号');
       return;
     }
 
-    this.setOperating(true, `正在为 ${accounts.length} 个账号批量签到...`);
+    this.setOperating(true, `正在批量执行成长任务（共 ${targets.length} 个账号）...`);
+    let totalClaimed = 0;
+    let totalCredits = 0;
+    let totalEnergy = 0;
+    let totalAccepted = 0;
+    let totalSkipped = 0;
+    let totalFailures = 0;
+    let processedAccounts = 0;
+    let wasStopped = false;
+    const details: Array<{ accountName: string; status: 'ok' | 'fail' | 'skipped' | 'stopped'; message: string }> = [];
+
+    this.sendTaskProgress(`开始批量执行，共 ${targets.length} 个账号...`, 'doing', 0, 0, targets.length);
+
     try {
-      const report = await this.checkinService.batchCheckin(accounts, this.store);
-      vscode.window.showInformationMessage(
-        `BuddyRelay: 签到完成！新领积分: ${report.totalCreditsAwarded}点 | 成功: ${report.successCount} | 今日已签: ${report.alreadyCheckedInCount} | 失败: ${report.failedCount}`
+      for (let i = 0; i < targets.length; i++) {
+        if (this._abortTaskBatch) {
+          wasStopped = true;
+          this.sendTaskProgress('⚠️ 用户已中止后续批处理', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          details.push({
+            accountName: targets[i].nickname || targets[i].email,
+            status: 'stopped',
+            message: '用户主动中止'
+          });
+          break;
+        }
+
+        const acc = targets[i];
+        const name = acc.nickname || acc.email;
+        const currentPct = Math.round((i / targets.length) * 100);
+        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 执行中...`, 'doing', currentPct, i + 1, targets.length);
+
+        try {
+          const report = await this.growthTasks.runAutoComplete(acc);
+          processedAccounts++;
+          totalClaimed += report.claimed;
+          totalCredits += report.claimedCredits;
+          totalEnergy += report.claimedEnergy;
+          totalAccepted += report.accepted;
+          totalSkipped += report.skipped.length;
+          totalFailures += report.failures.length;
+
+          // 账号受限（11140 request illegal）检测：立即跳过该号
+          const restricted = report.failures.some(
+            f => f.includes('11140') || f.toLowerCase().includes('request illegal')
+          );
+          if (restricted) {
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 账号受限，已跳过`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'fail', message: '账号受限 (11140)' });
+            continue;
+          }
+
+          const parts: string[] = [];
+          if (report.buddyAdopted) {
+            parts.push('领养Buddy(+300分)');
+          }
+          if (report.accepted > 0) {
+            parts.push(`新报${report.accepted}项`);
+          }
+          if (report.claimed > 0) {
+            parts.push(`领取${report.claimed}项(+${report.claimedCredits}分)`);
+          }
+          if (report.travelClaimed) {
+            parts.push('领旅行礼物');
+          }
+          if (report.travelDeparted) {
+            parts.push(`派去${report.travelLocation || '旅行打工'}`);
+          }
+          if (report.streakRedeemedCredits > 0) {
+            parts.push(`连登兑换(+${report.streakRedeemedCredits}分)`);
+          }
+          if (report.madeUpDays > 0) {
+            parts.push(`补登${report.madeUpDays}天`);
+          }
+          if (report.buddyBoxesOpened > 0) {
+            parts.push(`开出「${report.newBuddyName || '新Buddy'}」`);
+          }
+          if (report.lotteryDraws > 0) {
+            parts.push(`抽奖${report.lotteryDraws}次`);
+          }
+
+          if (parts.length > 0) {
+            const detailMsg = parts.join('，');
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${detailMsg}`, 'ok', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'ok', message: detailMsg });
+          } else if (report.failures.length > 0) {
+            const failMsg = `执行异常: ${report.failures.join('; ')}`;
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${failMsg}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'fail', message: failMsg });
+          } else {
+            const infoMsg = `无可领奖任务（${report.inProgressTasks}项进行中需在客户端操作达成，${report.skipped.length}项限微信扫码）`;
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${infoMsg}`, 'doing', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'skipped', message: infoMsg });
+          }
+        } catch (err: any) {
+          processedAccounts++;
+          totalFailures++;
+          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 失败 (${err.message})`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+          details.push({ accountName: name, status: 'fail', message: err.message });
+        }
+
+        // 账号间拟人化随机间隔（最后一个不等；支持随时被中止打断）
+        if (i < targets.length - 1 && !this._abortTaskBatch) {
+          await this.cancellableSleep(Math.round((3 + Math.random() * 5) * 1000));
+        }
+      }
+
+      const durationSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+      this.sendTaskProgress(
+        wasStopped ? '批处理已中止' : '所有账号执行完毕！',
+        wasStopped ? 'fail' : 'ok',
+        100,
+        targets.length,
+        targets.length
       );
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`批量签到异常: ${err.message}`);
+
+      // 发送结构化完成统计摘要
+      this.sendTaskBatchSummary({
+        mode: 'auto',
+        totalAccounts: targets.length,
+        processedAccounts,
+        stopped: wasStopped,
+        durationSec,
+        totalAccepted,
+        totalClaimed,
+        totalCredits,
+        totalEnergy,
+        totalSkipped,
+        totalFailures,
+        details
+      });
+
+      this.sendNotify(
+        totalClaimed > 0 || totalAccepted > 0 ? 'success' : 'error',
+        `批量任务完成：共处理 ${processedAccounts}/${targets.length} 个账号，新领 ${totalClaimed} 项 (+${totalCredits}分)`
+      );
+
+      // 刷新展示的目标账号任务列表（所见即所操作）
+      const primaryTarget = targets[0] || this.store.getActive();
+      if (primaryTarget) {
+        const tasks = await this.growthTasks.listTasks(primaryTarget);
+        this.pushTasksToWebview(tasks, primaryTarget.id, primaryTarget.nickname || primaryTarget.email);
+      }
     } finally {
       this.setOperating(false);
     }
   }
 
   /**
-   * 7. 刷新状态与配额
+   * 领取单个任务奖励（支持指定目标账号）
    */
-  public async handleRefreshStatus(): Promise<void> {
-    this.setOperating(true, '正在刷新号池与云端配额...');
+  public async handleTaskClaim(taskCode: string, accountId?: string): Promise<void> {
+    const target = accountId ? this.store.get(accountId) : this.store.getActive();
+    if (!target) {
+      this.sendNotify('error', '未找到目标账号，无法领取奖励');
+      return;
+    }
+    const name = target.nickname || target.email;
     try {
-      this.store.load();
-      const accounts = this.store.getAll();
-      await this.checkinService.batchSyncStatus(accounts, this.store);
-      vscode.window.showInformationMessage('BuddyRelay: 账号状态与额度积分已全面刷新');
+      const r = await this.growthTasks.claimTask(target, taskCode);
+      if (r.ok && !r.already) {
+        this.sendNotify('success', `[${name}] 领取成功 +${r.credit}分+${r.energy}能`);
+      } else if (r.already) {
+        this.sendNotify('error', `[${name}] 该任务奖励此前已领取`);
+      } else {
+        this.sendNotify('error', `[${name}] 领取失败（任务进度未达标）`);
+      }
+      const tasks = await this.growthTasks.listTasks(target);
+      this.pushTasksToWebview(tasks, target.id, name);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`刷新状态失败: ${err.message}`);
+      this.sendNotify('error', `领取失败: ${err.message}`);
+    }
+  }
+
+  /**
+   * 批量报名全部未报名任务
+   */
+  public async handleTaskAcceptAll(accountIds?: string[] | null): Promise<void> {
+    this._abortTaskBatch = false;
+    const startTime = Date.now();
+
+    let targets: CodeBuddyAccount[] = [];
+    if (accountIds && accountIds.length > 0) {
+      for (const id of accountIds) {
+        const acc = this.store.get(id);
+        if (acc) {
+          targets.push(acc);
+        }
+      }
+    } else {
+      const active = this.store.getActive();
+      if (active) {
+        targets.push(active);
+      }
+    }
+
+    if (targets.length === 0) {
+      this.sendNotify('error', '没有可执行的账号');
+      return;
+    }
+
+    this.setOperating(true, `正在批量报名任务（共 ${targets.length} 个账号）...`);
+    let totalAccepted = 0;
+    let totalFailures = 0;
+    let processedAccounts = 0;
+    let wasStopped = false;
+    const details: Array<{ accountName: string; status: 'ok' | 'fail' | 'skipped' | 'stopped'; message: string }> = [];
+
+    this.sendTaskProgress(`开始批量报名，共 ${targets.length} 个账号...`, 'doing', 0, 0, targets.length);
+
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        if (this._abortTaskBatch) {
+          wasStopped = true;
+          this.sendTaskProgress('⚠️ 用户已中止批量报名', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          details.push({
+            accountName: targets[i].nickname || targets[i].email,
+            status: 'stopped',
+            message: '用户主动中止'
+          });
+          break;
+        }
+
+        const acc = targets[i];
+        const name = acc.nickname || acc.email;
+        const currentPct = Math.round((i / targets.length) * 100);
+        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 报名中...`, 'doing', currentPct, i + 1, targets.length);
+
+        try {
+          const tasks = await this.growthTasks.listTasks(acc);
+          const res = await this.growthTasks.acceptAll(acc, tasks);
+          processedAccounts++;
+          totalAccepted += res.accepted;
+          totalFailures += res.failed;
+
+          if (res.failed > 0) {
+            const failMsg = res.accepted > 0
+              ? `报名 ${res.accepted} 项，失败 ${res.failed} 项 (${res.failures.join('; ')})`
+              : `报名失败: ${res.failures.join('; ')}`;
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${failMsg}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'fail', message: failMsg });
+          } else {
+            const okMsg = res.accepted > 0
+              ? `已报名 ${res.accepted} 项任务`
+              : (res.alreadyAccepted > 0 ? '无可报名任务（均已报名）' : '当前无可报名任务');
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${okMsg}`, res.accepted > 0 ? 'ok' : 'doing', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'ok', message: okMsg });
+          }
+        } catch (err: any) {
+          processedAccounts++;
+          totalFailures++;
+          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 报名异常 (${err.message})`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+          details.push({ accountName: name, status: 'fail', message: err.message });
+        }
+
+        if (i < targets.length - 1 && !this._abortTaskBatch) {
+          await this.cancellableSleep(Math.round((3 + Math.random() * 5) * 1000));
+        }
+      }
+
+      const durationSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+      this.sendTaskProgress(
+        wasStopped ? '批量报名已中止' : '所有账号报名处理完毕！',
+        wasStopped ? 'fail' : 'ok',
+        100,
+        targets.length,
+        targets.length
+      );
+
+      this.sendTaskBatchSummary({
+        mode: 'accept',
+        totalAccounts: targets.length,
+        processedAccounts,
+        stopped: wasStopped,
+        durationSec,
+        totalAccepted,
+        totalClaimed: 0,
+        totalCredits: 0,
+        totalEnergy: 0,
+        totalSkipped: 0,
+        totalFailures,
+        details
+      });
+
+      this.sendNotify(
+        totalAccepted > 0 ? 'success' : (totalFailures > 0 ? 'error' : 'success'),
+        `批量报名完成：共报名 ${totalAccepted} 项任务${totalFailures > 0 ? `，失败 ${totalFailures} 项` : ''}`
+      );
+
+      // 刷新展示的目标账号任务列表
+      const primaryTarget = targets[0] || this.store.getActive();
+      if (primaryTarget) {
+        const fresh = await this.growthTasks.listTasks(primaryTarget);
+        this.pushTasksToWebview(fresh, primaryTarget.id, primaryTarget.nickname || primaryTarget.email);
+      }
     } finally {
       this.setOperating(false);
     }
   }
 
-  private setOperating(operating: boolean, message: string = ''): void {
-    this.isOperating = operating;
+  private setOperating(isOperating: boolean, message: string = ''): void {
+    this.isOperating = isOperating;
     this.currentOperationMessage = message;
     this.postStateToWebview();
   }
 
   /**
-   * 渲染 Webview HTML
-   * 严格遵循 6 项交互铁律：
-   * 1. 禁廉价蓝紫渐变：全盘采用 VS Code 原生语义色彩与中性高质感暗黑调
-   * 2. 禁雷达波纹：无波纹扫描、无光晕呼吸，微交互在 0.12s 内利落完成
-   * 3. 自然中文：标准工程师操盘手界面用语，无机器翻译腔
-   * 4. 骨架屏与明确加载反馈：加载状态卡片占位防塌、操作禁用防护
-   * 5. 合理圆角：4px 规范圆角，贴合 VS Code 原生视觉基调
-   * 6. 严禁卡片套娃：单层扁平卡片流，统一高度防塌陷
+   * Webview 内 toast 通知（Kite 同款右下角浮层）
    */
-  private getHtmlForWebview(_webview: vscode.Webview): string {
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BuddyRelay 会话与账号中枢</title>
-  <style>
-    :root {
-      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      --bg-color: var(--vscode-sideBar-background, #181818);
-      --card-bg: var(--vscode-editor-background, #1f1f1f);
-      --card-hover: var(--vscode-list-hoverBackground, #2a2a2a);
-      --card-active-bg: var(--vscode-list-activeSelectionBackground, #222d36);
-      --border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
-      --text-main: var(--vscode-foreground, #cccccc);
-      --text-muted: var(--vscode-descriptionForeground, #888888);
-      --btn-bg: var(--vscode-button-background, #0e639c);
-      --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-      --btn-fg: var(--vscode-button-foreground, #ffffff);
-      --btn-sec-bg: var(--vscode-button-secondaryBackground, #313131);
-      --btn-sec-hover: var(--vscode-button-secondaryHoverBackground, #3d3d3d);
-      --btn-sec-fg: var(--vscode-button-secondaryForeground, #cccccc);
-      --danger-color: var(--vscode-errorForeground, #e06c75);
-      --success-color: var(--vscode-testing-iconPassed, #4ec9b0);
-      --warning-color: var(--vscode-editorWarning-foreground, #cca700);
-      --badge-bg: rgba(255, 255, 255, 0.06);
+  public sendNotify(level: 'success' | 'error', message: string): void {
+    if (!this._view) {
+      return;
     }
+    this._view.webview.postMessage({ command: 'notify', level, message });
+  }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+  /**
+   * 兼容多种来源的账号 JSON 字段映射（BuddyRelay 导出格式 / Cockpit 明文导出格式 / 下划线风格）
+   */
+  private normalizeImportedAccount(raw: Record<string, any>): CodeBuddyAccount | null {
+    const accessToken = raw.accessToken || raw.access_token;
+    const uid = raw.uid;
+    if (!accessToken || !uid) {
+      return null;
     }
+    const now = Date.now();
+    const account: CodeBuddyAccount = {
+      id: raw.id || `imported_${String(uid).slice(0, 8)}_${now}`,
+      uid: String(uid),
+      email: raw.email || raw.nickname || String(uid),
+      nickname: raw.nickname || raw.email || String(uid),
+      accessToken: String(accessToken),
+      refreshToken: raw.refreshToken || raw.refresh_token || '',
+      tokenType: raw.tokenType || 'Bearer',
+      expiresAt: Number(raw.expiresAt || 0),
+      domain: raw.domain || 'www.codebuddy.cn',
+      paymentType: raw.paymentType || 'free',
+      quotaRaw: raw.quotaRaw,
+      authRaw: raw.authRaw || raw.auth_raw,
+      profileRaw: raw.profileRaw || raw.profile_raw,
+      usageRaw: raw.usageRaw || raw.usage_raw,
+      status: 'idle',
+      checkinStreak: typeof raw.checkinStreak === 'number'
+        ? raw.checkinStreak
+        : (typeof raw.checkin_streak === 'number' ? raw.checkin_streak : 0),
+      todayCheckedIn: Boolean(raw.todayCheckedIn ?? raw.today_checked_in),
+      lastCheckinDate: raw.lastCheckinDate || raw.last_checkin_date,
+      lastCheckinTime: raw.lastCheckinTime || raw.last_checkin_time,
+      totalCredits: typeof raw.totalCredits === 'number' ? raw.totalCredits : undefined,
+      basePackage: raw.basePackage,
+      activityPackage: raw.activityPackage,
+      createdAt: Number(raw.createdAt || now),
+      lastUsed: Number(raw.lastUsed || now),
+      notes: raw.notes
+    };
+    return account;
+  }
 
-    body {
-      background-color: var(--bg-color);
-      color: var(--text-main);
-      font-family: var(--font-family);
-      font-size: 12px;
-      line-height: 1.4;
-      padding: 10px;
-      user-select: none;
-      overflow-x: hidden;
-    }
+  /**
+   * 本地导入：读取本机 CodeBuddy 当前已登录会话（vscode.authentication）入池
+   * Kite「已登录账户」同款机制，走官方 CodeBuddy-auth 认证提供器
+   */
+  public async handleImportLocal(): Promise<void> {
+    this.setOperating(true, '正在读取本机已登录会话...');
+    try {
+      const session = await vscode.authentication.getSession('CodeBuddy-auth', ['user'], {
+        createIfNone: false
+      });
 
-    /* 顶部动作栏 (Kite 风格扁平工具栏) */
-    .top-action-bar {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-
-    .action-row {
-      display: flex;
-      gap: 6px;
-    }
-
-    button {
-      border: 1px solid transparent;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 5px 8px;
-      transition: background 0.12s ease, border-color 0.12s ease;
-      white-space: nowrap;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-    }
-
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: var(--btn-bg);
-      color: var(--btn-fg);
-      flex: 1;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: var(--btn-hover);
-    }
-
-    .btn-secondary {
-      background: var(--btn-sec-bg);
-      color: var(--btn-sec-fg);
-      border-color: var(--border-color);
-      flex: 1;
-    }
-
-    .btn-secondary:hover:not(:disabled) {
-      background: var(--btn-sec-hover);
-      color: var(--text-main);
-    }
-
-    .btn-icon-only {
-      padding: 5px 7px;
-      flex: 0 0 auto;
-    }
-
-    .btn-danger-ghost {
-      background: transparent;
-      color: var(--danger-color);
-      border-color: rgba(224, 108, 117, 0.3);
-      padding: 3px 6px;
-      font-size: 10px;
-    }
-
-    .btn-danger-ghost:hover:not(:disabled) {
-      background: rgba(224, 108, 117, 0.12);
-      border-color: var(--danger-color);
-    }
-
-    /* 状态与统计摘要栏 */
-    .summary-banner {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 6px 8px;
-      margin-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-    }
-
-    .summary-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      color: var(--text-muted);
-    }
-
-    .summary-item strong {
-      color: var(--text-main);
-      font-weight: 600;
-    }
-
-    /* 加载操作反馈浮条 */
-    .operation-status-bar {
-      display: none;
-      background: var(--card-hover);
-      border-left: 3px solid var(--btn-bg);
-      padding: 5px 8px;
-      border-radius: 0 4px 4px 0;
-      margin-bottom: 10px;
-      font-size: 11px;
-      color: var(--text-main);
-      align-items: center;
-      gap: 6px;
-    }
-
-    .operation-status-bar.visible {
-      display: flex;
-    }
-
-    .spinner {
-      width: 10px;
-      height: 10px;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-      border-top-color: var(--btn-bg);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* 账号卡片流 (单层扁平结构，严禁多重套娃) */
-    .card-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .account-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 10px 12px;
-      min-height: 112px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      transition: background 0.12s ease, border-color 0.12s ease;
-      position: relative;
-    }
-
-    .account-card:hover {
-      background: var(--card-hover);
-      border-color: rgba(255, 255, 255, 0.16);
-    }
-
-    .account-card.is-active {
-      border-color: var(--success-color);
-      background: var(--card-active-bg);
-    }
-
-    .account-card.is-active::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      background: var(--success-color);
-      border-radius: 4px 0 0 4px;
-    }
-
-    /* 卡片顶行：昵称与状态 */
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .account-title-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      overflow: hidden;
-    }
-
-    .status-indicator {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #777777;
-      flex-shrink: 0;
-    }
-
-    .status-indicator.active {
-      background: var(--success-color);
-    }
-
-    .status-indicator.rate-limited {
-      background: var(--warning-color);
-    }
-
-    .account-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-main);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .badge {
-      display: inline-block;
-      font-size: 10px;
-      padding: 2px 5px;
-      border-radius: 3px;
-      background: var(--badge-bg);
-      color: var(--text-muted);
-      border: 1px solid var(--border-color);
-      white-space: nowrap;
-    }
-
-    .badge.badge-success {
-      color: var(--success-color);
-      border-color: rgba(78, 201, 176, 0.3);
-      background: rgba(78, 201, 176, 0.08);
-    }
-
-    .badge.badge-warning {
-      color: var(--warning-color);
-      border-color: rgba(204, 167, 0, 0.3);
-      background: rgba(204, 167, 0, 0.08);
-    }
-
-    .badge.badge-active {
-      color: #ffffff;
-      background: var(--btn-bg);
-      border-color: var(--btn-bg);
-    }
-
-    /* 卡片中行：积分、连续天数、标识 */
-    .card-body {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 8px;
-    }
-
-    .metric-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-    }
-
-    .credit-count {
-      color: var(--text-main);
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-
-    .credit-count .unit {
-      font-size: 10px;
-      font-weight: normal;
-      color: var(--text-muted);
-    }
-
-    .streak-text {
-      color: var(--text-muted);
-      font-size: 11px;
-    }
-
-    .uid-caption {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-family: monospace;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* 卡片底行：操作按钮栏 */
-    .card-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      padding-top: 6px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .footer-left-buttons {
-      display: flex;
-      gap: 5px;
-      flex: 1;
-    }
-
-    .btn-card-action {
-      padding: 3px 8px;
-      font-size: 10px;
-      font-weight: 500;
-    }
-
-    /* 骨架屏占位卡片 (平滑防塌) */
-    .skeleton-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 12px;
-      min-height: 112px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .skeleton-bar {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 3px;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 30px 10px;
-      color: var(--text-muted);
-    }
-
-    .empty-state p {
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-
-  <!-- 顶部动作栏 -->
-  <div class="top-action-bar">
-    <div class="action-row">
-      <button class="btn-primary" id="btnAddOAuth" title="发起官方扫码或网页登录">
-        <span>+</span> 添加账号 (OAuth)
-      </button>
-      <button class="btn-secondary" id="btnImportCockpit" title="从本地安全凭据库解密导入">
-        从 Cockpit 导入
-      </button>
-    </div>
-    <div class="action-row">
-      <button class="btn-secondary" id="btnBatchCheckin" title="为全员领取今日算力">
-        ✓ 一键全员签到
-      </button>
-      <button class="btn-secondary btn-icon-only" id="btnRefresh" title="刷新状态与配额">
-        ↻
-      </button>
-    </div>
-  </div>
-
-  <!-- 操作进度提示浮条 -->
-  <div class="operation-status-bar" id="operationBar">
-    <div class="spinner"></div>
-    <span id="operationMessage">正在处理中...</span>
-  </div>
-
-  <!-- 汇总数据摘要 -->
-  <div class="summary-banner" id="summaryBanner">
-    <div class="summary-item">
-      <span>账号:</span>
-      <strong id="statTotal">0</strong>
-    </div>
-    <div class="summary-item">
-      <span>已签:</span>
-      <strong id="statChecked">0/0</strong>
-    </div>
-    <div class="summary-item">
-      <span>总算力:</span>
-      <strong id="statCredits">0</strong>
-    </div>
-  </div>
-
-  <!-- 账号卡片流容器 -->
-  <div class="card-list" id="cardList">
-    <!-- 默认初次加载展示 2 个静态骨架屏防塌 -->
-    <div class="skeleton-card">
-      <div style="display:flex; justify-content:space-between;">
-        <div class="skeleton-bar" style="width: 80px; height: 14px;"></div>
-        <div class="skeleton-bar" style="width: 50px; height: 14px;"></div>
-      </div>
-      <div class="skeleton-bar" style="width: 140px; height: 12px;"></div>
-      <div style="display:flex; gap:6px;">
-        <div class="skeleton-bar" style="width: 50px; height: 20px;"></div>
-        <div class="skeleton-bar" style="width: 50px; height: 20px;"></div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    // DOM 元素引用
-    const btnAddOAuth = document.getElementById('btnAddOAuth');
-    const btnImportCockpit = document.getElementById('btnImportCockpit');
-    const btnBatchCheckin = document.getElementById('btnBatchCheckin');
-    const btnRefresh = document.getElementById('btnRefresh');
-    const operationBar = document.getElementById('operationBar');
-    const operationMessage = document.getElementById('operationMessage');
-    const cardList = document.getElementById('cardList');
-    const statTotal = document.getElementById('statTotal');
-    const statChecked = document.getElementById('statChecked');
-    const statCredits = document.getElementById('statCredits');
-
-    // 事件绑定
-    btnAddOAuth.addEventListener('click', () => {
-      vscode.postMessage({ command: 'addAccountOAuth' });
-    });
-
-    btnImportCockpit.addEventListener('click', () => {
-      vscode.postMessage({ command: 'importCockpit' });
-    });
-
-    btnBatchCheckin.addEventListener('click', () => {
-      vscode.postMessage({ command: 'batchCheckin' });
-    });
-
-    btnRefresh.addEventListener('click', () => {
-      vscode.postMessage({ command: 'refreshStatus' });
-    });
-
-    // 接收宿主发来的状态更新
-    window.addEventListener('message', event => {
-      const msg = event.data;
-      if (msg.command === 'updateState') {
-        renderState(msg.data);
-      }
-    });
-
-    function renderState(data) {
-      const { accounts, activeId, stats, isOperating, operationMessage: opMsg } = data;
-
-      // 更新操作状态条
-      if (isOperating) {
-        operationBar.classList.add('visible');
-        operationMessage.textContent = opMsg || '正在处理中...';
-        setActionsDisabled(true);
-      } else {
-        operationBar.classList.remove('visible');
-        setActionsDisabled(false);
-      }
-
-      // 更新摘要
-      if (stats) {
-        statTotal.textContent = stats.total;
-        statChecked.textContent = stats.checkedTodayCount + '/' + stats.total;
-        statCredits.textContent = (stats.totalCredits || 0).toLocaleString();
-      }
-
-      // 渲染账号卡片
-      if (!accounts || accounts.length === 0) {
-        cardList.innerHTML = \`
-          <div class="empty-state">
-            <p>暂无账号数据</p>
-            <button class="btn-primary" onclick="vscode.postMessage({ command: 'importCockpit' })">
-              从 Cockpit 导入账号
-            </button>
-          </div>
-        \`;
+      if (!session || !session.accessToken) {
+        this.sendNotify('error', '未检测到本机登录会话，请先用 OAuth 授权登录');
         return;
       }
 
-      cardList.innerHTML = accounts.map(acc => {
-        const isActive = acc.isActive;
-        const isRateLimited = acc.status === 'rate_limited';
-        const indicatorClass = isActive ? 'active' : (isRateLimited ? 'rate-limited' : '');
-        
-        let statusBadge = '';
-        if (isActive) {
-          statusBadge = '<span class="badge badge-active">当前激活</span>';
-        } else if (isRateLimited) {
-          statusBadge = '<span class="badge badge-warning">429冷却</span>';
-        } else {
-          statusBadge = '<span class="badge">就绪待命</span>';
+      const uid = session.account.id;
+      const nickname = session.account.label || uid;
+
+      if (this.store.get(uid)) {
+        this.sendNotify('error', '该账号已在号池中，无需重复导入');
+        return;
+      }
+
+      const now = Date.now();
+      const account: CodeBuddyAccount = {
+        id: `local_${String(uid).replace(/-/g, '')}`,
+        uid: String(uid),
+        email: nickname,
+        nickname,
+        accessToken: session.accessToken,
+        refreshToken: '',
+        tokenType: 'Bearer',
+        expiresAt: 0,
+        domain: 'www.codebuddy.cn',
+        paymentType: 'free',
+        status: 'idle',
+        createdAt: now,
+        lastUsed: now,
+        notes: '从本机已登录会话导入（无 refreshToken）'
+      };
+
+      await this.store.upsert(account);
+      // 后台拉取实时算力配额（仅需 accessToken + uid）
+      this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
+      this.sendNotify('success', `已导入本机登录账号 [${nickname}]`);
+    } catch (err: any) {
+      this.sendNotify('error', `本地导入失败：${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  /**
+   * JSON 批量导入：解析 → 字段归一化 → UID 去重 → 入库 → 后台拉取实时配额
+   */
+  public async handleImportJson(text: string): Promise<void> {
+    const raw = text.trim();
+    if (!raw) {
+      this.sendNotify('error', 'JSON 导入失败：内容为空');
+      return;
+    }
+
+    this.setOperating(true, '正在解析并导入 JSON 账号数据...');
+
+    try {
+      const parsed = JSON.parse(raw);
+      const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+      if (items.length === 0) {
+        this.sendNotify('error', 'JSON 导入失败：数据为空数组');
+        return;
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      const fresh: CodeBuddyAccount[] = [];
+
+      for (const item of items) {
+        if (!item || typeof item !== 'object') {
+          skipped++;
+          continue;
         }
+        const acc = this.normalizeImportedAccount(item);
+        if (!acc) {
+          skipped++;
+          continue;
+        }
+        if (this.store.get(acc.uid)) {
+          skipped++;
+          continue;
+        }
+        fresh.push(acc);
+      }
 
-        const checkinBadge = acc.todayCheckedIn
-          ? '<span class="badge badge-success">今日已签</span>'
-          : '<span class="badge badge-warning">今日未签</span>';
+      if (fresh.length > 0) {
+        await this.store.upsertBatch(fresh);
+        imported = fresh.length;
+        // 后台异步拉取实时配额与签到状态
+        this.checkinService.batchSyncStatus(fresh, this.store).catch(() => {});
+      }
 
-        const credits = (acc.totalCredits || 0).toLocaleString();
-        const streak = acc.checkinStreak || 0;
-        const uidSnippet = acc.uid ? (acc.uid.slice(0, 8) + '...' + acc.uid.slice(-4)) : 'N/A';
-
-        // 切换按钮状态
-        const switchBtn = isActive
-          ? '<button class="btn-secondary btn-card-action" disabled>✓ 激活中</button>'
-          : \`<button class="btn-primary btn-card-action" onclick="onSwitch('\${acc.id}')">切换</button>\`;
-
-        // 签到按钮状态
-        const checkinBtnText = acc.todayCheckedIn ? '已签到' : '签到';
-        const checkinBtnClass = acc.todayCheckedIn ? 'btn-secondary' : 'btn-secondary';
-        const checkinBtn = \`<button class="\${checkinBtnClass} btn-card-action" onclick="onCheckin('\${acc.id}')">\${checkinBtnText}</button>\`;
-
-        // 删除按钮
-        const deleteBtn = \`<button class="btn-danger-ghost" onclick="onDelete('\${acc.id}')" title="从号池移除">删除</button>\`;
-
-        return \`
-          <div class="account-card \${isActive ? 'is-active' : ''}">
-            <div class="card-header">
-              <div class="account-title-group">
-                <span class="status-indicator \${indicatorClass}"></span>
-                <span class="account-name" title="\${escapeHtml(acc.nickname)} (\${escapeHtml(acc.email)})">
-                  \${escapeHtml(acc.nickname)}
-                </span>
-              </div>
-              <div style="display: flex; gap: 4px;">
-                \${checkinBadge}
-                \${statusBadge}
-              </div>
-            </div>
-
-            <div class="card-body">
-              <div class="metric-row">
-                <div class="credit-count">
-                  <span>\${credits}</span>
-                  <span class="unit">算力点</span>
-                </div>
-                <div class="streak-text">
-                  连续签到 <strong>\${streak}</strong> 天
-                </div>
-              </div>
-              <div class="uid-caption" title="UID: \${escapeHtml(acc.uid)} | 绑定: \${escapeHtml(acc.email)}">
-                UID: \${escapeHtml(uidSnippet)}
-              </div>
-            </div>
-
-            <div class="card-footer">
-              <div class="footer-left-buttons">
-                \${switchBtn}
-                \${checkinBtn}
-              </div>
-              \${deleteBtn}
-            </div>
-          </div>
-        \`;
-      }).join('');
+      if (imported > 0) {
+        this.sendNotify('success', `JSON 导入完成：新增 ${imported} 个账号，跳过 ${skipped} 个`);
+      } else {
+        this.sendNotify('error', `JSON 导入失败：没有可用账号（跳过 ${skipped} 个，缺少 uid/accessToken 或已存在）`);
+      }
+    } catch (err: any) {
+      this.sendNotify('error', `JSON 解析失败：${err.message}`);
+    } finally {
+      this.setOperating(false);
     }
+  }
 
-    function setActionsDisabled(disabled) {
-      btnAddOAuth.disabled = disabled;
-      btnImportCockpit.disabled = disabled;
-      btnBatchCheckin.disabled = disabled;
-      btnRefresh.disabled = disabled;
+  /**
+   * 核心 Webview HTML 结构模板
+   * 1:1 深度复刻 Kite 经典卡片 (.grid-card) 质感 + Cockpit 配额进度条 + 隐私脱敏
+   */
+      private getHtmlForWebview(webview: vscode.Webview): string {
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, 'resources', 'webview', 'main.css')
+    );
+    const htmlPath = path.join(this.extensionUri.fsPath, 'resources', 'webview', 'sidebar.html');
+    if (fs.existsSync(htmlPath)) {
+      let content = fs.readFileSync(htmlPath, 'utf8');
+      content = content.replace('{{CSS_URI}}', `${cssUri.toString()}?v=${Date.now()}`);
+      return content;
     }
-
-    function onSwitch(id) {
-      vscode.postMessage({ command: 'switchAccount', accountId: id });
-    }
-
-    function onCheckin(id) {
-      vscode.postMessage({ command: 'checkinAccount', accountId: id });
-    }
-
-    function onDelete(id) {
-      vscode.postMessage({ command: 'deleteAccount', accountId: id });
-    }
-
-    function escapeHtml(text) {
-      if (!text) return '';
-      return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-
-    // 页面就绪后立即请求最新状态
-    vscode.postMessage({ command: 'webviewReady' });
-  </script>
-</body>
-</html>`;
+    return `<!DOCTYPE html><html><body><h3>未找到侧栏资源: ${htmlPath}</h3></body></html>`;
   }
 }

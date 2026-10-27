@@ -22,9 +22,9 @@ export class StatusBarManager implements vscode.Disposable {
     this.store = store;
     this.switcher = switcher;
 
-    // 左下角常驻 (vscode.StatusBarAlignment.Left, 优先级 100)
+    // 右下角常驻 (vscode.StatusBarAlignment.Right, 优先级 100)
     this.statusBarItem = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Left,
+      vscode.StatusBarAlignment.Right,
       100
     );
     this.statusBarItem.command = 'buddy-relay.showAccountQuickPick';
@@ -58,7 +58,7 @@ export class StatusBarManager implements vscode.Disposable {
     const name = active.nickname || active.email || '未命名账号';
     const creditsText =
       typeof active.totalCredits === 'number'
-        ? `${active.totalCredits.toLocaleString()}点`
+        ? `${Number(active.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}点`
         : active.paymentType === 'free'
         ? '免费版'
         : '就绪';
@@ -88,7 +88,7 @@ export class StatusBarManager implements vscode.Disposable {
     md.appendMarkdown(`- **当前账号**: ${name}\n`);
     md.appendMarkdown(`- **账号标识**: \`${active.email}\`\n`);
     md.appendMarkdown(`- **用户 UID**: \`${active.uid}\`\n`);
-    md.appendMarkdown(`- **额度积分**: **${typeof active.totalCredits === 'number' ? `${active.totalCredits.toLocaleString()} 算力点` : '未同步'}**\n`);
+    md.appendMarkdown(`- **额度积分**: **${typeof active.totalCredits === 'number' ? `${Number(active.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} 算力点` : '未同步'}**\n`);
     md.appendMarkdown(`- **加油站**: ${streakText} (${checkinText})\n`);
     md.appendMarkdown(`- **运行状态**: ${statusDesc}\n\n`);
     md.appendMarkdown('---\n\n');
@@ -128,7 +128,7 @@ export class StatusBarManager implements vscode.Disposable {
 
         const creditsStr =
           typeof acc.totalCredits === 'number'
-            ? `${acc.totalCredits.toLocaleString()} 算力点`
+            ? `${Number(acc.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} 算力点`
             : acc.paymentType || '免费';
 
         items.push({

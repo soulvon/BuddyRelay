@@ -1,6 +1,12 @@
 import { API_ENDPOINTS } from './constants';
 import { httpRequest } from './oauthService';
-import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore';
+
+export interface DetailedQuotaResult {
+  totalCredits: number;
+  basePackage: QuotaPackageItem;
+  activityPackage: QuotaPackageItem;
+}
 
 export interface CheckinStatusResult {
   active: boolean;
@@ -50,6 +56,119 @@ export class CheckinService {
   /**
    * 1. 查询账号签到活动状态
    */
+  /**
+   * 1.0 查询账号真实可用算力点数 (通过官方 get-user-resource 聚合 CycleCapacityRemainPrecise)
+   */
+  public async queryRealRemainingQuota(account: CodeBuddyAccount): Promise<DetailedQuotaResult | null> {
+    if (!account.accessToken || !account.uid) {
+      return null;
+    }
+
+    const now = new Date();
+    const future = new Date(now.getTime() + 5 * 365 * 24 * 3600 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const fmt = (d: Date) =>
+      d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+
+    const headers: Record<string, string> = {
+      'Authorization': 'Bearer ' + account.accessToken,
+      'X-User-Id': account.uid,
+      'Content-Type': 'application/json'
+    };
+
+    const url = this.baseUrl + API_ENDPOINTS.USER_RESOURCE;
+    const body = {
+      PageNumber: 1,
+      PageSize: 100,
+      ProductCode: 'p_tcaca',
+      Status: [0, 3],
+      PackageEndTimeRangeBegin: fmt(now),
+      PackageEndTimeRangeEnd: fmt(future)
+    };
+
+    try {
+      const res = await httpRequest<{
+        code: number;
+        msg: string;
+        data?: {
+          Response?: {
+            Data?: {
+              Accounts?: Array<{
+                PackageCode?: string;
+                PackageName?: string;
+                CycleCapacityRemainPrecise?: string | number;
+                CycleCapacitySizePrecise?: string | number;
+              }>;
+            };
+          };
+        };
+      }>(url, {
+        method: 'POST',
+        headers,
+        body,
+        timeout: 10000
+      });
+
+      if (res.status === 200 && res.data?.code === 0) {
+        const pkgs = res.data?.data?.Response?.Data?.Accounts || [];
+        const basePkgs: any[] = [];
+        const actPkgs: any[] = [];
+
+        for (const pkg of pkgs) {
+          const code = pkg.PackageCode || '';
+          const name = pkg.PackageName || '';
+          if (
+            name.includes('基础') ||
+            name.includes('体验') ||
+            code === 'TCACA_code_001_PqouKr6QWV' ||
+            code === 'TCACA_code_006_DbXS0lrypC' ||
+            code === 'TCACA_code_008_cfWoLwvjU4'
+          ) {
+            basePkgs.push(pkg);
+          } else {
+            actPkgs.push(pkg);
+          }
+        }
+
+        const bRemain = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
+        const bTotal = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
+        const bCount = basePkgs.length || 1;
+        const finalBTotal = bTotal > 0 ? bTotal : 500;
+        const bPercent = finalBTotal > 0 ? Math.max(0, Math.min(100, (bRemain / finalBTotal) * 100)) : 0;
+
+        const aRemain = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
+        const aTotal = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
+        const aCount = actPkgs.length;
+        const aPercent = aTotal > 0 ? Math.max(0, Math.min(100, (aRemain / aTotal) * 100)) : 0;
+
+        const totalCredits = Math.round((bRemain + aRemain) * 100) / 100;
+
+        return {
+          totalCredits,
+          basePackage: {
+            title: '基础体验包',
+            count: bCount,
+            remain: Math.round(bRemain * 100) / 100,
+            total: Math.round(finalBTotal * 100) / 100,
+            percent: Math.round(bPercent * 10) / 10
+          },
+          activityPackage: {
+            title: '活动赠送包',
+            count: aCount,
+            remain: Math.round(aRemain * 100) / 100,
+            total: Math.round(aTotal * 100) / 100,
+            percent: Math.round(aPercent * 10) / 10
+          }
+        };
+      }
+    } catch (_) {
+      // 容错返回 null
+    }
+
+    return null;
+  }
+
   public async queryStatus(account: CodeBuddyAccount): Promise<CheckinStatusResult> {
     if (!account.accessToken) {
       throw new Error(`[CheckinService] 账号缺少 accessToken: ${account.email}`);
@@ -243,10 +362,19 @@ export class CheckinService {
         };
 
         if (store) {
+          // 余额必须来自 get-user-resource 实时资源包，绝不用签到活动累计值覆盖
+          const realQuota = await this.queryRealRemainingQuota(account);
+          const quotaPatch = realQuota
+            ? {
+                totalCredits: realQuota.totalCredits,
+                basePackage: realQuota.basePackage,
+                activityPackage: realQuota.activityPackage
+              }
+            : {};
           await store.updateStatus(account.id, account.status, {
             todayCheckedIn: true,
             checkinStreak: status.streakDays,
-            totalCredits: status.totalCredits,
+            ...quotaPatch,
             lastCheckinDate: status.lastCheckinDate || new Date().toISOString().slice(0, 10),
             lastCheckinTime: Date.now()
           });
@@ -258,11 +386,19 @@ export class CheckinService {
       const execResult = await this.executeDailyCheckin(account);
 
       if (execResult.success && store) {
-        const updatedCredits = (status.totalCredits || 0) + (execResult.creditAwarded || 0);
+        // 签到到账后重新拉取实时资源包余额（新领的算力会体现在资源包中）
+        const realQuota = await this.queryRealRemainingQuota(account);
+        const quotaPatch = realQuota
+          ? {
+              totalCredits: realQuota.totalCredits,
+              basePackage: realQuota.basePackage,
+              activityPackage: realQuota.activityPackage
+            }
+          : {};
         await store.updateStatus(account.id, account.status, {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays || status.streakDays + 1,
-          totalCredits: updatedCredits,
+          ...quotaPatch,
           lastCheckinDate: new Date().toISOString().slice(0, 10),
           lastCheckinTime: Date.now()
         });
@@ -272,9 +408,18 @@ export class CheckinService {
       // 查询失败时直接尝试签到
       const execResult = await this.executeDailyCheckin(account);
       if (execResult.success && store) {
+        const realQuota = await this.queryRealRemainingQuota(account);
+        const quotaPatch = realQuota
+          ? {
+              totalCredits: realQuota.totalCredits,
+              basePackage: realQuota.basePackage,
+              activityPackage: realQuota.activityPackage
+            }
+          : {};
         await store.updateStatus(account.id, account.status, {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays,
+          ...quotaPatch,
           lastCheckinDate: new Date().toISOString().slice(0, 10),
           lastCheckinTime: Date.now()
         });
@@ -291,16 +436,24 @@ export class CheckinService {
     store?: AccountStore
   ): Promise<CheckinStatusResult> {
     const status = await this.queryStatus(account);
+    const realQuota = await this.queryRealRemainingQuota(account);
+    const finalCredits = realQuota ? realQuota.totalCredits : status.totalCredits;
+
     if (store) {
       await store.updateStatus(account.id, account.status, {
         todayCheckedIn: status.todayCheckedIn,
         checkinStreak: status.streakDays,
-        totalCredits: status.totalCredits,
+        totalCredits: finalCredits,
+        basePackage: realQuota?.basePackage,
+        activityPackage: realQuota?.activityPackage,
         lastCheckinDate: status.lastCheckinDate,
         lastCheckinTime: Date.now()
       });
     }
-    return status;
+    return {
+      ...status,
+      totalCredits: finalCredits
+    };
   }
 
   /**

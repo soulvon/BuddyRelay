@@ -3,7 +3,7 @@ import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
 import { OAuthService } from './oauthService';
 
-export type RotationStrategy = 'lru' | 'round_robin' | 'health_priority';
+export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
 export interface RotationEvent {
   fromUid: string;
@@ -31,7 +31,10 @@ export class AutoSwitcher extends EventEmitter {
   private defaultCooldownMs: number;
   private autoRefreshTokens: boolean;
   private monitorTimer: NodeJS.Timeout | null = null;
+  private quotaGuardTimer: NodeJS.Timeout | null = null;
   private isRotating: boolean = false;
+  private lastAutoSwitchAt: number = 0;
+  private getConfig: (() => { enabled: boolean; thresholdPercent: number; cooldownMinutes: number } | null) | null = null;
 
   constructor(
     store: AccountStore,
@@ -88,7 +91,26 @@ export class AutoSwitcher extends EventEmitter {
     }
 
     // 2. 根据调度策略选出最佳账号
-    if (this.strategy === 'round_robin') {
+    if (this.strategy === 'highest_quota') {
+      // 优先剩余算力占比最高的账号（无配额数据时退回 LRU）
+      candidates.sort((a, b) => {
+        const aPct = a.activityPackage
+          ? a.activityPackage.percent
+          : a.totalCredits != null
+          ? -1
+          : -2;
+        const bPct = b.activityPackage
+          ? b.activityPackage.percent
+          : b.totalCredits != null
+          ? -1
+          : -2;
+        if (bPct !== aPct) {
+          return bPct - aPct;
+        }
+        return (a.lastUsed || 0) - (b.lastUsed || 0);
+      });
+      return candidates[0];
+    } else if (this.strategy === 'round_robin') {
       // 取第一个
       return candidates[0];
     } else if (this.strategy === 'health_priority') {
@@ -212,6 +234,79 @@ export class AutoSwitcher extends EventEmitter {
       clearInterval(this.monitorTimer);
       this.monitorTimer = null;
     }
+    this.stopQuotaGuard();
+  }
+
+  /**
+   * 主动额度守卫：周期性检查当前账号剩余算力，低于阈值自动无感切换
+   * 条件可通过 VS Code 设置自定义（buddyRelay.autoSwitch.*）
+   */
+  public startQuotaGuard(getConfig: () => { enabled: boolean; thresholdPercent: number; cooldownMinutes: number } | null): void {
+    if (this.quotaGuardTimer) {
+      return;
+    }
+    this.getConfig = getConfig;
+
+    this.quotaGuardTimer = setInterval(async () => {
+      try {
+        const cfg = this.getConfig ? this.getConfig() : null;
+        if (!cfg || !cfg.enabled) {
+          return;
+        }
+
+        // 冷却期防抖
+        if (this.lastAutoSwitchAt && Date.now() - this.lastAutoSwitchAt < cfg.cooldownMinutes * 60 * 1000) {
+          return;
+        }
+
+        const active = this.store.getActive();
+        if (!active || !active.uid) {
+          return;
+        }
+
+        // 计算当前账号剩余算力占比
+        const pct = active.activityPackage
+          ? active.activityPackage.percent
+          : null;
+        if (pct == null || isNaN(pct)) {
+          return;
+        }
+
+        if (pct <= cfg.thresholdPercent) {
+          console.log(
+            `[BuddyRelay][QuotaGuard] 账号 ${active.nickname || active.email} 剩余 ${pct}% ≤ 阈值 ${cfg.thresholdPercent}%，触发自动无感切换`
+          );
+          const res = await this.handleQuotaExhausted(
+            active.uid,
+            `剩余算力 ${pct}% 低于阈值 ${cfg.thresholdPercent}%`
+          );
+          if (res.success) {
+            this.lastAutoSwitchAt = Date.now();
+          }
+        }
+      } catch (err: any) {
+        // 号池告急等错误静默记录，等待下轮
+        console.warn(`[BuddyRelay][QuotaGuard] 巡检异常: ${err.message}`);
+      }
+    }, 60 * 1000);
+  }
+
+  public stopQuotaGuard(): void {
+    if (this.quotaGuardTimer) {
+      clearInterval(this.quotaGuardTimer);
+      this.quotaGuardTimer = null;
+    }
+  }
+
+  /**
+   * 手动/外部触发 429 轮换的便捷入口
+   */
+  public async autoSwitchOn429(cooldownMs?: number): Promise<SwitchResult | null> {
+    const active = this.store.getActive();
+    if (!active || !active.uid) {
+      return null;
+    }
+    return await this.handleRateLimit429(active.uid, cooldownMs);
   }
 
   /**
