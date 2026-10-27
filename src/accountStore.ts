@@ -414,6 +414,25 @@ export class AccountStore extends EventEmitter {
   }
 
   /**
+   * 切换账号启用/禁用状态 (disabled <-> idle)
+   */
+  public async toggleStatus(idOrUid: string): Promise<CodeBuddyAccount | undefined> {
+    const acc = this.get(idOrUid);
+    if (!acc) return undefined;
+    if (acc.status === 'disabled') {
+      acc.status = 'idle';
+    } else {
+      acc.status = 'disabled';
+      if (this.activeId === acc.id) {
+        this.activeId = null;
+      }
+    }
+    this.normalizeActiveStatus();
+    await this.persist();
+    return acc;
+  }
+
+  /**
    * 标记账号遭遇 429 速率限制
    */
   public async markRateLimited(idOrUid: string, durationMs: number = 5 * 60 * 1000): Promise<void> {

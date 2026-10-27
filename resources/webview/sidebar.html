@@ -275,6 +275,7 @@
     #taskProgressOverlay[hidden],
     #addAccountOverlay[hidden],
     #confirmOverlay[hidden],
+    #settingsModalOverlay[hidden],
     .modal-overlay[hidden] {
       display: none !important;
     }
@@ -693,6 +694,12 @@
         <button class="btn-outline" id="btnBatchCheckin" title="一键为所有账号签到">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M20 6 9 17l-5-5"/></svg>
           一键全员签到</button>
+        <button class="toolbar-icon-btn" id="btnSettings" title="规则与调度设置">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
       </div>
 
       <!-- 标签管理栏（Kite 原版 tag-bar 结构） -->
@@ -745,21 +752,27 @@
           <button class="primary" id="btnImportLocal" style="margin-top:10px">导入当前登录账号</button>
         </div>
 
-        <!-- JSON 导入 -->
+        <!-- 智能匹配批量导入 -->
         <div id="addTabJson" class="add-area" hidden>
-          <label class="batch-mode-label">粘贴账号 JSON（支持数组或单个对象）</label>
-          <textarea id="importJsonText" class="batch-textarea" rows="8" placeholder='[{"uid":"...","nickname":"...","accessToken":"...","refreshToken":"..."}]'></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label class="batch-mode-label" style="margin:0;">智能匹配导入 (JSON / JWT / 分隔符)</label>
+            <button class="btn-outline" id="btnImportAccountsFile" type="button" style="padding:2px 10px;height:24px;font-size:11px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              从文件选择导入 (.json)
+            </button>
+          </div>
+          <textarea id="importJsonText" class="batch-textarea" rows="8" placeholder='支持以下格式智能识别与覆盖更新：&#10;1. 完整账号 JSON 数组或单个对象&#10;2. 纯 JWT 令牌 (eyJ...) 自动解析 UID 与过期时间&#10;3. uid----accessToken 分隔符格式&#10;4. 已存在的账号将自动覆盖更新 Token 与配额'></textarea>
           <details class="batch-example">
-            <summary>格式说明（点击展开）</summary>
+            <summary>智能识别与更新特性（点击展开）</summary>
             <div class="batch-example-content">
-              <div class="batch-example-label">字段要求</div>
-              <pre class="batch-example-code">uid 与 accessToken 必填；
-email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
-兼容 access_token / refresh_token 下划线风格字段；
-按 uid 去重，已存在的账号自动跳过。</pre>
+              <div class="batch-example-label">智能特性说明</div>
+              <pre class="batch-example-code">✓ 兼容 access_token / refresh_token 下划线与驼峰命名
+✓ 支持直接粘贴单个或批量 JWT 令牌，自动解析 sub (UID) 与 nickname
+✓ 已存在的账号自动覆盖刷新 Token，无需删除旧号重录
+✓ 点击右上角「从文件选择导入」可直接载入大体积 .json 账号文件</pre>
             </div>
           </details>
-          <button class="primary" id="btnImportJson" style="margin-top:10px">导入 JSON</button>
+          <button class="primary" id="btnImportJson" style="margin-top:10px">一键智能导入</button>
         </div>
       </div>
     </div>
@@ -958,12 +971,114 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
     </div>
   </div>
 
+  <!-- 规则与调度设置模态框 -->
+  <div id="settingsModalOverlay" class="modal-overlay" hidden>
+    <div class="modal-box" style="width:min(440px,94vw);max-height:86vh;">
+      <div class="modal-header">
+        <h3>规则与调度设置</h3>
+        <button class="modal-close" id="settingsModalClose" title="关闭">×</button>
+      </div>
+      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        
+        <!-- 1. 每日自动签到 -->
+        <div style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">📅 每日自动签到</span>
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="setCheckinEnabled"> <span>启用</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">定点时间 (24小时制)</span>
+            <input type="text" id="setDailyTime" style="width:80px;height:24px;text-align:center;font-size:11px;" placeholder="00:10">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">随机抖动时间窗口</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="setRandomJitter" style="width:60px;height:24px;text-align:center;font-size:11px;" min="0" max="180">
+              <span style="color:var(--muted);font-size:10px;">分钟</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">多账号逐个签到间隔</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="setPerAccountDelay" style="width:60px;height:24px;text-align:center;font-size:11px;" min="1" max="60">
+              <span style="color:var(--muted);font-size:10px;">秒</span>
+            </div>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--muted);padding-top:4px;border-top:1px dashed var(--card-border);">
+            <input type="checkbox" id="setGrowthAfterCheckin">
+            <span>签到完成后自动跑一轮成长任务（接单、出游打工与领奖）</span>
+          </label>
+        </div>
+
+        <!-- 2. 额度守护与自动切号 -->
+        <div style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">🔄 额度守护与自动切号</span>
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="setAutoSwitchEnabled"> <span>启用</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">自动切号触发阈值 (剩余)</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="color:var(--muted);font-size:10px;">≤</span>
+              <input type="number" id="setQuotaThreshold" style="width:60px;height:24px;text-align:center;font-size:11px;" min="1" max="90">
+              <span style="color:var(--muted);font-size:10px;">%</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">候选账号挑选策略</span>
+            <select id="setAutoSwitchStrategy" class="v2-sel" style="width:140px;height:24px;font-size:11px;">
+              <option value="highest_quota">满额度优先 (推荐)</option>
+              <option value="lru">最近最少使用 (LRU)</option>
+              <option value="round_robin">按号池顺序轮换</option>
+              <option value="health_priority">优先高连签天数</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+            <span style="color:var(--muted);">切号防抖冷却时长</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="setCooldownMinutes" style="width:60px;height:24px;text-align:center;font-size:11px;" min="1" max="60">
+              <span style="color:var(--muted);font-size:10px;">分钟</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 自动更新与常规 -->
+        <div style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">🚀 自动更新检测</div>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--muted);">
+            <input type="checkbox" id="setUpdateAutoCheck">
+            <span>启动时自动在后台静默检查 GitHub 最新发布版本</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--muted);">
+            <input type="checkbox" id="setUpdateAutoInstall">
+            <span>发现新版本时免确认自动静默下载安装</span>
+          </label>
+        </div>
+
+        <!-- 操作区 -->
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:6px;">
+          <button class="btn-outline" id="btnSettingsReset" type="button" style="font-size:11px;height:28px;">恢复默认</button>
+          <div style="display:flex;gap:8px;">
+            <button class="modal-cancel-btn" id="btnSettingsCancel" type="button" style="font-size:11px;height:28px;">取消</button>
+            <button class="primary" id="btnSettingsSave" type="button" style="font-size:11px;height:28px;min-width:76px;">保存设置</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- 全局 Toast 容器（Kite 同款：操作进度/结果通知） -->
   <div id="toastContainer" class="toast-container"></div>
 
   <script>
     const vscode = acquireVsCodeApi();
     let currentAccounts = [];
+    let currentSettings = {};
     let privacyMode = false;
     let switchingId = '';
     let activeTag = 'all';
@@ -1102,6 +1217,100 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
     const tagList = document.getElementById('tagList');
     const accountGrid = document.getElementById('accountGrid');
     const emptyState = document.getElementById('emptyState');
+
+    // ── 规则与调度设置 DOM ──
+    const btnSettings = document.getElementById('btnSettings');
+    const settingsModalOverlay = document.getElementById('settingsModalOverlay');
+    const settingsModalClose = document.getElementById('settingsModalClose');
+    const btnSettingsCancel = document.getElementById('btnSettingsCancel');
+    const btnSettingsSave = document.getElementById('btnSettingsSave');
+    const btnSettingsReset = document.getElementById('btnSettingsReset');
+    const btnImportAccountsFile = document.getElementById('btnImportAccountsFile');
+
+    const setCheckinEnabled = document.getElementById('setCheckinEnabled');
+    const setDailyTime = document.getElementById('setDailyTime');
+    const setRandomJitter = document.getElementById('setRandomJitter');
+    const setPerAccountDelay = document.getElementById('setPerAccountDelay');
+    const setGrowthAfterCheckin = document.getElementById('setGrowthAfterCheckin');
+    const setAutoSwitchEnabled = document.getElementById('setAutoSwitchEnabled');
+    const setQuotaThreshold = document.getElementById('setQuotaThreshold');
+    const setAutoSwitchStrategy = document.getElementById('setAutoSwitchStrategy');
+    const setCooldownMinutes = document.getElementById('setCooldownMinutes');
+    const setUpdateAutoCheck = document.getElementById('setUpdateAutoCheck');
+    const setUpdateAutoInstall = document.getElementById('setUpdateAutoInstall');
+
+    function openSettingsModal() {
+      settingsModalOverlay.hidden = false;
+      populateSettingsForm(currentSettings);
+    }
+
+    function closeSettingsModal() {
+      settingsModalOverlay.hidden = true;
+    }
+
+    function populateSettingsForm(cfg) {
+      if (!cfg) cfg = {};
+      setCheckinEnabled.checked = cfg.autoCheckin !== false;
+      setDailyTime.value = cfg.dailyTime || '00:10';
+      setRandomJitter.value = cfg.randomJitterMinutes != null ? cfg.randomJitterMinutes : 30;
+      setPerAccountDelay.value = cfg.perAccountDelaySeconds != null ? cfg.perAccountDelaySeconds : 15;
+      setGrowthAfterCheckin.checked = cfg.growthTasksAutoAfterCheckin !== false;
+
+      setAutoSwitchEnabled.checked = cfg.autoSwitchEnabled !== false;
+      setQuotaThreshold.value = cfg.quotaThresholdPercent != null ? cfg.quotaThresholdPercent : 10;
+      setAutoSwitchStrategy.value = cfg.autoSwitchStrategy || 'highest_quota';
+      setCooldownMinutes.value = cfg.cooldownMinutes != null ? cfg.cooldownMinutes : 5;
+
+      setUpdateAutoCheck.checked = cfg.updateAutoCheck !== false;
+      setUpdateAutoInstall.checked = cfg.updateAutoInstall === true;
+    }
+
+    btnSettings.addEventListener('click', openSettingsModal);
+    settingsModalClose.addEventListener('click', closeSettingsModal);
+    btnSettingsCancel.addEventListener('click', closeSettingsModal);
+    settingsModalOverlay.addEventListener('click', e => { if (e.target === settingsModalOverlay) closeSettingsModal(); });
+
+    btnSettingsReset.addEventListener('click', () => {
+      populateSettingsForm({
+        autoCheckin: true,
+        dailyTime: '00:10',
+        randomJitterMinutes: 30,
+        perAccountDelaySeconds: 15,
+        growthTasksAutoAfterCheckin: true,
+        autoSwitchEnabled: true,
+        quotaThresholdPercent: 10,
+        autoSwitchStrategy: 'highest_quota',
+        cooldownMinutes: 5,
+        updateAutoCheck: true,
+        updateAutoInstall: false
+      });
+    });
+
+    btnSettingsSave.addEventListener('click', () => {
+      const s = {
+        autoCheckin: setCheckinEnabled.checked,
+        dailyTime: setDailyTime.value.trim() || '00:10',
+        randomJitterMinutes: parseInt(setRandomJitter.value, 10) || 30,
+        perAccountDelaySeconds: parseInt(setPerAccountDelay.value, 10) || 15,
+        growthTasksAutoAfterCheckin: setGrowthAfterCheckin.checked,
+        autoSwitchEnabled: setAutoSwitchEnabled.checked,
+        quotaThresholdPercent: parseInt(setQuotaThreshold.value, 10) || 10,
+        autoSwitchStrategy: setAutoSwitchStrategy.value,
+        cooldownMinutes: parseInt(setCooldownMinutes.value, 10) || 5,
+        updateAutoCheck: setUpdateAutoCheck.checked,
+        updateAutoInstall: setUpdateAutoInstall.checked
+      };
+      currentSettings = s;
+      vscode.postMessage({ command: 'saveSettings', settings: s });
+      closeSettingsModal();
+    });
+
+    if (btnImportAccountsFile) {
+      btnImportAccountsFile.addEventListener('click', () => {
+        vscode.postMessage({ command: 'importAccountsFile' });
+        closeAddModal();
+      });
+    }
 
     btnBatchCheckin.addEventListener('click', () => vscode.postMessage({ command: 'batchCheckin' }));
     refreshAllBtn.addEventListener('click', () => vscode.postMessage({ command: 'refreshStatus' }));
@@ -1657,8 +1866,8 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
       summaryWeeklyNum.textContent = fmtNum(totalRemain);
       summaryWeeklyMax.textContent = '/ ' + fmtNum(totalCap);
 
-      const activeCount = currentAccounts.filter(a => a.status === 'active').length;
       const disabledCount = currentAccounts.filter(a => a.status === 'disabled').length;
+      const activeCount = total - disabledCount;
       summaryActiveDisabled.textContent = activeCount + ' / ' + disabledCount;
 
       const high = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent >= 80).length;
@@ -1725,26 +1934,29 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
         const actResetText = 'WorkBuddy加油站活动';
 
         // 异常状态徽标：正常时一律不显示（避免冗余信息）
+        const isDisabled = acc.status === 'disabled';
         let healthBadge = '';
         if (acc.status === 'rate_limited') {
           healthBadge = '<span class="grid-health-badge grid-health-warn">429 冷却</span>';
         } else if (acc.status === 'expired') {
           healthBadge = '<span class="grid-health-badge grid-health-warn">已过期</span>';
-        } else if (acc.status === 'disabled') {
+        } else if (isDisabled) {
           healthBadge = '<span class="grid-disabled-tag">已禁用</span>';
         }
 
         const leftAction = isActive
           ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> 使用中</span>'
-          : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id ? 'disabled' : ''}>${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`;
+          : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${isDisabled ? '账号已禁用，无法切换' : '切换至该账号'}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`;
 
-        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : '执行每日签到领算力'}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
+        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : (isDisabled ? '账号已禁用' : '执行每日签到领算力')}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
+
+        const statusToggleBtn = `<button class="status-toggle-btn ${isDisabled ? 'is-disabled' : 'is-enabled'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '点击启用账号' : '点击禁用账号'}">${isDisabled ? '已禁用' : '已启用'}</button>`;
 
         return `
-          <div class="grid-card ${isActive ? 'is-active' : ''}" data-id="${acc.id}">
+          <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${acc.id}">
             <div class="grid-card-head">
               <div class="grid-card-email" title="${rawName}">${displayName}</div>
-              ${isActive ? '<span class="grid-active-tag">当前</span>' : ''}
+              ${isActive ? '<span class="grid-active-tag">当前</span>' : (isDisabled ? '<span class="grid-disabled-tag">已禁用</span>' : '')}
             </div>
 
             <div class="grid-card-meta">
@@ -1787,6 +1999,7 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
             <div class="grid-card-actions">
               ${leftAction}
               <div class="grid-actions-right">
+                ${statusToggleBtn}
                 ${checkinBtn}
                 <button class="icon-btn" onclick="onRefresh('${acc.id}')" title="刷新该账号配额">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -1800,6 +2013,10 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
         `;
       }).join('');
     }
+
+    window.onToggleStatus = function(id) {
+      vscode.postMessage({ command: 'toggleAccountStatus', accountId: id });
+    };
 
     window.onSwitch = function(id) {
       switchingId = id;
@@ -1831,6 +2048,9 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
         const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy } = msg.data;
         currentAccounts = accounts || [];
         lastRefreshTs = Date.now();
+        if (msg.data && msg.data.settings) {
+          currentSettings = msg.data.settings;
+        }
 
         if (typeof backendPrivacy === 'boolean') {
           privacyMode = backendPrivacy;

@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.1.1', packageJson.version === '0.1.1');
-gate('G21 版本一致性: README 徽标版本对齐 0.1.1', readmeMd.includes('version-0.1.1'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.1.1', readmeMd.includes('buddy-relay-0.1.1.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.2.0', packageJson.version === '0.2.0');
+gate('G21 版本一致性: README 徽标版本对齐 0.2.0', readmeMd.includes('version-0.2.0'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.2.0', readmeMd.includes('buddy-relay-0.2.0.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -163,6 +163,39 @@ try {
   const leaked = trackedFiles.filter(f => forbiddenPatterns.some(p => p.test(f)));
   gate('G23 Git 纯净门控: 无敏感文件与冗余构建产物入库', leaked.length === 0, `违规跟踪文件: ${leaked.join(', ')}`);
 } catch (_) {}
+
+// ── G24: README 核心标语与配图门控 ──
+gate(
+  'G24 README 强调五大核心标语',
+  readmeMd.includes('切号不关窗口') &&
+  readmeMd.includes('不重启编辑器') &&
+  readmeMd.includes('历史会话完全互通') &&
+  readmeMd.includes('一键签到') &&
+  readmeMd.includes('一键做任务')
+);
+gate(
+  'G24 README 包含实机配图',
+  readmeMd.includes('preview-dashboard.png') &&
+  readmeMd.includes('preview-import.png') &&
+  readmeMd.includes('preview-tasks.png')
+);
+
+// ── G25: 账号启用/禁用门控 ──
+gate('G25 账号启停: 卡片提供 onToggleStatus 按钮', html.includes("onToggleStatus('") && html.includes("window.onToggleStatus = function"));
+gate('G25 账号启停: 禁用账号样式与标签存在', html.includes("grid-disabled-tag") && html.includes("is-disabled"));
+gate('G25 账号启停: accountStore 提供 toggleStatus 方法', accountStoreTs.includes('toggleStatus('));
+
+// ── G26: 偏好与规则设置模态框门控 ──
+gate('G26 设置面板: 工具栏齿轮按钮存在', html.includes('id="btnSettings"'));
+gate('G26 设置面板: 规则设置模态框 #settingsModalOverlay 存在', html.includes('id="settingsModalOverlay"'));
+gate('G26 设置面板: 签到与切号表单控件完备', html.includes('id="setCheckinEnabled"') && html.includes('id="setAutoSwitchEnabled"') && html.includes('id="setQuotaThreshold"'));
+gate('G26 设置面板: 后端支持 saveSettings 指令', sidebarProviderTs.includes("case 'saveSettings':"));
+
+// ── G27: Kite 智能匹配导入中枢门控 ──
+gate('G27 智能导入: 文件选择导入按钮存在', html.includes('id="btnImportAccountsFile"'));
+gate('G27 智能导入: 后端支持 importAccountsFile 对话框指令', sidebarProviderTs.includes("case 'importAccountsFile':"));
+gate('G27 智能导入: 后端支持 JWT Payload 智能解码提取元数据', sidebarProviderTs.includes('parseJwtPayload('));
+gate('G27 智能导入: 后端支持已有账号 Token 智能覆盖更新', sidebarProviderTs.includes('existing.accessToken = acc.accessToken') || sidebarProviderTs.includes('existing.lastUsed = Date.now()'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

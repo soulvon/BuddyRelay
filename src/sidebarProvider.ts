@@ -135,6 +135,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'togglePrivacyMode':
           await this.store.setPrivacyMode(Boolean(message.enabled));
           break;
+
+        case 'toggleAccountStatus':
+          await this.handleToggleAccountStatus(String(message.accountId));
+          break;
+
+        case 'importAccountsFile':
+          await this.handleImportAccountsFile();
+          break;
+
+        case 'saveSettings':
+          await this.handleSaveSettings(message.settings);
+          break;
       }
     });
 
@@ -161,6 +173,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       (sum, acc) => sum + (acc.totalCredits || 0),
       0
     );
+
+    const cfg = vscode.workspace.getConfiguration('buddyRelay');
+    const settings = {
+      autoCheckin: cfg.get<boolean>('autoCheckin', true),
+      dailyTime: cfg.get<string>('autoCheckin.dailyTime', '00:10'),
+      randomJitterMinutes: cfg.get<number>('autoCheckin.randomJitterMinutes', 30),
+      perAccountDelaySeconds: cfg.get<number>('autoCheckin.perAccountDelaySeconds', 15),
+      autoSwitchEnabled: cfg.get<boolean>('autoSwitch.enabled', true),
+      quotaThresholdPercent: cfg.get<number>('autoSwitch.quotaThresholdPercent', 10),
+      autoSwitchStrategy: cfg.get<string>('autoSwitch.strategy', 'highest_quota'),
+      cooldownMinutes: cfg.get<number>('autoSwitch.cooldownMinutes', 5),
+      growthTasksAutoAfterCheckin: cfg.get<boolean>('growthTasks.autoAfterCheckin', true),
+      updateAutoCheck: cfg.get<boolean>('update.autoCheck', true),
+      updateAutoInstall: cfg.get<boolean>('update.autoInstall', false)
+    };
 
     this._view.webview.postMessage({
       command: 'updateState',
@@ -205,11 +232,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           total: accounts.length,
           activeCount: accounts.filter((a) => a.status === 'active').length,
           idleCount: accounts.filter((a) => a.status === 'idle').length,
-          rateLimitedCount: accounts.filter((a) => a.status === 'rate_limited')
-            .length,
+          rateLimitedCount: accounts.filter((a) => a.status === 'rate_limited').length,
+          disabledCount: accounts.filter((a) => a.status === 'disabled').length,
           checkedTodayCount,
           totalCredits
         },
+        settings,
         isOperating: this.isOperating,
         operationMessage: this.currentOperationMessage,
         privacyMode: this.store.getPrivacyMode()
@@ -847,53 +875,91 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * 兼容多种来源的账号 JSON 字段映射（BuddyRelay 导出格式 / Cockpit 明文导出格式 / 下划线风格）
    */
-  private normalizeImportedAccount(raw: Record<string, any>): CodeBuddyAccount | null {
-    const accessToken = raw.accessToken || raw.access_token;
-    const uid = raw.uid;
-    if (!accessToken || !uid) {
+  /**
+   * 解码 JWT Payload (提取 sub, nickname, preferred_username, exp)
+   */
+  private parseJwtPayload(token: string): Record<string, any> | null {
+    try {
+      const parts = token.trim().split('.');
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const jsonStr = Buffer.from(base64, 'base64').toString('utf8');
+      return JSON.parse(jsonStr);
+    } catch (_) {
       return null;
     }
+  }
+
+  /**
+   * 兼容多种来源的账号 JSON/Token 字段映射（支持纯JWT解码补全UID与昵称）
+   */
+  private normalizeImportedAccount(raw: any): CodeBuddyAccount | null {
+    if (!raw) return null;
+    let data: Record<string, any> = {};
+    if (typeof raw === 'string') {
+      data = { access_token: raw.trim() };
+    } else if (typeof raw === 'object') {
+      data = raw;
+    } else {
+      return null;
+    }
+
+    const accessToken = data.accessToken || data.access_token || data.token;
+    if (!accessToken) {
+      return null;
+    }
+
+    // 智能尝试 JWT Payload 解码提取元数据
+    const jwt = this.parseJwtPayload(String(accessToken));
+    const uid = data.uid || data.id || jwt?.sub || jwt?.uid;
+    if (!uid) {
+      return null;
+    }
+
     const now = Date.now();
+    const nickname = data.nickname || jwt?.nickname || data.email || jwt?.preferred_username || String(uid);
+    const email = data.email || jwt?.preferred_username || data.nickname || String(uid);
+    const expiresAt = Number(data.expiresAt || data.expires_at || (jwt?.exp ? jwt.exp * 1000 : 0));
+
     const account: CodeBuddyAccount = {
-      id: raw.id || `imported_${String(uid).slice(0, 8)}_${now}`,
+      id: data.id || `imported_${String(uid).slice(0, 8)}_${now}`,
       uid: String(uid),
-      email: raw.email || raw.nickname || String(uid),
-      nickname: raw.nickname || raw.email || String(uid),
+      email: String(email),
+      nickname: String(nickname),
       accessToken: String(accessToken),
-      refreshToken: raw.refreshToken || raw.refresh_token || '',
-      tokenType: raw.tokenType || 'Bearer',
-      expiresAt: Number(raw.expiresAt || 0),
-      domain: raw.domain || 'www.codebuddy.cn',
-      paymentType: raw.paymentType || 'free',
-      quotaRaw: raw.quotaRaw,
-      authRaw: raw.authRaw || raw.auth_raw,
-      profileRaw: raw.profileRaw || raw.profile_raw,
-      usageRaw: raw.usageRaw || raw.usage_raw,
-      status: 'idle',
-      checkinStreak: typeof raw.checkinStreak === 'number'
-        ? raw.checkinStreak
-        : (typeof raw.checkin_streak === 'number' ? raw.checkin_streak : 0),
-      todayCheckedIn: Boolean(raw.todayCheckedIn ?? raw.today_checked_in),
-      lastCheckinDate: raw.lastCheckinDate || raw.last_checkin_date,
-      lastCheckinTime: raw.lastCheckinTime || raw.last_checkin_time,
-      totalCredits: typeof raw.totalCredits === 'number' ? raw.totalCredits : undefined,
-      basePackage: raw.basePackage,
-      activityPackage: raw.activityPackage,
-      createdAt: Number(raw.createdAt || now),
-      lastUsed: Number(raw.lastUsed || now),
-      notes: raw.notes
+      refreshToken: data.refreshToken || data.refresh_token || '',
+      tokenType: data.tokenType || data.token_type || 'Bearer',
+      expiresAt,
+      domain: data.domain || 'www.codebuddy.cn',
+      paymentType: data.paymentType || data.payment_type || 'free',
+      quotaRaw: data.quotaRaw || data.quota_raw,
+      authRaw: data.authRaw || data.auth_raw,
+      profileRaw: data.profileRaw || data.profile_raw,
+      usageRaw: data.usageRaw || data.usage_raw,
+      status: data.status === 'disabled' ? 'disabled' : 'idle',
+      checkinStreak: typeof data.checkinStreak === 'number'
+        ? data.checkinStreak
+        : (typeof data.checkin_streak === 'number' ? data.checkin_streak : 0),
+      todayCheckedIn: Boolean(data.todayCheckedIn ?? data.today_checked_in),
+      lastCheckinDate: data.lastCheckinDate || data.last_checkin_date,
+      lastCheckinTime: data.lastCheckinTime || data.last_checkin_time,
+      totalCredits: typeof data.totalCredits === 'number' ? data.totalCredits : undefined,
+      basePackage: data.basePackage,
+      activityPackage: data.activityPackage,
+      createdAt: Number(data.createdAt || now),
+      lastUsed: Number(data.lastUsed || now),
+      notes: data.notes
     };
     return account;
   }
 
   /**
-   * 本地导入：读取本机 CodeBuddy 当前已登录会话（vscode.authentication）入池
-   * Kite「已登录账户」同款机制，走官方 CodeBuddy-auth 认证提供器
+   * 本地导入：读取本机 CodeBuddy 当前已登录会话入池
    */
   public async handleImportLocal(): Promise<void> {
     this.setOperating(true, '正在读取本机已登录会话...');
     try {
-      const session = await vscode.authentication.getSession('CodeBuddy-auth', ['user'], {
+      const session = await vscode.authentication.getSession('CodeBuddy-auth', [], {
         createIfNone: false
       });
 
@@ -929,7 +995,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
 
       await this.store.upsert(account);
-      // 后台拉取实时算力配额（仅需 accessToken + uid）
       this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
       this.sendNotify('success', `已导入本机登录账号 [${nickname}]`);
     } catch (err: any) {
@@ -940,60 +1005,161 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * JSON 批量导入：解析 → 字段归一化 → UID 去重 → 入库 → 后台拉取实时配额
+   * 账号启用/禁用切换
+   */
+  public async handleToggleAccountStatus(accountId: string): Promise<void> {
+    const acc = await this.store.toggleStatus(accountId);
+    if (acc) {
+      const isDis = acc.status === 'disabled';
+      this.sendNotify('success', `账号 [${acc.nickname || acc.email}] 已${isDis ? '禁用' : '启用'}`);
+      this.postStateToWebview();
+    }
+  }
+
+  /**
+   * 从文件选择导入账号 (.json)
+   */
+  public async handleImportAccountsFile(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      filters: { 'JSON 账号文件 (*.json)': ['json'], '所有文件 (*.*)': ['*'] },
+      openLabel: '导入账号数据'
+    });
+    if (uris && uris[0]) {
+      this.setOperating(true, '正在读取账号文件...');
+      try {
+        const text = await fs.promises.readFile(uris[0].fsPath, 'utf8');
+        await this.handleImportJson(text);
+      } catch (err: any) {
+        this.sendNotify('error', `读取文件失败: ${err.message}`);
+      } finally {
+        this.setOperating(false);
+      }
+    }
+  }
+
+  /**
+   * 保存规则与调度偏好设置
+   */
+  public async handleSaveSettings(settings: Record<string, any>): Promise<void> {
+    if (!settings || typeof settings !== 'object') return;
+    const cfg = vscode.workspace.getConfiguration('buddyRelay');
+    try {
+      if ('autoCheckin' in settings) await cfg.update('autoCheckin', Boolean(settings.autoCheckin), vscode.ConfigurationTarget.Global);
+      if ('dailyTime' in settings) await cfg.update('autoCheckin.dailyTime', String(settings.dailyTime || '00:10'), vscode.ConfigurationTarget.Global);
+      if ('randomJitterMinutes' in settings) await cfg.update('autoCheckin.randomJitterMinutes', Number(settings.randomJitterMinutes || 30), vscode.ConfigurationTarget.Global);
+      if ('perAccountDelaySeconds' in settings) await cfg.update('autoCheckin.perAccountDelaySeconds', Number(settings.perAccountDelaySeconds || 15), vscode.ConfigurationTarget.Global);
+      if ('autoSwitchEnabled' in settings) await cfg.update('autoSwitch.enabled', Boolean(settings.autoSwitchEnabled), vscode.ConfigurationTarget.Global);
+      if ('quotaThresholdPercent' in settings) await cfg.update('autoSwitch.quotaThresholdPercent', Number(settings.quotaThresholdPercent || 10), vscode.ConfigurationTarget.Global);
+      if ('autoSwitchStrategy' in settings) await cfg.update('autoSwitch.strategy', String(settings.autoSwitchStrategy || 'highest_quota'), vscode.ConfigurationTarget.Global);
+      if ('cooldownMinutes' in settings) await cfg.update('autoSwitch.cooldownMinutes', Number(settings.cooldownMinutes || 5), vscode.ConfigurationTarget.Global);
+      if ('growthTasksAutoAfterCheckin' in settings) await cfg.update('growthTasks.autoAfterCheckin', Boolean(settings.growthTasksAutoAfterCheckin), vscode.ConfigurationTarget.Global);
+      if ('updateAutoCheck' in settings) await cfg.update('update.autoCheck', Boolean(settings.updateAutoCheck), vscode.ConfigurationTarget.Global);
+      if ('updateAutoInstall' in settings) await cfg.update('update.autoInstall', Boolean(settings.updateAutoInstall), vscode.ConfigurationTarget.Global);
+      this.sendNotify('success', 'BuddyRelay: 规则设置已更新并实时生效');
+      this.postStateToWebview();
+    } catch (e: any) {
+      this.sendNotify('error', `保存设置失败: ${e.message}`);
+    }
+  }
+
+  /**
+   * 智能匹配批量导入：JSON / JWT Token智能提取 / 分隔符多行 / 已有号覆盖更新
    */
   public async handleImportJson(text: string): Promise<void> {
     const raw = text.trim();
     if (!raw) {
-      this.sendNotify('error', 'JSON 导入失败：内容为空');
+      this.sendNotify('error', '导入失败：内容为空');
       return;
     }
 
-    this.setOperating(true, '正在解析并导入 JSON 账号数据...');
+    this.setOperating(true, '正在智能匹配解析账号数据...');
 
     try {
-      const parsed = JSON.parse(raw);
-      const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+      let items: any[] = [];
+      try {
+        const parsed = JSON.parse(raw);
+        items = Array.isArray(parsed) ? parsed : [parsed];
+      } catch (_) {
+        // 非标准 JSON，走按行智能识别 (Kite 模式)
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          if (line.startsWith('#') || line.startsWith('//')) continue;
+          // 匹配 JWT Token (eyJ...)
+          const jwtMatch = line.match(/\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)\b/);
+          if (jwtMatch) {
+            const allJwts = line.match(/\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)\b/g) || [];
+            items.push({
+              access_token: allJwts[0],
+              refresh_token: allJwts.length > 1 ? allJwts[1] : ''
+            });
+            continue;
+          }
+          // 分隔符行
+          const parts = line.split(/\s*[-]{2,}\s*|\s*[,|\t]\s*/).filter(Boolean);
+          if (parts.length >= 2) {
+            if (parts[1].startsWith('eyJ')) {
+              items.push({ uid: parts[0], access_token: parts[1] });
+            } else if (parts[0].startsWith('eyJ')) {
+              items.push({ access_token: parts[0], uid: parts[1] });
+            }
+          }
+        }
+      }
+
       if (items.length === 0) {
-        this.sendNotify('error', 'JSON 导入失败：数据为空数组');
+        this.sendNotify('error', '导入失败：未识别出有效的账号或 Token 数据');
         return;
       }
 
-      let imported = 0;
-      let skipped = 0;
+      let freshCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
       const fresh: CodeBuddyAccount[] = [];
+      const updated: CodeBuddyAccount[] = [];
 
       for (const item of items) {
-        if (!item || typeof item !== 'object') {
-          skipped++;
-          continue;
-        }
         const acc = this.normalizeImportedAccount(item);
         if (!acc) {
-          skipped++;
+          skippedCount++;
           continue;
         }
-        if (this.store.get(acc.uid)) {
-          skipped++;
-          continue;
+
+        const existing = this.store.get(acc.id) || this.store.get(acc.uid);
+        if (existing) {
+          // 智能覆盖更新已有账号的令牌
+          existing.accessToken = acc.accessToken;
+          if (acc.refreshToken) existing.refreshToken = acc.refreshToken;
+          if (acc.expiresAt) existing.expiresAt = acc.expiresAt;
+          if (acc.quotaRaw) existing.quotaRaw = acc.quotaRaw;
+          if (existing.status === 'expired') existing.status = 'idle';
+          existing.lastUsed = Date.now();
+          updated.push(existing);
+          updatedCount++;
+        } else {
+          fresh.push(acc);
+          freshCount++;
         }
-        fresh.push(acc);
       }
 
-      if (fresh.length > 0) {
-        await this.store.upsertBatch(fresh);
-        imported = fresh.length;
-        // 后台异步拉取实时配额与签到状态
-        this.checkinService.batchSyncStatus(fresh, this.store).catch(() => {});
+      const allToSave = [...fresh, ...updated];
+      if (allToSave.length > 0) {
+        await this.store.upsertBatch(allToSave);
+        // 后台异步进行在线配额与状态对账验真
+        this.checkinService.batchSyncStatus(allToSave, this.store).catch(() => {});
       }
 
-      if (imported > 0) {
-        this.sendNotify('success', `JSON 导入完成：新增 ${imported} 个账号，跳过 ${skipped} 个`);
+      if (freshCount > 0 || updatedCount > 0) {
+        const parts: string[] = [];
+        if (freshCount > 0) parts.push(`新增 ${freshCount} 个`);
+        if (updatedCount > 0) parts.push(`更新 ${updatedCount} 个 (Token已覆盖更新)`);
+        if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个无效数据`);
+        this.sendNotify('success', `智能导入完成：${parts.join('，')}`);
       } else {
-        this.sendNotify('error', `JSON 导入失败：没有可用账号（跳过 ${skipped} 个，缺少 uid/accessToken 或已存在）`);
+        this.sendNotify('error', `导入失败：跳过 ${skippedCount} 项无效数据（缺少有效 Token）`);
       }
     } catch (err: any) {
-      this.sendNotify('error', `JSON 解析失败：${err.message}`);
+      this.sendNotify('error', `智能导入失败：${err.message}`);
     } finally {
       this.setOperating(false);
     }
