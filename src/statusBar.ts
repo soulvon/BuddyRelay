@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AccountStore, CodeBuddyAccount } from './accountStore';
+import { AccountStore, CodeBuddyAccount, maskName, maskUid } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
@@ -50,6 +50,7 @@ export class StatusBarManager implements vscode.Disposable {
    */
   public update(): void {
     const active = this.store.getActive();
+    const isPrivacy = this.store.getPrivacyMode();
 
     if (!active) {
       this.statusBarItem.text = '🪙 Buddy: 未登录';
@@ -60,7 +61,8 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    const name = active.nickname || active.email || '未命名账号';
+    const rawName = active.nickname || active.email || '未命名账号';
+    const name = isPrivacy ? maskName(rawName) : rawName;
     const creditsText =
       typeof active.totalCredits === 'number'
         ? `${fmtNum(active.totalCredits)}点`
@@ -80,8 +82,9 @@ export class StatusBarManager implements vscode.Disposable {
     md.isTrusted = true;
     md.supportThemeIcons = true;
 
-    md.appendMarkdown(`**BuddyRelay** · 当前会话\n\n`);
+    md.appendMarkdown(`**BuddyRelay** · 当前会话${isPrivacy ? ' (隐私模式开启)' : ''}\n\n`);
     md.appendMarkdown(`当前账号：**${name}**\n\n`);
+    md.appendMarkdown(`用户 UID：\`${isPrivacy ? maskUid(active.uid) : active.uid}\`\n\n`);
     md.appendMarkdown(`剩余算力：**${typeof active.totalCredits === 'number' ? `${fmtNum(active.totalCredits)} 点` : '就绪'}**\n\n`);
     md.appendMarkdown(`今日签到：${active.todayCheckedIn ? '已完成' : '未签到'} (连续 ${active.checkinStreak || 0} 天)\n\n`);
     md.appendMarkdown('---\n\n');
@@ -95,13 +98,16 @@ export class StatusBarManager implements vscode.Disposable {
    */
   public async showQuickPick(): Promise<void> {
     const accounts = this.store.getAll();
+    const isPrivacy = this.store.getPrivacyMode();
 
     const items: AccountQuickPickItem[] = [];
 
     if (accounts.length > 0) {
       for (const acc of accounts) {
         const isActive = acc.status === 'active';
-        const labelName = acc.nickname || acc.email;
+        const rawName = acc.nickname || acc.email;
+        const labelName = isPrivacy ? maskName(rawName) : rawName;
+        const displayUid = isPrivacy ? maskUid(acc.uid) : `${acc.uid.slice(0, 8)}...`;
         const icon = isActive
           ? '$(check)'
           : acc.status === 'rate_limited'
@@ -127,7 +133,7 @@ export class StatusBarManager implements vscode.Disposable {
         items.push({
           label: `${icon} ${labelName}`,
           description: `[${statusLabel}] ${creditsStr}`,
-          detail: `UID: ${acc.uid.slice(0, 8)}... | 连续签到: ${acc.checkinStreak || 0}天 | ${
+          detail: `UID: ${displayUid} | 连续签到: ${acc.checkinStreak || 0}天 | ${
             acc.todayCheckedIn ? '今日已签' : '今日未签'
           }`,
           actionType: 'account',
@@ -141,6 +147,14 @@ export class StatusBarManager implements vscode.Disposable {
       label: '快捷操作',
       kind: vscode.QuickPickItemKind.Separator,
       actionType: 'action'
+    });
+
+    items.push({
+      label: isPrivacy ? '$(eye-closed) 退出隐私模式' : '$(eye) 开启隐私模式 (脱敏)',
+      description: isPrivacy ? '恢复显示完整账号名与 UID' : '隐藏账号名与 UID，便于截图或演示',
+      detail: '全局同步生效（侧栏卡片、状态栏、下拉菜单实时打码）',
+      actionType: 'action',
+      actionId: 'togglePrivacy'
     });
 
     items.push({
@@ -190,6 +204,12 @@ export class StatusBarManager implements vscode.Disposable {
       await this.handleSwitch(selected.account);
     } else if (selected.actionType === 'action' && selected.actionId) {
       switch (selected.actionId) {
+        case 'togglePrivacy':
+          await this.store.setPrivacyMode(!isPrivacy);
+          vscode.window.showInformationMessage(
+            `BuddyRelay: 隐私模式已${!isPrivacy ? '开启 (全局脱敏已生效)' : '关闭'}`
+          );
+          break;
         case 'addOAuth':
           await vscode.commands.executeCommand('buddy-relay.addAccountOAuth');
           break;

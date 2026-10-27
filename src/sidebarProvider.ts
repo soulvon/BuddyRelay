@@ -131,6 +131,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           this._abortTaskBatch = true;
           this.sendNotify('error', '已请求中止任务批处理');
           break;
+
+        case 'togglePrivacyMode':
+          await this.store.setPrivacyMode(Boolean(message.enabled));
+          break;
       }
     });
 
@@ -207,7 +211,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           totalCredits
         },
         isOperating: this.isOperating,
-        operationMessage: this.currentOperationMessage
+        operationMessage: this.currentOperationMessage,
+        privacyMode: this.store.getPrivacyMode()
       }
     });
   }

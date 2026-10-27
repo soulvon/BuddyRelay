@@ -6,7 +6,7 @@
 
 **支持 CodeBuddy CN、WorkBuddy（国内版）及 CodeBuddy AI（国际版） · 会话保留 · 额度守护 · 自动更新 · 全自动签到**
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -38,7 +38,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 
 ### 方式一：扩展面板安装（推荐）
 
-1. 下载最新版 `buddy-relay-0.1.0.vsix`；
+1. 下载最新版 `buddy-relay-0.1.1.vsix`；
 2. 打开 **CodeBuddy CN** 编辑器；
 3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
 4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
@@ -47,7 +47,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 ### 方式二：命令行安装
 
 ```bash
-buddycn --install-extension buddy-relay-0.1.0.vsix --force
+buddycn --install-extension buddy-relay-0.1.1.vsix --force
 ```
 
 ---
@@ -191,7 +191,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 
 | 💬 QQ 交流群（1075342078） | ☕ 微信赞赏（请作者喝杯咖啡） |
 | :---: | :---: |
-| <img src="https://cdn.jsdelivr.net/gh/soulvon/AnyBridge@main/docs/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="https://cdn.jsdelivr.net/gh/soulvon/windsurf-pool-releases@main/wechat-reward.jpg" width="180" alt="微信赞赏码"> |
+| <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp" width="180" alt="微信赞赏码"> |
 | 验证信息请注明 "BuddyRelay" | 感谢你的支持与鼓励！ |
 
 </div>

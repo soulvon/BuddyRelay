@@ -72,6 +72,35 @@ export interface CodeBuddyAccount {
 
 const STORAGE_KEY = 'buddyrelay.accounts.pool';
 const ACTIVE_ACCOUNT_KEY = 'buddyrelay.accounts.active';
+const PRIVACY_MODE_KEY = 'buddyrelay.privacy_mode';
+
+/**
+ * 账号名称脱敏
+ */
+export function maskName(name: string, privacyMode: boolean = true): string {
+  if (!name) return '未知';
+  if (!privacyMode) return name;
+  if (/^1\d{10}$/.test(name)) return name.slice(0, 3) + '****' + name.slice(7);
+  if (name.includes('@')) {
+    const parts = name.split('@');
+    const u = parts[0], h = parts[1];
+    const maskedU = u.length <= 2 ? u[0] + '*' : u.slice(0, 2) + '***';
+    return maskedU + '@' + h;
+  }
+  if (name.length === 2) return name[0] + '*';
+  if (name.length === 3) return name[0] + '**';
+  if (name.length > 3) return name[0] + '***' + name.slice(-1);
+  return name;
+}
+
+/**
+ * 账号 UID 脱敏
+ */
+export function maskUid(uid: string, privacyMode: boolean = true): string {
+  if (!uid) return '—';
+  if (privacyMode) return uid.slice(0, 4) + '****' + uid.slice(-2);
+  return uid.slice(0, 8) + '...' + uid.slice(-4);
+}
 
 /**
  * 账号安全存储中枢
@@ -80,6 +109,7 @@ const ACTIVE_ACCOUNT_KEY = 'buddyrelay.accounts.active';
 export class AccountStore extends EventEmitter {
   private accounts: Map<string, CodeBuddyAccount> = new Map();
   private activeId: string | null = null;
+  private privacyMode: boolean = false;
   private fallbackFilePath: string;
   private context?: vscode.ExtensionContext;
 
@@ -100,6 +130,27 @@ export class AccountStore extends EventEmitter {
   }
 
   /**
+   * 获取当前全局隐私模式状态
+   */
+  public getPrivacyMode(): boolean {
+    return this.privacyMode;
+  }
+
+  /**
+   * 设置全局隐私模式状态并通知各订阅方 (状态栏/侧栏/菜单实时同步)
+   */
+  public async setPrivacyMode(enabled: boolean): Promise<void> {
+    this.privacyMode = enabled;
+    if (this.context && this.context.globalState) {
+      try {
+        await this.context.globalState.update(PRIVACY_MODE_KEY, enabled);
+      } catch (_) {}
+    }
+    this.emit('privacyChange', enabled);
+    this.emit('change', this.getAll());
+  }
+
+  /**
    * 从持久化存储载入账号池
    */
   public load(): void {
@@ -110,6 +161,7 @@ export class AccountStore extends EventEmitter {
       try {
         const stored = this.context.globalState.get<CodeBuddyAccount[]>(STORAGE_KEY);
         const storedActive = this.context.globalState.get<string>(ACTIVE_ACCOUNT_KEY);
+        this.privacyMode = this.context.globalState.get<boolean>(PRIVACY_MODE_KEY, false);
         if (Array.isArray(stored)) {
           this.accounts.clear();
           for (const acc of stored) {

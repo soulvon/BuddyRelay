@@ -11,7 +11,6 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const KITE_ICON = 'E:\\project\\Kite\\resources\\icon.svg';
 
 let failed = 0;
 function gate(name, ok, detail) {

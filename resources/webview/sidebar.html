@@ -1171,6 +1171,8 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
       vscode.setState(st);
       updatePrivacyUi();
       renderCards();
+      renderAcctChips();
+      vscode.postMessage({ command: 'togglePrivacyMode', enabled: privacyMode });
     });
 
     updatePrivacyUi();
@@ -1826,9 +1828,14 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
     window.addEventListener('message', event => {
       const msg = event.data;
       if (msg.command === 'updateState') {
-        const { accounts, stats, isOperating, operationMessage } = msg.data;
+        const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy } = msg.data;
         currentAccounts = accounts || [];
         lastRefreshTs = Date.now();
+
+        if (typeof backendPrivacy === 'boolean') {
+          privacyMode = backendPrivacy;
+          updatePrivacyUi();
+        }
 
         // 长任务进度 → 常驻 loading toast；结束 → 自动消失
         if (isOperating) {

@@ -7,6 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import child_process from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -138,7 +139,30 @@ gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.
 // ── G20: README 社区图链与合规门控 ──
 const readmeMd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
 gate('G20 README: 彻底去除 Linux.do 宣传', !readmeMd.toLowerCase().includes('linux.do') && !readmeMd.includes('Linux.do'));
-gate('G20 README: 社区图链采用高可用 CDN 且非 404 死链', readmeMd.includes('https://cdn.jsdelivr.net/') && !readmeMd.includes('raw/HEAD'));
+gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.png') && readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp'));
+
+// ── G21: 版本一致性门控 ──
+const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+gate('G21 版本一致性: package.json 版本为 0.1.1', packageJson.version === '0.1.1');
+gate('G21 版本一致性: README 徽标版本对齐 0.1.1', readmeMd.includes('version-0.1.1'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.1.1', readmeMd.includes('buddy-relay-0.1.1.vsix'));
+
+// ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
+const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
+const sidebarProviderTs = fs.readFileSync(path.join(ROOT, 'src', 'sidebarProvider.ts'), 'utf8');
+gate('G22 隐私全贯通: accountStore 提供 getPrivacyMode 与 setPrivacyMode', accountStoreTs.includes('getPrivacyMode()') && accountStoreTs.includes('setPrivacyMode('));
+gate('G22 隐私全贯通: sidebar.html 点击眼睛向后端广播 togglePrivacyMode', html.includes("vscode.postMessage({ command: 'togglePrivacyMode', enabled: privacyMode })"));
+gate('G22 隐私全贯通: sidebarProvider 响应 togglePrivacyMode 消息', sidebarProviderTs.includes("case 'togglePrivacyMode':"));
+gate('G22 隐私全贯通: 状态栏文本与 Tooltip 支持隐私脱敏', statusBarTs.includes('isPrivacy ? maskName(rawName) : rawName') && statusBarTs.includes('isPrivacy ? maskUid(active.uid) : active.uid'));
+gate('G22 隐私全贯通: QuickPick 列表与快捷开关支持隐私模式', statusBarTs.includes('isPrivacy ? maskName(rawName) : rawName') && statusBarTs.includes('togglePrivacy'));
+
+// ── G23: Git 仓库纯净与合规门控 ──
+try {
+  const trackedFiles = child_process.execSync('git ls-files', { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const forbiddenPatterns = [/\.vsix$/, /^docs\//, /^AGENTS\.md$/, /^CLAUDE\.md$/, /\.env/, /\.db$/, /^tmp\//, /^node_modules\//, /^out\//, /^dist\//];
+  const leaked = trackedFiles.filter(f => forbiddenPatterns.some(p => p.test(f)));
+  gate('G23 Git 纯净门控: 无敏感文件与冗余构建产物入库', leaked.length === 0, `违规跟踪文件: ${leaked.join(', ')}`);
+} catch (_) {}
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

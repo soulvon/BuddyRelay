@@ -9,10 +9,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const accountsPath = path.join(process.env.APPDATA, 'BuddyRelay', 'accounts.json');
+const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
+const accountsPath = path.join(appData, 'BuddyRelay', 'accounts.json');
 
 if (!fs.existsSync(accountsPath)) {
   console.log('accounts.json not found, skipping live API tests');
@@ -24,8 +26,6 @@ if (!accounts || accounts.length === 0) {
   console.log('No accounts in accounts.json');
   process.exit(0);
 }
-
-import { pathToFileURL } from 'node:url';
 
 // 动态导入编译后的 GrowthTaskService
 const { GrowthTaskService } = await import(pathToFileURL(path.join(ROOT, 'out', 'growthTaskService.js')).href);
