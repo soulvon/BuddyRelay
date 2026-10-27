@@ -135,6 +135,11 @@ const statusBarTs = fs.readFileSync(path.join(ROOT, 'src', 'statusBar.ts'), 'utf
 gate('G19 状态栏: 使用金币图标 🪙', statusBarTs.includes('🪙 Buddy:'));
 gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.includes('toLocaleString'));
 
+// ── G20: README 社区图链与合规门控 ──
+const readmeMd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+gate('G20 README: 彻底去除 Linux.do 宣传', !readmeMd.toLowerCase().includes('linux.do') && !readmeMd.includes('Linux.do'));
+gate('G20 README: 社区图链采用高可用 CDN 且非 404 死链', readmeMd.includes('https://cdn.jsdelivr.net/') && !readmeMd.includes('raw/HEAD'));
+
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);
 process.exit(failed > 0 ? 1 : 0);

@@ -191,7 +191,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 
 | 💬 QQ 交流群（1075342078） | ☕ 微信赞赏（请作者喝杯咖啡） |
 | :---: | :---: |
-| <img src="resources/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="resources/wechat-reward.webp" width="180" alt="微信赞赏码"> |
+| <img src="https://cdn.jsdelivr.net/gh/soulvon/AnyBridge@main/docs/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="https://cdn.jsdelivr.net/gh/soulvon/windsurf-pool-releases@main/wechat-reward.jpg" width="180" alt="微信赞赏码"> |
 | 验证信息请注明 "BuddyRelay" | 感谢你的支持与鼓励！ |
 
 </div>
