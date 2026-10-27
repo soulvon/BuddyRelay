@@ -156,13 +156,11 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 
 如果 BuddyRelay 为你节省了重复切号与维护账号的精力，欢迎进群交流多账号管理与 CodeBuddy 的使用心得。
 
-特别鸣谢 [Linux.do](https://linux.do) 社区各位佬友的大力支持与反馈！
-
 <div align="center">
 
 | 💬 QQ 交流群（1075342078） | ☕ 微信赞赏（请作者喝杯咖啡） |
 | :---: | :---: |
-| <img src="docs/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="docs/wechat-reward.webp" width="180" alt="微信赞赏码"> |
+| <img src="resources/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="resources/wechat-reward.webp" width="180" alt="微信赞赏码"> |
 | 验证信息请注明 "BuddyRelay" | 感谢你的支持与鼓励！ |
 
 </div>

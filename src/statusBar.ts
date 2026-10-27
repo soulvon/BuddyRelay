@@ -52,7 +52,7 @@ export class StatusBarManager implements vscode.Disposable {
     const active = this.store.getActive();
 
     if (!active) {
-      this.statusBarItem.text = '$(zap) Buddy: 未登录';
+      this.statusBarItem.text = '🪙 Buddy: 未登录';
       const emptyMd = new vscode.MarkdownString('**BuddyRelay** · 当前未登录\n\n点击立即添加或切换账号');
       emptyMd.supportThemeIcons = true;
       this.statusBarItem.tooltip = emptyMd;
@@ -72,7 +72,7 @@ export class StatusBarManager implements vscode.Disposable {
       this.statusBarItem.text = `$(warning) Buddy: ${name} (429冷却)`;
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
-      this.statusBarItem.text = `$(zap) Buddy: ${name} (${creditsText})`;
+      this.statusBarItem.text = `🪙 Buddy: ${name} (${creditsText})`;
       this.statusBarItem.backgroundColor = undefined;
     }
 
