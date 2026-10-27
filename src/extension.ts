@@ -8,6 +8,7 @@ import { CheckinScheduler } from './checkinScheduler';
 import { OAuthService } from './oauthService';
 import { StatusBarManager } from './statusBar';
 import { SidebarProvider } from './sidebarProvider';
+import { checkForUpdates } from './updater';
 
 let checkinTimer: NodeJS.Timeout | null = null;
 let quotaRefreshTimer: NodeJS.Timeout | null = null;
@@ -183,6 +184,14 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // (8) 检查更新
+  const checkUpdateCmd = vscode.commands.registerCommand(
+    'buddy-relay.checkUpdate',
+    async () => {
+      await checkForUpdates(false);
+    }
+  );
+
   context.subscriptions.push(
     showQuickPickCmd,
     switchAccountCmd,
@@ -190,10 +199,19 @@ export async function activate(context: vscode.ExtensionContext) {
     importCockpitCmd,
     addAccountOAuthCmd,
     deleteAccountCmd,
-    refreshStatusCmd
+    refreshStatusCmd,
+    checkUpdateCmd
   );
 
-  // 6. 自动轮换事件 → webview toast 通知
+  // 6. 启动时后台静默检查更新 (延迟 8 秒，避免抢占启动资源)
+  const updateCfg = vscode.workspace.getConfiguration('buddyRelay.update');
+  if (updateCfg.get<boolean>('autoCheck', true)) {
+    setTimeout(() => {
+      checkForUpdates(true).catch(() => {});
+    }, 8000);
+  }
+
+  // 7. 自动轮换事件 → webview toast 通知
   autoSwitcher.on('rotation', (ev: any) => {
     const reasonText =
       ev.reason === 'rate_limited_429'

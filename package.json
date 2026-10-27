@@ -1,7 +1,7 @@
 {
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
-  "description": "CodeBuddy CN 多账号管理与切号扩展，支持会话保留、自动签到与任务打捞。",
+  "description": "CodeBuddy / WorkBuddy（国内版/国际版）多账号管理与无感切号扩展，支持会话保留、额度守护与每日签到。",
   "version": "0.1.0",
   "publisher": "soulvon",
   "repository": {
@@ -84,6 +84,12 @@
         "title": "删除账号",
         "category": "BuddyRelay",
         "icon": "$(trash)"
+      },
+      {
+        "command": "buddy-relay.checkUpdate",
+        "title": "检查新版本更新",
+        "category": "BuddyRelay",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -180,6 +186,16 @@
           "type": "boolean",
           "default": true,
           "description": "每日自动签到完成后自动跑一轮成长任务（报名+领奖）"
+        },
+        "buddyRelay.update.autoCheck": {
+          "type": "boolean",
+          "default": true,
+          "description": "启动时自动在后台静默检查 GitHub 最新发布版本"
+        },
+        "buddyRelay.update.autoInstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "发现新版本时是否自动静默下载安装"
         }
       }
     }

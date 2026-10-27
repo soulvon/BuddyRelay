@@ -2,9 +2,9 @@
 
 # 🚀 BuddyRelay
 
-### CodeBuddy CN 多账号管理与无感切号扩展
+### CodeBuddy / WorkBuddy 多账号管理与无感切号扩展
 
-**开源 · 本地优先 · 无感切号 · 会话保留 · 额度守护 · 全自动签到与成长打捞**
+**支持 CodeBuddy CN、WorkBuddy（国内版）及 CodeBuddy AI（国际版） · 会话保留 · 额度守护 · 自动更新 · 全自动签到**
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -13,6 +13,7 @@
 
 [📥 下载安装](#-下载与安装) •
 [⚡ 解决什么问题](#-它解决什么问题) •
+[📊 版本支持矩阵](#-版本支持矩阵) •
 [✨ 核心能力](#-核心能力) •
 [🖥️ 平台适配](#-平台适配) •
 [⚙️ 配置说明](#-配置说明) •
@@ -23,7 +24,7 @@
 
 **无需频繁重新扫码，也无需在换号时中断正在进行的会话。**
 
-BuddyRelay 是一款运行在 CodeBuddy CN 上的**多账号池管理与无感切换扩展**。它通过进程级会话更新与跨账号目录软链接映射，实现切号不关窗口、不重启编辑器、历史记录完全互通，并提供额度阈值守护、自动换号与成长体系全自动打捞。
+BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多账号管理扩展。通过进程级会话更新与跨账号目录软链接映射，实现切号不关窗口、不重启编辑器、历史会话完全互通，并提供额度阈值守护、自动换号、自动更新检查与国内版成长体系全自动打捞。
 
 </div>
 
@@ -51,6 +52,22 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 
 ---
 
+## 📊 版本支持矩阵
+
+BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
+
+| 功能特性 | CodeBuddy CN (国内版) | WorkBuddy (国内版) | CodeBuddy AI / WorkBuddy AI (国际版) |
+| :--- | :---: | :---: | :---: |
+| **进程级无感热切号** | ✅ 完整支持 | ✅ 完整支持 | ✅ 完整支持 |
+| **跨账号历史会话保留** | ✅ 完整支持 | ✅ 完整支持 | ✅ 完整支持 |
+| **额度实时监控与自动切号** | ✅ 完整支持 | ✅ 完整支持 | ✅ 完整支持 |
+| **Cockpit / JSON 多源导入** | ✅ 完整支持 | ✅ 完整支持 | ✅ 完整支持 |
+| **每日定点拟人化签到** | ✅ 完整支持 | ✅ 完整支持 | ➖ 官方未上线签到活动 |
+| **成长中心流水线打捞** | ✅ 完整支持 | ✅ 完整支持 | ➖ 官方未上线成长活动 |
+| **GitHub 在线更新自动检测** | ✅ 完整支持 | ✅ 完整支持 | ✅ 完整支持 |
+
+---
+
 ## ⚡ 它解决什么问题
 
 | 你遇到的问题 | 默认情况 / 手动处理 | BuddyRelay 的处理方式 |
@@ -59,6 +76,7 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 | **历史记录跨号隔离** | 会话按 UID 独立分目录存储，换号后无法查看上一个号的历史 | **目录软链接汇聚**：底层自动建立数据目录链接，历史会话跨号实时互通 |
 | **额度何时耗尽未知** | 每次需手动打开网页后台查算力，写着写着突然撞上额度断点 | **实时双模看板**：状态栏与侧栏卡片直读实时算力余额，额度见底自动切号 |
 | **多账号维护耗时费力** | 每天要挨个账号登录去签到、接单、领奖、派宠物打工 | **全自动流水线**：后台定时拟人化签到，全自动接单、出游打工、连登兑换 |
+| **手动发版更新繁琐** | 每次出新版本都要重新手动去网页翻找下载 | **自动更新检查**：后台静默检测 GitHub Release，弹窗一键下载安装并重载 |
 | **直播录屏泄露隐私** | 账号名称、邮箱与 UID 完整暴露在屏幕上 | **一键隐私脱敏**：敏感信息瞬间星号脱敏掩蔽，便于演示分享 |
 
 ---
@@ -80,12 +98,17 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 - **Cockpit Tools 导入**：自动解密本机 `%USERPROFILE%\.antigravity_cockpit` 密文账号池，按 UID 去重快速迁移；
 - **JSON 文本导入**：支持直接粘贴账号配置数据一键批量解析。
 
-### 🎁 4. 成长中心全生命周期打捞
+### 🎁 4. 国内版成长中心全自动打捞
 - **双源全量自动接单**：自动拆分桌面端与微信小程序专属源，一键为号池全员完成 20 项任务自动报名；
 - **前置依赖自动自愈**：检测到新号未领养 Buddy 时自动执行领养协议，解开后续任务限制并到账初始奖励；
 - **🐾 宠物出游打工**：空闲宠物全自动派遣前往咖啡馆打工，返航自动打捞打工礼包与 5~10 免费算力；
 - **🔥 连登兑换与断登补救**：连签达标（7d/14d/28d）自动兑换大额积分礼包；当月断签自动使用补登卡补齐；
 - **状态全景看板**：任务中心顶部直观展示宠物打工地点、返航倒计时、连签进度条与盲盒能量。
+
+### 🔄 5. 自动检查与一键更新
+- **GitHub 自动检测**：扩展启动后静默比对 GitHub Releases 最新版本号；
+- **一键下载并重载**：发现新版本时在右下角提醒，点击「立即更新」自动下载 VSIX 并静默安装，提示一键重载生效；
+- **手动检查命令**：随时可在命令面板运行 `BuddyRelay: 检查新版本更新`。
 
 ---
 
@@ -113,6 +136,8 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 | `buddyRelay.autoSwitch.strategy` | `string` | `"highest_quota"` | 切号策略：`highest_quota` / `lru` / `round_robin` |
 | `buddyRelay.autoSwitch.cooldownMinutes` | `number` | `5` | 切号后的防抖冷却时长（分钟） |
 | `buddyRelay.growthTasks.autoAfterCheckin` | `boolean` | `true` | 每日签到后是否自动执行成长中心流水线 |
+| `buddyRelay.update.autoCheck` | `boolean` | `true` | 启动时是否自动检查 GitHub 最新发布版本 |
+| `buddyRelay.update.autoInstall` | `boolean` | `false` | 发现新版本时是否自动静默安装（无需二次确认） |
 
 ---
 
@@ -131,13 +156,19 @@ buddycn --install-extension buddy-relay-0.1.0.vsix --force
 </details>
 
 <details>
-<summary><b>Q3: 插件是如何存储账号 Token 的？是否安全？</b></summary>
+<summary><b>Q3: 国际版（CodeBuddy AI / WorkBuddy AI）支持签到和成长任务吗？</b></summary>
+<br>
+国际版完整支持多账号号池管理、无感切号、会话保留与额度监控。但由于腾讯官方仅在境内国内版上线了签到积分与 Buddy 加油站活动，因此国际版账号不参与签到和成长中心任务。
+</details>
+
+<details>
+<summary><b>Q4: 插件是如何存储账号 Token 的？是否安全？</b></summary>
 <br>
 <b>完全安全。</b>账号凭据存储在 VS Code 原生隔离的 <code>globalState</code> 本地持久化数据库中，所有网络请求仅直连腾讯官方域名（<code>codebuddy.cn</code> / <code>copilot.tencent.com</code>），绝不向任何第三方服务器上传敏感数据。
 </details>
 
 <details>
-<summary><b>Q4: 成长任务点击「一键完成」提示进行中是什么意思？</b></summary>
+<summary><b>Q5: 成长任务点击「一键完成」提示进行中是什么意思？</b></summary>
 <br>
 部分任务（如使用模板、和 AI 对话等）属于客户端行为任务，需在日常写代码时自然触发。脚本会自动完成接单与前置自愈，一旦你在使用中达成目标，脚本会自动打捞并兑付奖励。
 </details>
