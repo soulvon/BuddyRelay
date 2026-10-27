@@ -75,7 +75,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           break;
 
         case 'deleteAccount':
-          await this.handleDeleteAccount(message.accountId);
+          await this.handleDeleteAccount(String(message.accountId), message.confirmed === true);
           break;
 
         case 'addAccountOAuth':
@@ -340,22 +340,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * 6. 删除账号
    */
-  public async handleDeleteAccount(accountId: string): Promise<void> {
+  public async handleDeleteAccount(accountId: string, confirmed: boolean = false): Promise<void> {
     const target = this.store.get(accountId);
     if (!target) {
       return;
     }
 
-    const confirm = await vscode.window.showWarningMessage(
-      `确定要从号池中移除账号 [${target.nickname || target.email}] 吗？`,
-      { modal: true },
-      '确定移除'
-    );
-
-    if (confirm === '确定移除') {
-      await this.store.delete(accountId);
-      this.sendNotify('success', `已移除账号 [${target.nickname || target.email}]`);
+    if (!confirmed) {
+      const confirm = await vscode.window.showWarningMessage(
+        `确定要从号池中移除账号 [${target.nickname || target.email}] 吗？`,
+        { modal: true },
+        '确定移除'
+      );
+      if (confirm !== '确定移除') {
+        return;
+      }
     }
+
+    await this.store.delete(accountId);
+    this.sendNotify('success', `已移除账号 [${target.nickname || target.email}]`);
   }
 
   /**

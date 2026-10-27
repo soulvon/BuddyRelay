@@ -274,6 +274,7 @@
     #taskModalOverlay[hidden],
     #taskProgressOverlay[hidden],
     #addAccountOverlay[hidden],
+    #confirmOverlay[hidden],
     .modal-overlay[hidden] {
       display: none !important;
     }
@@ -476,6 +477,106 @@
       padding: 28px 12px;
       color: var(--muted);
       font-size: 12px;
+    }
+
+    /* ── 全局悬浮 Toast 通知系统（优雅悬浮卡片、主题自适应、流畅淡入上浮） ── */
+    .toast-container {
+      position: fixed !important;
+      bottom: 16px !important;
+      left: 14px !important;
+      right: 14px !important;
+      z-index: 99999 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 8px !important;
+      pointer-events: none !important;
+    }
+
+    .toast {
+      pointer-events: auto !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 9px 12px !important;
+      border-radius: var(--radius-md, 6px) !important;
+      border: 1px solid var(--card-border, rgba(0, 0, 0, 0.08)) !important;
+      background: var(--vscode-editorWidget-background, #ffffff) !important;
+      color: var(--vscode-foreground, #24292f) !important;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+      font-size: 11px !important;
+      line-height: 1.4 !important;
+      transform: translateY(10px) scale(0.98);
+      opacity: 0;
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease !important;
+    }
+
+    body.vscode-dark .toast {
+      background: var(--vscode-editorWidget-background, #252526) !important;
+      border-color: rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .toast.toast-in {
+      transform: translateY(0) scale(1) !important;
+      opacity: 1 !important;
+    }
+
+    .toast.toast-out {
+      transform: translateY(6px) scale(0.96) !important;
+      opacity: 0 !important;
+    }
+
+    .toast-icon {
+      flex-shrink: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    .toast-success .toast-icon {
+      color: var(--ac-emerald, #10b981) !important;
+    }
+
+    .toast-error .toast-icon {
+      color: var(--gh-red, #ef4444) !important;
+    }
+
+    .toast-loading .toast-spinner {
+      width: 13px !important;
+      height: 13px !important;
+      border: 2px solid rgba(59, 130, 246, 0.2) !important;
+      border-top-color: var(--ac-blue, #3b82f6) !important;
+      border-radius: 50% !important;
+      animation: spin 0.8s linear infinite !important;
+      flex-shrink: 0 !important;
+    }
+
+    .toast-msg {
+      flex: 1 !important;
+      min-width: 0 !important;
+      word-break: break-word !important;
+      font-weight: 500 !important;
+    }
+
+    .toast-close {
+      flex-shrink: 0 !important;
+      background: transparent !important;
+      border: none !important;
+      color: var(--muted, #8c8c8c) !important;
+      cursor: pointer !important;
+      padding: 2px 4px !important;
+      font-size: 13px !important;
+      line-height: 1 !important;
+      border-radius: 3px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transition: background 0.12s, color 0.12s !important;
+    }
+
+    .toast-close:hover {
+      background: var(--hover-bg, rgba(0, 0, 0, 0.06)) !important;
+      color: var(--vscode-foreground) !important;
     }
   </style>
 </head>
@@ -840,6 +941,23 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
     </div>
   </div>
 
+  <!-- 通用确认对话框模态框（替代系统原生窗口） -->
+  <div id="confirmOverlay" class="modal-overlay" hidden>
+    <div class="modal-box" style="width:min(340px,90vw);">
+      <div class="modal-header">
+        <h3 id="confirmTitle">确认操作</h3>
+        <button class="modal-close" id="confirmClose" title="关闭">×</button>
+      </div>
+      <div class="modal-body" style="padding:16px 14px 14px;">
+        <div id="confirmMsg" style="font-size:12px;line-height:1.6;margin-bottom:16px;color:var(--vscode-foreground);"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="modal-cancel-btn" id="confirmCancel" style="padding:4px 14px;font-size:11px;">取消</button>
+          <button class="primary" id="confirmOk" style="min-width:70px;padding:4px 14px;font-size:11px;">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 全局 Toast 容器（Kite 同款：操作进度/结果通知） -->
   <div id="toastContainer" class="toast-container"></div>
 
@@ -919,6 +1037,44 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
       const t = _toastByKey.get(key);
       if (t) removeToast(t);
       _toastByKey.delete(key);
+    }
+
+    // ── 通用确认对话框（替代系统原生窗口） ──
+    function showConfirm(message, title = '确认操作', okText = '确定', isDanger = false) {
+      return new Promise(resolve => {
+        const overlay = document.getElementById('confirmOverlay');
+        const titleEl = document.getElementById('confirmTitle');
+        const msgEl = document.getElementById('confirmMsg');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        const closeBtn = document.getElementById('confirmClose');
+        if (!overlay) { resolve(false); return; }
+
+        if (titleEl) titleEl.textContent = title;
+        if (msgEl) msgEl.textContent = message;
+        if (okBtn) {
+          okBtn.textContent = okText;
+          if (isDanger) {
+            okBtn.style.background = 'var(--gh-red, #ef4444)';
+          } else {
+            okBtn.style.background = 'var(--ac-blue, #3b82f6)';
+          }
+        }
+        overlay.hidden = false;
+
+        const cleanup = (result) => {
+          overlay.hidden = true;
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+          closeBtn.onclick = null;
+          overlay.onclick = null;
+          resolve(result);
+        };
+        okBtn.onclick = () => cleanup(true);
+        cancelBtn.onclick = () => cleanup(false);
+        closeBtn.onclick = () => cleanup(false);
+        overlay.onclick = e => { if (e.target === overlay) cleanup(false); };
+      });
     }
 
     // ── DOM 引用 ──
@@ -1653,8 +1809,14 @@ email / nickname / refreshToken / tokenType / expiresAt / domain 可选；
       vscode.postMessage({ command: 'checkinAccount', accountId: id });
     };
 
-    window.onDelete = function(id) {
-      vscode.postMessage({ command: 'deleteAccount', accountId: id });
+    window.onDelete = async function(id) {
+      const acc = currentAccounts.find(a => a.id === id);
+      const rawName = acc ? (acc.nickname || acc.email) : '该账号';
+      const name = privacyMode ? maskName(rawName) : rawName;
+      const ok = await showConfirm(`确定要从号池中移除账号 [${name}] 吗？`, '移除账号', '确定移除', true);
+      if (ok) {
+        vscode.postMessage({ command: 'deleteAccount', accountId: id, confirmed: true });
+      }
     };
 
     window.onRefresh = function(id) {

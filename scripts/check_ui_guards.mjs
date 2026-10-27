@@ -121,6 +121,20 @@ gate('G15 账号联动: 任务推流携带目标账号', html.includes("viewingA
 gate('G16 诚实执行: 无收益明确提示任务进行中', html.includes('暂无新可领收益 (任务进行中)'));
 gate('G16 诚实执行: 失败任务异常标题与红图标', html.includes('任务执行遇到异常'));
 
+// ── G17: 网页内确认模态框（替代系统原生窗口） ──
+gate('G17 确认模态框: #confirmOverlay DOM 存在', html.includes('id="confirmOverlay"'));
+gate('G17 确认模态框: showConfirm 函数定义存在', html.includes('function showConfirm('));
+gate('G17 确认模态框: onDelete 使用 showConfirm 确认', html.includes('await showConfirm('));
+
+// ── G18: 全局悬浮 Toast 通知系统 ──
+gate('G18 Toast 悬浮通知: fixed 定位与浮层层级存在', /\.toast-container\s*\{[^}]*position:\s*fixed !important[^}]*z-index:\s*99999 !important/.test(html));
+gate('G18 Toast 悬浮通知: 卡片阴影与圆角存在', /\.toast\s*\{[^}]*border-radius:\s*var\(--radius-md[^}]*box-shadow:\s*0 4px 18px/.test(html));
+
+// ── G19: 状态栏图标与数字无逗号 ──
+const statusBarTs = fs.readFileSync(path.join(ROOT, 'src', 'statusBar.ts'), 'utf8');
+gate('G19 状态栏: 使用通用算力点数图标 $(zap)', statusBarTs.includes('$(zap) Buddy:'));
+gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.includes('toLocaleString'));
+
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);
 process.exit(failed > 0 ? 1 : 0);

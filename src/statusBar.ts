@@ -8,6 +8,11 @@ interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionId?: string;
 }
 
+function fmtNum(n: any): string {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+}
+
 /**
  * BuddyRelay 左下角常驻状态栏管理器
  * 遵循克制扁平、自然中文原则，展示当前账号名称与额度积分，点击唤起切号下拉菜单
@@ -47,10 +52,10 @@ export class StatusBarManager implements vscode.Disposable {
     const active = this.store.getActive();
 
     if (!active) {
-      this.statusBarItem.text = '$(shield) Buddy: 未登录';
-      this.statusBarItem.tooltip = new vscode.MarkdownString(
-        '**BuddyRelay 会话保护中**\n\n当前号池中暂无活跃账号。\n\n点击立即切换、导入或添加账号。'
-      );
+      this.statusBarItem.text = '$(zap) Buddy: 未登录';
+      const emptyMd = new vscode.MarkdownString('**BuddyRelay** · 当前未登录\n\n点击立即添加或切换账号');
+      emptyMd.supportThemeIcons = true;
+      this.statusBarItem.tooltip = emptyMd;
       this.statusBarItem.backgroundColor = undefined;
       return;
     }
@@ -58,41 +63,29 @@ export class StatusBarManager implements vscode.Disposable {
     const name = active.nickname || active.email || '未命名账号';
     const creditsText =
       typeof active.totalCredits === 'number'
-        ? `${Number(active.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}点`
+        ? `${fmtNum(active.totalCredits)}点`
         : active.paymentType === 'free'
         ? '免费版'
         : '就绪';
 
     if (active.status === 'rate_limited') {
-      this.statusBarItem.text = `$(warning) Buddy: ${name} (429冷却中)`;
+      this.statusBarItem.text = `$(warning) Buddy: ${name} (429冷却)`;
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
-      this.statusBarItem.text = `$(shield) Buddy: ${name} (${creditsText})`;
+      this.statusBarItem.text = `$(zap) Buddy: ${name} (${creditsText})`;
       this.statusBarItem.backgroundColor = undefined;
     }
 
-    const streakText = `连续签到 ${active.checkinStreak || 0} 天`;
-    const checkinText = active.todayCheckedIn ? '今日已签到' : '今日未签到';
-    const statusMap: Record<string, string> = {
-      active: '当前活跃 (Active)',
-      idle: '就绪待命 (Idle)',
-      rate_limited: '429冷却中 (Rate Limited)',
-      expired: '已失效 (Expired)',
-      disabled: '已禁用 (Disabled)'
-    };
-    const statusDesc = statusMap[active.status] || active.status;
-
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
-    md.appendMarkdown('### $(shield) BuddyRelay 会话状态\n\n');
-    md.appendMarkdown(`- **当前账号**: ${name}\n`);
-    md.appendMarkdown(`- **账号标识**: \`${active.email}\`\n`);
-    md.appendMarkdown(`- **用户 UID**: \`${active.uid}\`\n`);
-    md.appendMarkdown(`- **额度积分**: **${typeof active.totalCredits === 'number' ? `${Number(active.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} 算力点` : '未同步'}**\n`);
-    md.appendMarkdown(`- **加油站**: ${streakText} (${checkinText})\n`);
-    md.appendMarkdown(`- **运行状态**: ${statusDesc}\n\n`);
+    md.supportThemeIcons = true;
+
+    md.appendMarkdown(`**BuddyRelay** · 当前会话\n\n`);
+    md.appendMarkdown(`当前账号：**${name}**\n\n`);
+    md.appendMarkdown(`剩余算力：**${typeof active.totalCredits === 'number' ? `${fmtNum(active.totalCredits)} 点` : '就绪'}**\n\n`);
+    md.appendMarkdown(`今日签到：${active.todayCheckedIn ? '已完成' : '未签到'} (连续 ${active.checkinStreak || 0} 天)\n\n`);
     md.appendMarkdown('---\n\n');
-    md.appendMarkdown('$(arrow-swap) *点击弹出快速切号下拉菜单*');
+    md.appendMarkdown('$(arrow-swap) 点击快速切换账号');
 
     this.statusBarItem.tooltip = md;
   }
@@ -128,7 +121,7 @@ export class StatusBarManager implements vscode.Disposable {
 
         const creditsStr =
           typeof acc.totalCredits === 'number'
-            ? `${Number(acc.totalCredits).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} 算力点`
+            ? `${fmtNum(acc.totalCredits)} 算力点`
             : acc.paymentType || '免费';
 
         items.push({
