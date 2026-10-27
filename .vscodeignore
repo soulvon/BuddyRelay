@@ -18,6 +18,7 @@ scripts/**
 test_*.js
 _test_*.js
 dist/**
+docs/**
 
 # 编译映射与日志
 **/*.js.map
