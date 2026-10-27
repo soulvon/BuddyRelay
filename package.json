@@ -1,7 +1,7 @@
 {
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
-  "description": "CodeBuddy CN 智能无感切号与号池增强套件：进程级无感换号、NTFS 会话零拷贝保活、额度自动守护、Cockpit 导入与成长中心全自动收成。",
+  "description": "CodeBuddy CN 多账号管理与切号扩展，支持会话保留、自动签到与任务打捞。",
   "version": "0.1.0",
   "publisher": "soulvon",
   "repository": {

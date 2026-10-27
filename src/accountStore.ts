@@ -87,9 +87,13 @@ export class AccountStore extends EventEmitter {
     super();
     this.context = context;
 
+    const defaultDataDir = process.env.APPDATA
+      || (process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support')
+        : path.join(os.homedir(), '.config'));
     const baseDir = customFallbackPath
       ? path.dirname(customFallbackPath)
-      : path.join(process.env.APPDATA || os.homedir(), 'BuddyRelay');
+      : path.join(defaultDataDir, 'BuddyRelay');
     this.fallbackFilePath = customFallbackPath || path.join(baseDir, 'accounts.json');
 
     this.load();

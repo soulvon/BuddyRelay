@@ -362,38 +362,66 @@ export class SeamlessSwitcher {
       }
     }
 
-    // 创建 NTFS Junction
+    // 创建目录链接 (Windows 走 NTFS Junction 免管理员权限; macOS/Linux 走标准 POSIX dir 软链接)
+    const isWin = process.platform === 'win32';
+    const symlinkType = isWin ? 'junction' : 'dir';
+
     try {
-      fs.symlinkSync(masterPath, targetLink, 'junction');
+      fs.symlinkSync(masterPath, targetLink, symlinkType);
       return {
         success: true,
         masterPath,
         targetPath: targetLink,
         alreadyExisted: false,
-        message: `成功建立 5.7GB 会话物理穿透 Junction: ${targetLink} -> ${masterPath}`
+        message: `成功建立会话目录软链接: ${targetLink} -> ${masterPath}`
       };
     } catch (err: any) {
-      // 降级尝试 cmd /c mklink /J
-      try {
-        child_process.execSync(`cmd /c mklink /J "${targetLink}" "${masterPath}"`, {
-          stdio: 'pipe'
-        });
-        return {
-          success: true,
-          masterPath,
-          targetPath: targetLink,
-          alreadyExisted: false,
-          message: `通过 mklink /J 建立会话穿透 Junction: ${targetLink} -> ${masterPath}`
-        };
-      } catch (cmdErr: any) {
-        return {
-          success: false,
-          masterPath,
-          targetPath: targetLink,
-          alreadyExisted: false,
-          message: `建立 Junction 联结失败: ${cmdErr.message}`,
-          error: cmdErr.message
-        };
+      if (isWin) {
+        // Windows 降级尝试 cmd /c mklink /J
+        try {
+          child_process.execSync(`cmd /c mklink /J "${targetLink}" "${masterPath}"`, {
+            stdio: 'pipe'
+          });
+          return {
+            success: true,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: `通过 mklink /J 建立会话穿透 Junction: ${targetLink} -> ${masterPath}`
+          };
+        } catch (cmdErr: any) {
+          return {
+            success: false,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: `建立 Junction 联结失败: ${cmdErr.message}`,
+            error: cmdErr.message
+          };
+        }
+      } else {
+        // macOS / Linux 降级尝试 ln -s
+        try {
+          child_process.execSync(`ln -s "${masterPath}" "${targetLink}"`, {
+            stdio: 'pipe'
+          });
+          return {
+            success: true,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: `通过 ln -s 建立会话软链接: ${targetLink} -> ${masterPath}`
+          };
+        } catch (lnErr: any) {
+          return {
+            success: false,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: `建立符号链接失败: ${lnErr.message}`,
+            error: lnErr.message
+          };
+        }
       }
     }
   }

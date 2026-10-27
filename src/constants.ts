@@ -48,9 +48,62 @@ export const DEFAULT_HEADERS = {
 // 2. 本地数据与物理指令文件路径
 // ============================================================================
 
-const USER_PROFILE = process.env.USERPROFILE || os.homedir();
-const APPDATA = process.env.APPDATA || path.join(USER_PROFILE, 'AppData', 'Roaming');
-const LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(USER_PROFILE, 'AppData', 'Local');
+const isWin = process.platform === 'win32';
+const isMac = process.platform === 'darwin';
+
+const USER_PROFILE = process.env.USERPROFILE || process.env.HOME || os.homedir();
+
+function resolveAppDataDir(): string {
+  if (isWin) {
+    return process.env.APPDATA || path.join(USER_PROFILE, 'AppData', 'Roaming');
+  }
+  if (isMac) {
+    return path.join(os.homedir(), 'Library', 'Application Support');
+  }
+  return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+}
+
+function resolveLocalAppDataDir(): string {
+  if (isWin) {
+    return process.env.LOCALAPPDATA || path.join(USER_PROFILE, 'AppData', 'Local');
+  }
+  if (isMac) {
+    return path.join(os.homedir(), 'Library', 'Application Support');
+  }
+  return process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+}
+
+function resolveCandidateMainJsPaths(): string[] {
+  const localApp = resolveLocalAppDataDir();
+  const list: string[] = [];
+  if (isWin) {
+    list.push(
+      'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js',
+      path.join(localApp, 'Programs', 'CodeBuddy CN', 'resources', 'app', 'out', 'main.js'),
+      'C:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
+      'D:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
+      'D:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js'
+    );
+  } else if (isMac) {
+    list.push(
+      '/Applications/CodeBuddy CN.app/Contents/Resources/app/out/main.js',
+      '/Applications/CodeBuddy.app/Contents/Resources/app/out/main.js',
+      '/Applications/WorkBuddy.app/Contents/Resources/app/out/main.js',
+      path.join(os.homedir(), 'Applications', 'CodeBuddy CN.app', 'Contents', 'Resources', 'app', 'out', 'main.js')
+    );
+  } else {
+    list.push(
+      '/usr/share/codebuddy-cn/resources/app/out/main.js',
+      '/opt/codebuddy-cn/resources/app/out/main.js',
+      '/usr/share/workbuddy/resources/app/out/main.js',
+      '/opt/workbuddy/resources/app/out/main.js'
+    );
+  }
+  return list;
+}
+
+const APPDATA = resolveAppDataDir();
+const LOCALAPPDATA = resolveLocalAppDataDir();
 
 export const PATHS = {
   // Cockpit Tools 凭据存储规范
@@ -65,18 +118,12 @@ export const PATHS = {
   CODEBUDDY_SESSIONS_DB: path.join(APPDATA, 'CodeBuddy CN', 'codebuddy-sessions.vscdb'),
   CODEBUDDY_STORAGE_JSON: path.join(APPDATA, 'CodeBuddy CN', 'User', 'globalStorage', 'storage.json'),
 
-  // 会话物理存储与 Junction 联结点 (穿透 5.7GB 会话物理文件)
+  // 会话物理存储与软链接联结点 (跨账号会话穿透)
   EXTENSION_DATA_DIR: path.join(LOCALAPPDATA, 'CodeBuddyExtension', 'Data'),
   MASTER_SESSION_UID: '69719899-bf05-4822-9e20-d4e7437a2edd',
 
-  // 常见 CodeBuddy 安装路径候选
-  CANDIDATE_MAIN_JS_PATHS: [
-    'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js',
-    path.join(LOCALAPPDATA, 'Programs', 'CodeBuddy CN', 'resources', 'app', 'out', 'main.js'),
-    'C:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
-    'D:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
-    'D:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js'
-  ]
+  // 跨平台 CodeBuddy main.js 候选路径
+  CANDIDATE_MAIN_JS_PATHS: resolveCandidateMainJsPaths()
 } as const;
 
 // ============================================================================
