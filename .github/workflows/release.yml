@@ -17,6 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG_VER=$(node -p "require('./package.json').version")
+          echo "git tag: v$TAG"
+          echo "package.json version: $PKG_VER"
+          if [ "$TAG" != "$PKG_VER" ]; then
+            echo "::error::tag v$TAG 与 package.json version $PKG_VER 不一致。"
+            echo "::error::这会导致已发布用户陷入无限更新提示死循环。"
+            echo "::error::修复：将 package.json version 改为 $TAG 并提交，或删除该 tag 重新打。"
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
