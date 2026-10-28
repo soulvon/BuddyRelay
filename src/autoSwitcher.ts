@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
 import { OAuthService } from './oauthService';
+import { getOtherLockedUids } from './accountLock';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
@@ -57,6 +58,8 @@ export class AutoSwitcher extends EventEmitter {
   public getNextAvailableAccount(currentUid?: string): CodeBuddyAccount | null {
     const all = this.store.getAll();
     const now = Date.now();
+    // 跨窗口互斥：读取其他存活窗口正持有的账号
+    const otherLocked = getOtherLockedUids();
 
     // 1. 过滤并自愈到期的 rate_limited 账号
     const candidates: CodeBuddyAccount[] = [];
@@ -80,6 +83,11 @@ export class AutoSwitcher extends EventEmitter {
 
       // 排除当前正在使用的账号
       if (currentUid && (acc.uid === currentUid || acc.id === currentUid)) {
+        continue;
+      }
+
+      // 排除被其他存活窗口占用的账号（防止双窗口抢号横跳）
+      if (otherLocked.has(acc.uid)) {
         continue;
       }
 

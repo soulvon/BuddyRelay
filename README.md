@@ -6,7 +6,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -39,7 +39,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 
 ### 方式一：扩展面板安装（推荐）
 
-1. 下载最新版 `buddy-relay-0.2.0.vsix`；
+1. 下载最新版 `buddy-relay-0.3.0.vsix`；
 2. 打开 **CodeBuddy CN** 或 **WorkBuddy** 编辑器；
 3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
 4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
@@ -48,7 +48,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 ### 方式二：命令行安装
 
 ```bash
-buddycn --install-extension buddy-relay-0.2.0.vsix --force
+buddycn --install-extension buddy-relay-0.3.0.vsix --force
 ```
 
 ---
@@ -119,25 +119,31 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 
 ### 🔄 1. 无感切号与会话保留
 - **平滑切号**：在侧栏卡片流或右下角状态栏一键选择账号，**切号不关窗口、不重启编辑器**，即时生效；
+- **切换回执确认**：每条切号指令均由宿主写回执确认（Patch v5 回执闭环），成功才报成功，失败给出宿主侧真实原因，杜绝"假切换"；
 - **跨平台目录链接**：Windows 采用免管理员权限的 NTFS Directory Junction，macOS/Linux 采用标准 POSIX 目录软链接（`ln -s`），**历史会话完全互通**；
 - **历史记录过滤穿透**：解除本地会话数据库中的账号强绑定限制，无论切换至哪个账号，历史记录完好无损。
 
-### ⚡ 2. 额度监控与自动守护
+### 🪟 2. 多窗口同步与账号互斥
+- **号池跨窗口实时同步**：账号池落盘于共享号池文件（`%APPDATA%\CodeBuddy CN\buddy-relay\pool.json`），任一窗口导入/删除/切号，其余窗口免重启实时跟随；
+- **跨窗口账号锁**：每个窗口为当前账号持心跳锁，卡片直观标注"他窗占用"，崩溃残留锁自动清理；
+- **自动切号防抢号**：自动轮换候选自动排除其他窗口正持有的账号，杜绝双窗口抢号横跳。
+
+### ⚡ 3. 额度监控与自动守护
 - **配额直读对账**：穿透底层计量接口，精准查询基础体验包与活动赠送包的真实可用算力；
 - **见底自动轮换**：当前账号算力低于设定阈值（默认 10%）或触发 429 限流时，自动无感切换至号池中剩余额度最多的健康账号；
 - **智能防抖冷却**：设置 5 分钟冷却窗口与并发保护，杜绝多窗口频繁交叉切换。
 
-### 📥 3. 多渠道账号导入
+### 📥 4. 多渠道账号导入
 - **官方 OAuth 登录**：调起系统默认浏览器进入官方授权页，扫码或确认后自动入库；
 - **Cockpit Tools 导入**：自动解密本机 `%USERPROFILE%\.antigravity_cockpit` 密文账号池，按 UID 去重快速迁移；
 - **JSON 文本导入**：支持直接粘贴账号配置数据一键批量解析。
 
-### 🎁 4. 每日任务自动化（一键签到 · 一键做任务）
+### 🎁 5. 每日任务自动化（一键签到 · 一键做任务）
 - **一键签到**：支持每日定点自动签到（带随机抖动与拟人化账号间隔），杜绝断签；
 - **一键做任务**：自动双源任务接单、前置依赖自动自愈、宠物出游打工、连登礼包兑换与达标奖励自动打捞；
 - **状态全景看板**：任务中心顶部直观展示宠物打工地点、出游倒计时、连签进度条与盲盒能量。
 
-### 🔄 5. 自动检查与一键更新
+### 🔄 6. 自动检查与一键更新
 - **GitHub 自动检测**：扩展启动后静默比对 GitHub Releases 最新版本号；
 - **一键下载并重载**：发现新版本时在右下角提醒，点击「立即更新」自动下载 VSIX 并静默安装，提示一键重载生效；
 - **手动检查命令**：随时可在命令面板运行 `BuddyRelay: 检查新版本更新`。

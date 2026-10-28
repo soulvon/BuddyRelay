@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.2.0', packageJson.version === '0.2.0');
-gate('G21 版本一致性: README 徽标版本对齐 0.2.0', readmeMd.includes('version-0.2.0'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.2.0', readmeMd.includes('buddy-relay-0.2.0.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.3.0', packageJson.version === '0.3.0');
+gate('G21 版本一致性: README 徽标版本对齐 0.3.0', readmeMd.includes('version-0.3.0'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.3.0', readmeMd.includes('buddy-relay-0.3.0.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -224,6 +224,34 @@ for (const rel of filesToAuditForEmoji) {
   }
 }
 gate('G28 视觉规范: 彻底杜绝 Emoji，100% 采用专业 SVG/Codicon 图标', !emojiFound, emojiHitInfo);
+
+// ── G29: 共享号池文件中枢 (多窗口同步) 门控 ──
+gate('G29 号池中枢: AccountStore 使用共享 pool.json (与宿主指令同区)', accountStoreTs.includes('PATHS.POOL_FILE'));
+gate('G29 号池中枢: fs.watch 目录监听跨窗口变更', accountStoreTs.includes('fs.watch(') && accountStoreTs.includes('reloadFromDisk'));
+gate('G29 号池中枢: 串行写队列防并发丢数据', accountStoreTs.includes('_writeQueue') && accountStoreTs.includes('enqueueWrite'));
+gate('G29 号池中枢: 禁止再向 globalState 写入账号池 (防 last-writer-wins)', !accountStoreTs.includes('globalState.update(STORAGE_KEY'));
+gate('G29 号池中枢: 外部读失败保留内存现状不当空池', accountStoreTs.includes('保留内存现状'));
+
+// ── G30: 切换回执闭环 (诚实执行) 门控 ──
+const seamlessSwitcherTs = fs.readFileSync(path.join(ROOT, 'src', 'seamlessSwitcher.ts'), 'utf8');
+const constantsTs = fs.readFileSync(path.join(ROOT, 'src', 'constants.ts'), 'utf8');
+gate('G30 回执闭环: Patch v5 特征码与回执方法注入', constantsTs.includes('PATCH_V5') && constantsTs.includes('__byokReceipt') && constantsTs.includes('V5_MARKER'));
+gate('G30 回执闭环: 宿主回执文件路径已定义', constantsTs.includes('BYOK_SWITCH_RESULT_FILE'));
+gate('G30 回执闭环: 扩展轮询回执后才判定成功', seamlessSwitcherTs.includes('waitForSwitchReceipt'));
+gate('G30 回执闭环: 指令携带 ts 防旧回执误读', seamlessSwitcherTs.includes('Number(data.ts) === Number(cmdTs)'));
+gate('G30 回执闭环: v4 宿主降级如实标注 legacyHost', seamlessSwitcherTs.includes('legacyHost'));
+gate('G30 回执闭环: 切号指令窗口内串行化', seamlessSwitcherTs.includes('_switchQueue'));
+
+// ── G31: 跨窗口账号锁 门控 ──
+const accountLockPath = path.join(ROOT, 'src', 'accountLock.ts');
+const accountLockTs = fs.existsSync(accountLockPath) ? fs.readFileSync(accountLockPath, 'utf8') : '';
+const extensionTs = fs.readFileSync(path.join(ROOT, 'src', 'extension.ts'), 'utf8');
+const autoSwitcherTs = fs.readFileSync(path.join(ROOT, 'src', 'autoSwitcher.ts'), 'utf8');
+gate('G31 账号锁: 心跳 + 过期清理 + pid 判活三件套', accountLockTs.includes('startHeartbeat') && accountLockTs.includes('cleanStaleLocks') && accountLockTs.includes('isPidAlive'));
+gate('G31 账号锁: 释放只删自己 pid 的锁', accountLockTs.includes('entry.pid === process.pid'));
+gate('G31 账号锁: 扩展挂载初始化与心跳，退出释放', extensionTs.includes('initAccountLock') && extensionTs.includes('startHeartbeat()') && extensionTs.includes('releaseLock()'));
+gate('G31 账号锁: 自动切号候选排除他窗持有账号', autoSwitcherTs.includes('getOtherLockedUids'));
+gate('G31 账号锁: 侧栏推送他窗占用列表', sidebarProviderTs.includes('lockedUids'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

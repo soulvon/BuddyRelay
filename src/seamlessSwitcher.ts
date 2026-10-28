@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as child_process from 'child_process';
-import { PATHS, PATCH_V4 } from './constants';
+import { PATHS, PATCH_V5 } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 
 export interface PatchCheckResult {
@@ -32,22 +32,38 @@ export interface JunctionResult {
   error?: string;
 }
 
+export interface SwitchReceipt {
+  /** 宿主回执确认 (ok:true 即宿主已应用或本就在目标账号) */
+  verified: boolean;
+  /** 宿主报告切换成功 */
+  ok: boolean;
+  /** 宿主报告 same-uid skip (本就已在目标账号) */
+  skipped: boolean;
+  /** 宿主是否为 v4 旧补丁 (消费了指令但无回执能力) */
+  legacyHost: boolean;
+  message: string;
+}
+
 export interface SwitchResult {
   success: boolean;
   account: CodeBuddyAccount;
   patchResult: PatchApplyResult;
   junctionResult: JunctionResult;
+  receipt?: SwitchReceipt;
   message: string;
   error?: string;
 }
 
 /**
  * BuddyRelay 热切中枢与底层通信引擎
- * 负责 main.js Patch v4 检查自愈、NTFS Junction 5.7GB 物理会话文件穿透映射与 byok-switch.json 动态指令注入
+ * 负责 main.js Patch v5 检查自愈、NTFS Junction 5.7GB 物理会话文件穿透映射与 byok-switch.json 动态指令注入
+ * v5 新增切换回执闭环：宿主每种结局写回执 byok-switch-result.json，扩展轮询校验后才宣布成功
  */
 export class SeamlessSwitcher {
   private customMainJsPath?: string;
   private customCmdPath?: string;
+  // 窗口内切号串行队列：消除自动切号与手动切号在 2s 轮询窗口内的指令覆盖竞态
+  private _switchQueue: Promise<unknown> = Promise.resolve();
 
   constructor(options?: {
     mainJsPath?: string;
@@ -74,7 +90,7 @@ export class SeamlessSwitcher {
   }
 
   /**
-   * 检查 main.js 当前 Patch v4 状态
+   * 检查 main.js 当前 Patch v5 状态
    */
   public checkPatch(targetPath?: string): PatchCheckResult {
     const mainPath = targetPath || this.locateMainJs();
@@ -92,17 +108,19 @@ export class SeamlessSwitcher {
     const hasOriginBackup = fs.existsSync(originPath);
 
     const content = fs.readFileSync(mainPath, 'utf8');
-    const isPatched = content.includes(PATCH_V4.PATCH_FLAG);
+    const hasFlag = content.includes(PATCH_V5.PATCH_FLAG);
+    const isPatched = hasFlag && content.includes(PATCH_V5.V5_MARKER);
+    const isLegacyV4 = hasFlag && !isPatched;
 
     // 检查基础锚点
     const checkTargetContent = hasOriginBackup
       ? fs.readFileSync(originPath, 'utf8')
       : content;
 
-    const amCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V4.AM_ANCHOR), 'g')) || []).length;
-    const gvCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V4.GV_OLD), 'g')) || []).length;
-    const gsCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V4.GS_OLD), 'g')) || []).length;
-    const restoreCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V4.ANCHOR_RESTORE), 'g')) || []).length;
+    const amCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.AM_ANCHOR), 'g')) || []).length;
+    const gvCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.GV_OLD), 'g')) || []).length;
+    const gsCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.GS_OLD), 'g')) || []).length;
+    const restoreCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.ANCHOR_RESTORE), 'g')) || []).length;
 
     const anchorsValid = isPatched || (amCount === 1 && gvCount === 1 && gsCount === 1 && restoreCount === 1);
 
@@ -111,24 +129,27 @@ export class SeamlessSwitcher {
       mainJsPath: mainPath,
       isPatched,
       hasOriginBackup,
-      version: isPatched ? PATCH_V4.VERSION : undefined,
+      version: isPatched ? PATCH_V5.VERSION : undefined,
       anchorsValid,
       details: {
         amCount,
         gvCount,
         gsCount,
-        restoreCount
+        restoreCount,
+        isLegacyV4
       },
       message: isPatched
-        ? `main.js 已成功打上 ${PATCH_V4.VERSION} 热切补丁`
-        : anchorsValid
-          ? 'main.js 为原始状态，所有 Patch v4 锚点校验通过，可安全注入'
-          : 'main.js 锚点特征串不唯一或已被第三方修改'
+        ? `main.js 已成功打上 ${PATCH_V5.VERSION} 热切补丁 (含回执闭环)`
+        : isLegacyV4
+          ? '检测到旧版 v4 补丁 (无回执能力)，将自愈升级至 v5'
+          : anchorsValid
+            ? 'main.js 为原始状态，所有 Patch v5 锚点校验通过，可安全注入'
+            : 'main.js 锚点特征串不唯一或已被第三方修改'
     };
   }
 
   /**
-   * 检查并自愈 main.js Patch v4
+   * 检查并自愈 main.js Patch v5
    */
   public healPatch(targetPath?: string): PatchApplyResult {
     const mainPath = targetPath || this.locateMainJs();
@@ -152,7 +173,7 @@ export class SeamlessSwitcher {
           success: true,
           mainJsPath: mainPath,
           backupCreated: check.hasOriginBackup,
-          message: 'main.js Patch v4 运行状态正常且语法校验通过'
+          message: 'main.js Patch v5 运行状态正常且语法校验通过'
         };
       }
       // 语法损坏，触发自愈回滚重打
@@ -170,9 +191,9 @@ export class SeamlessSwitcher {
     // 2. 从干净的 origin 读取源码
     let src = fs.readFileSync(originPath, 'utf8');
 
-    // 3. 逐级注入 Patch v4
+    // 3. 逐级注入 Patch v5
     // (1) AM 构造函数注入全局会话
-    if (!src.includes(PATCH_V4.AM_ANCHOR)) {
+    if (!src.includes(PATCH_V5.AM_ANCHOR)) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -181,10 +202,10 @@ export class SeamlessSwitcher {
         error: 'AM_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V4.AM_ANCHOR, PATCH_V4.AM_REPLACEMENT);
+    src = src.replace(PATCH_V5.AM_ANCHOR, PATCH_V5.AM_REPLACEMENT);
 
     // (2) 放开 getV2ReconcileData 隔离
-    if (!src.includes(PATCH_V4.GV_OLD)) {
+    if (!src.includes(PATCH_V5.GV_OLD)) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -193,10 +214,10 @@ export class SeamlessSwitcher {
         error: 'GV_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V4.GV_OLD, PATCH_V4.GV_NEW);
+    src = src.replace(PATCH_V5.GV_OLD, PATCH_V5.GV_NEW);
 
     // (3) 放开 getSessions 隔离
-    if (!src.includes(PATCH_V4.GS_OLD)) {
+    if (!src.includes(PATCH_V5.GS_OLD)) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -205,10 +226,10 @@ export class SeamlessSwitcher {
         error: 'GS_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V4.GS_OLD, PATCH_V4.GS_NEW);
+    src = src.replace(PATCH_V5.GS_OLD, PATCH_V5.GS_NEW);
 
     // (4) 注入 WATCHER_METHODS (getStorageKey 之后)
-    const expectedMethodEnd = PATCH_V4.ANCHOR_METHOD_END + PATCH_V4.NEXT_METHOD;
+    const expectedMethodEnd = PATCH_V5.ANCHOR_METHOD_END + PATCH_V5.NEXT_METHOD;
     if (!src.includes(expectedMethodEnd)) {
       return {
         success: false,
@@ -220,11 +241,11 @@ export class SeamlessSwitcher {
     }
     src = src.replace(
       expectedMethodEnd,
-      PATCH_V4.ANCHOR_METHOD_END + PATCH_V4.WATCHER_METHODS + PATCH_V4.NEXT_METHOD
+      PATCH_V5.ANCHOR_METHOD_END + PATCH_V5.WATCHER_METHODS + PATCH_V5.NEXT_METHOD
     );
 
     // (5) 注入 restoreSession 启动 watcher
-    if (!src.includes(PATCH_V4.ANCHOR_RESTORE)) {
+    if (!src.includes(PATCH_V5.ANCHOR_RESTORE)) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -233,7 +254,7 @@ export class SeamlessSwitcher {
         error: 'RESTORE_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V4.ANCHOR_RESTORE, PATCH_V4.RESTORE_REPLACEMENT);
+    src = src.replace(PATCH_V5.ANCHOR_RESTORE, PATCH_V5.RESTORE_REPLACEMENT);
 
     // 4. 原子安全写入
     const tmpWritePath = `${mainPath}.tmp_${Date.now()}`;
@@ -249,7 +270,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'Patch v4 语法自检失败，已中止写入以防损坏 IDE',
+        message: 'Patch v5 语法自检失败，已中止写入以防损坏 IDE',
         error: 'SYNTAX_CHECK_FAILED'
       };
     }
@@ -272,7 +293,7 @@ export class SeamlessSwitcher {
       success: true,
       mainJsPath: mainPath,
       backupCreated,
-      message: 'main.js Patch v4 注入与语法自愈成功完成'
+      message: 'main.js Patch v5 注入与语法自愈成功完成'
     };
   }
 
@@ -428,11 +449,12 @@ export class SeamlessSwitcher {
 
   /**
    * 写入 byok-switch.json 动态指令，唤醒 CodeBuddy CN 宿主执行无缝热切
+   * 返回写入文件与本次指令 ts（回执匹配凭据）
    */
   public async writeSwitchCommand(
     account: CodeBuddyAccount,
     customPath?: string
-  ): Promise<string> {
+  ): Promise<{ file: string; ts: number }> {
     const targetFile = customPath || this.customCmdPath || PATHS.BYOK_SWITCH_FILE;
     const targetDir = path.dirname(targetFile);
 
@@ -491,13 +513,101 @@ export class SeamlessSwitcher {
     fs.writeFileSync(tmpFile, JSON.stringify(commandPayload, null, 2), 'utf8');
     fs.renameSync(tmpFile, targetFile);
 
-    return targetFile;
+    return { file: targetFile, ts: nowMs };
   }
 
   /**
-   * 完整热切执行：检查自愈 Patch v4 -> 建立 Junction -> 写入指令 -> 更新 Store
+   * 等待宿主切换回执 (v5 补丁闭环核心)
+   * - 收到 ts 匹配的回执：按宿主真实结局返回 (成功 / skip / store失败)
+   * - 指令文件被消费但无回执：宿主为 v4 旧补丁（无回执能力），如实标注 legacyHost
+   * - 指令文件原样未动：宿主 watcher 未消费（未打补丁 / IDE 未重启），判失败
+   * 严禁读到旧回执：ts 不匹配的回执文件清除后继续等待
    */
-  public async switchAccount(
+  private async waitForSwitchReceipt(cmdTs: number, timeoutMs: number = 8000): Promise<SwitchReceipt> {
+    const cmdFile = PATHS.BYOK_SWITCH_FILE;
+    const receiptFile = PATHS.BYOK_SWITCH_RESULT_FILE;
+    const start = Date.now();
+    let consumed = false;
+
+    while (Date.now() - start < timeoutMs) {
+      await new Promise(r => setTimeout(r, 400));
+
+      // 1. 检查指令文件是否已被宿主消费 (watcher unlink 即消费)
+      if (!consumed && !fs.existsSync(cmdFile)) {
+        consumed = true;
+      }
+
+      // 2. 检查回执
+      try {
+        if (fs.existsSync(receiptFile)) {
+          let data: any = null;
+          try {
+            data = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+          } catch {
+            // 回执写入中（原子写窗口期），下轮再读
+            continue;
+          }
+          if (data && Number(data.ts) === Number(cmdTs)) {
+            try { fs.unlinkSync(receiptFile); } catch { /* ignore */ }
+            if (data.ok) {
+              return {
+                verified: true,
+                ok: true,
+                skipped: Boolean(data.skipped),
+                legacyHost: false,
+                message: data.skipped
+                  ? '宿主报告本就已在目标账号 (same-uid skip)'
+                  : '宿主已确认完成切换'
+              };
+            }
+            return {
+              verified: true,
+              ok: false,
+              skipped: false,
+              legacyHost: false,
+              message: `宿主切换失败: ${data.err || '未知原因'}`
+            };
+          }
+          // 旧回执（ts 不匹配）：清除防止后续误读
+          try { fs.unlinkSync(receiptFile); } catch { /* ignore */ }
+        }
+      } catch { /* 读取失败继续轮询 */ }
+    }
+
+    if (consumed) {
+      return {
+        verified: false,
+        ok: true,
+        skipped: false,
+        legacyHost: true,
+        message: '切换指令已被宿主消费，但当前宿主为 v4 旧补丁无回执能力；若界面账号未变更请重启 CodeBuddy 后重试'
+      };
+    }
+    return {
+      verified: false,
+      ok: false,
+      skipped: false,
+      legacyHost: false,
+      message: '宿主未消费切换指令 (watcher 未运行：main.js 未打补丁或 IDE 打补丁后未重启)'
+    };
+  }
+
+  /**
+   * 完整热切执行：检查自愈 Patch v5 -> 建立 Junction -> 写入指令 -> 回执校验 -> 更新 Store
+   * 窗口内串行化执行，严禁并发指令互相覆盖
+   */
+  public switchAccount(
+    accountOrUid: CodeBuddyAccount | string,
+    store?: AccountStore
+  ): Promise<SwitchResult> {
+    const run = () => this.doSwitchAccount(accountOrUid, store);
+    const next = this._switchQueue.then(run, run);
+    // 队列只跟踪完成状态，错误经返回的 Promise 透传给调用方
+    this._switchQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private async doSwitchAccount(
     accountOrUid: CodeBuddyAccount | string,
     store?: AccountStore
   ): Promise<SwitchResult> {
@@ -514,7 +624,7 @@ export class SeamlessSwitcher {
       account = accountOrUid;
     }
 
-    // 1. 检查并自愈 Patch v4
+    // 1. 检查并自愈 Patch v5
     const patchResult = this.healPatch();
     if (!patchResult.success) {
       return {
@@ -526,9 +636,9 @@ export class SeamlessSwitcher {
           masterPath: '',
           targetPath: '',
           alreadyExisted: false,
-          message: 'Patch v4 检查自愈失败，中止后续步骤'
+          message: 'Patch v5 检查自愈失败，中止后续步骤'
         },
-        message: `Patch v4 注入或语法自愈失败: ${patchResult.message}`,
+        message: `Patch v5 注入或语法自愈失败: ${patchResult.message}`,
         error: patchResult.error
       };
     }
@@ -537,8 +647,10 @@ export class SeamlessSwitcher {
     const junctionResult = this.ensureJunction(account.uid);
 
     // 3. 写入 byok-switch.json 指令
+    let cmdTs: number;
     try {
-      await this.writeSwitchCommand(account);
+      const written = await this.writeSwitchCommand(account);
+      cmdTs = written.ts;
     } catch (err: any) {
       return {
         success: false,
@@ -550,17 +662,27 @@ export class SeamlessSwitcher {
       };
     }
 
-    // 4. 更新 Store 中活跃状态
-    if (store) {
+    // 4. 等待宿主回执（v5 闭环；v4 宿主降级为消费确认）
+    const receipt = await this.waitForSwitchReceipt(cmdTs);
+
+    // 5. 按回执真实结局更新 Store 与返回
+    if (receipt.ok && store) {
+      // ok=true 含 skipped（宿主本就在目标账号，Store 状态对齐即可）
       await store.setActive(account.id);
     }
 
     return {
-      success: true,
+      success: receipt.ok,
       account,
       patchResult,
       junctionResult,
-      message: `已成功向 CodeBuddy CN 发出热切指令: ${account.nickname} (UID: ${account.uid})`
+      receipt,
+      message: receipt.ok
+        ? (receipt.verified
+            ? `已切换至 ${account.nickname} (宿主回执确认${receipt.skipped ? '，本就在目标账号' : ''})`
+            : `已切换至 ${account.nickname} (指令已消费，v4 宿主无回执，建议重启 IDE 以获得回执确认)`)
+        : `热切未生效: ${receipt.message}`,
+      error: receipt.ok ? undefined : 'HOST_RECEIPT_FAILED'
     };
   }
 

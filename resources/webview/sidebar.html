@@ -542,6 +542,10 @@
       color: var(--gh-red, #ef4444) !important;
     }
 
+    .toast-warn .toast-icon {
+      color: var(--vscode-editorWarning-foreground, #d29922) !important;
+    }
+
     .toast-loading .toast-spinner {
       width: 13px !important;
       height: 13px !important;
@@ -1105,6 +1109,7 @@
   <script>
     const vscode = acquireVsCodeApi();
     let currentAccounts = [];
+    let currentLockedUids = [];
     let currentSettings = {};
     let privacyMode = false;
     let switchingId = '';
@@ -1962,8 +1967,11 @@
 
         // 异常状态徽标：正常时一律不显示（避免冗余信息）
         const isDisabled = acc.status === 'disabled';
+        const isLockedElsewhere = !isActive && Array.isArray(currentLockedUids) && currentLockedUids.includes(acc.uid);
         let healthBadge = '';
-        if (acc.status === 'rate_limited') {
+        if (isLockedElsewhere) {
+          healthBadge = '<span class="grid-health-badge grid-health-warn" title="该账号正被另一个项目窗口使用">他窗占用</span>';
+        } else if (acc.status === 'rate_limited') {
           healthBadge = '<span class="grid-health-badge grid-health-warn">429 冷却</span>';
         } else if (acc.status === 'expired') {
           healthBadge = '<span class="grid-health-badge grid-health-warn">已过期</span>';
@@ -2072,8 +2080,9 @@
     window.addEventListener('message', event => {
       const msg = event.data;
       if (msg.command === 'updateState') {
-        const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy } = msg.data;
+        const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy, lockedUids: backendLockedUids } = msg.data;
         currentAccounts = accounts || [];
+        currentLockedUids = Array.isArray(backendLockedUids) ? backendLockedUids : [];
         lastRefreshTs = Date.now();
         if (msg.data && msg.data.settings) {
           currentSettings = msg.data.settings;
@@ -2095,7 +2104,7 @@
         renderCards();
         renderAcctChips();
       } else if (msg.command === 'notify') {
-        showToast(msg.message, msg.level === 'success' ? 'success' : 'error', 3200);
+        showToast(msg.message, msg.level === 'success' ? 'success' : (msg.level === 'warn' ? 'warn' : 'error'), 3200);
       } else if (msg.command === 'taskProgress') {
         if (typeof msg.percent === 'number') {
           taskBatchProgressFill.style.width = msg.percent + '%';

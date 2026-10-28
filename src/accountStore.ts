@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EventEmitter } from 'events';
 import type * as vscode from 'vscode';
+import { PATHS } from './constants';
 
 /**
  * CodeBuddy 账号数据模型
@@ -70,9 +71,8 @@ export interface CodeBuddyAccount {
   notes?: string;
 }
 
-const STORAGE_KEY = 'buddyrelay.accounts.pool';
-const ACTIVE_ACCOUNT_KEY = 'buddyrelay.accounts.active';
-const PRIVACY_MODE_KEY = 'buddyrelay.privacy_mode';
+const STORAGE_KEY = 'buddyrelay.accounts.pool';       // 旧 globalState 迁移源（只读迁移，不再写入）
+const ACTIVE_ACCOUNT_KEY = 'buddyrelay.accounts.active'; // 旧 globalState 迁移源（只读迁移，不再写入）
 
 /**
  * 账号名称脱敏
@@ -103,30 +103,48 @@ export function maskUid(uid: string, privacyMode: boolean = true): string {
 }
 
 /**
- * 账号安全存储中枢
- * 支持 VSCode ExtensionContext.globalState 安全持久化，同时兼备离线本地文件自愈 fallback
+ * 账号安全存储中枢 (多窗口共享版)
+ * 唯一权威：共享号池文件 %APPDATA%/CodeBuddy CN/buddy-relay/pool.json（与宿主指令同区，多窗口天然共享）
+ * - fs.watch 目录监听：任一窗口变更，其余窗口自动重载并广播 change（Kite 同款跨窗口同步）
+ * - 串行写队列：read-modify-write 串行化，杜绝并发丢数据
+ * - 原子写：tmp + rename，Windows EPERM/EBUSY 降级覆写
+ * - globalState 与旧 BuddyRelay/accounts.json 仅作首次启动迁移源，不再写入（防 last-writer-wins 互相覆盖）
  */
 export class AccountStore extends EventEmitter {
   private accounts: Map<string, CodeBuddyAccount> = new Map();
   private activeId: string | null = null;
   private privacyMode: boolean = false;
-  private fallbackFilePath: string;
+  private poolFilePath: string;
+  private legacyFallbackFilePath: string;
   private context?: vscode.ExtensionContext;
+
+  // 串行写队列（前一次失败不阻塞后续任务，错误单独透传给调用方）
+  private _writeQueue: Promise<void> = Promise.resolve();
+  // 本窗口最近一次写入的 updatedAt（外部重载时用于识别并跳过自己写的版本）
+  private _lastWrittenUpdatedAt: number = 0;
+  private _reloadTimer: NodeJS.Timeout | null = null;
+  private fileWatcher: fs.FSWatcher | null = null;
+  private _watchDesired: boolean = false;
 
   constructor(context?: vscode.ExtensionContext, customFallbackPath?: string) {
     super();
     this.context = context;
 
+    // 主存储：共享号池文件
+    this.poolFilePath = PATHS.POOL_FILE;
+    // 旧版独立文件（v0.2 及之前），仅作迁移源
     const defaultDataDir = process.env.APPDATA
       || (process.platform === 'darwin'
         ? path.join(os.homedir(), 'Library', 'Application Support')
         : path.join(os.homedir(), '.config'));
-    const baseDir = customFallbackPath
-      ? path.dirname(customFallbackPath)
-      : path.join(defaultDataDir, 'BuddyRelay');
-    this.fallbackFilePath = customFallbackPath || path.join(baseDir, 'accounts.json');
+    this.legacyFallbackFilePath = customFallbackPath || path.join(defaultDataDir, 'BuddyRelay', 'accounts.json');
+    if (customFallbackPath) {
+      // 测试场景显式指定路径时，以指定路径为主存储
+      this.poolFilePath = customFallbackPath;
+    }
 
     this.load();
+    this.startWatcher();
   }
 
   /**
@@ -137,102 +155,221 @@ export class AccountStore extends EventEmitter {
   }
 
   /**
-   * 设置全局隐私模式状态并通知各订阅方 (状态栏/侧栏/菜单实时同步)
+   * 设置全局隐私模式状态并通知各订阅方 (状态栏/侧栏/菜单实时同步，跨窗口落盘)
    */
   public async setPrivacyMode(enabled: boolean): Promise<void> {
     this.privacyMode = enabled;
-    if (this.context && this.context.globalState) {
-      try {
-        await this.context.globalState.update(PRIVACY_MODE_KEY, enabled);
-      } catch (_) {}
-    }
+    await this.persist();
     this.emit('privacyChange', enabled);
-    this.emit('change', this.getAll());
   }
 
   /**
-   * 从持久化存储载入账号池
+   * 从共享号池文件载入账号池（首次启动时从 globalState/旧文件迁移）
    */
   public load(): void {
     let loaded = false;
 
-    // 优先从 VSCode globalState 载入
-    if (this.context && this.context.globalState) {
+    // 1. 唯一权威：共享号池文件
+    if (fs.existsSync(this.poolFilePath)) {
       try {
-        const stored = this.context.globalState.get<CodeBuddyAccount[]>(STORAGE_KEY);
-        const storedActive = this.context.globalState.get<string>(ACTIVE_ACCOUNT_KEY);
-        this.privacyMode = this.context.globalState.get<boolean>(PRIVACY_MODE_KEY, false);
-        if (Array.isArray(stored)) {
-          this.accounts.clear();
-          for (const acc of stored) {
-            this.accounts.set(acc.id, acc);
-          }
-          this.activeId = storedActive || null;
-          loaded = true;
-        }
-      } catch (err) {
-        // globalState 读取失败时降级
-      }
-    }
-
-    // 降级：从本地文件载入
-    if (!loaded && fs.existsSync(this.fallbackFilePath)) {
-      try {
-        const raw = fs.readFileSync(this.fallbackFilePath, 'utf8');
-        const data = JSON.parse(raw);
+        const data = JSON.parse(fs.readFileSync(this.poolFilePath, 'utf8'));
         if (Array.isArray(data.accounts)) {
           this.accounts.clear();
           for (const acc of data.accounts) {
             this.accounts.set(acc.id, acc);
           }
           this.activeId = data.activeId || null;
+          this.privacyMode = Boolean(data.privacyMode);
+          this._lastWrittenUpdatedAt = data.updatedAt || 0;
           loaded = true;
         }
+      } catch (err: any) {
+        // 读失败 ≠ 空池：损坏文件留证改名，再走迁移源，严禁拿空池覆盖真实数据
+        const backup = `${this.poolFilePath}.corrupt_${Date.now()}`;
+        try { fs.renameSync(this.poolFilePath, backup); } catch (_) {}
+        console.warn(`[AccountStore] 号池文件解析失败，已留证至 ${backup}: ${err.message}`);
+      }
+    }
+
+    // 2. 迁移源 A：globalState（旧版本数据）
+    if (!loaded && this.context && this.context.globalState) {
+      try {
+        const stored = this.context.globalState.get<CodeBuddyAccount[]>(STORAGE_KEY);
+        const storedActive = this.context.globalState.get<string>(ACTIVE_ACCOUNT_KEY);
+        if (Array.isArray(stored) && stored.length > 0) {
+          this.accounts.clear();
+          for (const acc of stored) {
+            this.accounts.set(acc.id, acc);
+          }
+          this.activeId = storedActive || null;
+          loaded = true;
+          console.log(`[AccountStore] 已从 globalState 迁移 ${stored.length} 个账号至共享号池文件`);
+        }
       } catch (err) {
-        // 本地文件解析失败
+        // 迁移源读取失败，继续尝试下一个
+      }
+    }
+
+    // 3. 迁移源 B：旧版独立 accounts.json
+    if (!loaded && fs.existsSync(this.legacyFallbackFilePath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(this.legacyFallbackFilePath, 'utf8'));
+        if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+          this.accounts.clear();
+          for (const acc of data.accounts) {
+            this.accounts.set(acc.id, acc);
+          }
+          this.activeId = data.activeId || null;
+          loaded = true;
+          console.log(`[AccountStore] 已从旧版 accounts.json 迁移 ${data.accounts.length} 个账号至共享号池文件`);
+        }
+      } catch (err) {
+        console.warn('[AccountStore] 旧版 accounts.json 迁移失败:', err);
       }
     }
 
     // 保证至少有一个 activeId 或标记准确
     this.normalizeActiveStatus();
+
+    // 首次迁移（或池文件缺失）时立即落盘共享文件
+    if (loaded) {
+      this.persist().catch(err => {
+        console.warn(`[AccountStore] 初始落盘失败: ${err.message}`);
+      });
+    }
   }
 
   /**
-   * 将账号池保存到持久化存储
+   * 将账号池保存到共享号池文件（唯一权威，跨窗口可见）
    */
   public async persist(): Promise<void> {
-    const list = this.getAll();
+    const payload = {
+      version: '2.0',
+      updatedAt: Date.now(),
+      activeId: this.activeId,
+      privacyMode: this.privacyMode,
+      accounts: this.getAll()
+    };
 
-    // 1. 保存到 globalState
-    if (this.context && this.context.globalState) {
-      try {
-        await this.context.globalState.update(STORAGE_KEY, list);
-        await this.context.globalState.update(ACTIVE_ACCOUNT_KEY, this.activeId);
-      } catch (err) {
-        // 继续落盘本地
-      }
-    }
-
-    // 2. 双保险：原子落盘本地文件
-    try {
-      const dir = path.dirname(this.fallbackFilePath);
+    await this.enqueueWrite(async () => {
+      const dir = path.dirname(this.poolFilePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      const tmpPath = `${this.fallbackFilePath}.tmp_${Date.now()}`;
-      const payload = {
-        version: '1.0',
-        updatedAt: Date.now(),
-        activeId: this.activeId,
-        accounts: list
-      };
-      fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf8');
-      fs.renameSync(tmpPath, this.fallbackFilePath);
-    } catch (err) {
-      // 本地存储异常
-    }
+      const json = JSON.stringify(payload, null, 2);
+      const tmpPath = `${this.poolFilePath}.tmp_${process.pid}_${Date.now()}`;
+      fs.writeFileSync(tmpPath, json, 'utf8');
+      try {
+        fs.renameSync(tmpPath, this.poolFilePath);
+      } catch (_) {
+        // Windows 偶发 EPERM/EBUSY（另一窗口正在读取），降级直接覆写
+        fs.writeFileSync(this.poolFilePath, json, 'utf8');
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      }
+      this._lastWrittenUpdatedAt = payload.updatedAt;
+    });
 
-    this.emit('change', list);
+    this.emit('change', this.getAll());
+  }
+
+  /**
+   * 串行写队列：read-modify-write 串行化，避免并发丢数据
+   * 队列只跟踪完成状态，不吞调用方错误（错误经返回的 Promise 透传）
+   */
+  private async enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
+    const ready = this._writeQueue.then(() => {}, () => {});
+    const next = ready.then(task);
+    this._writeQueue = next.then(() => {}, () => {});
+    return next;
+  }
+
+  /**
+   * 监听共享号池目录：任一窗口写入，本窗口自动重载并广播（跨窗口同步核心）
+   */
+  private startWatcher(): void {
+    if (this.fileWatcher || this._watchDesired) return;
+    this._watchDesired = true;
+    try {
+      const watchDir = path.dirname(this.poolFilePath);
+      fs.mkdirSync(watchDir, { recursive: true });
+      // 监听目录而非文件本身：Windows 上 rename 替换会使文件级 watcher 失效
+      this.fileWatcher = fs.watch(watchDir, (_evt, filename) => {
+        // Windows 上 rename 事件的 filename 可能为 null，此时也视为变化
+        if (!filename || filename === path.basename(this.poolFilePath)) {
+          this.scheduleReload();
+        }
+      });
+      this.fileWatcher.on('error', err => {
+        console.warn('[AccountStore] 号池 watcher 出错，1 秒后重试:', err);
+        try { this.fileWatcher?.close(); } catch { /* ignore */ }
+        this.fileWatcher = null;
+        setTimeout(() => {
+          if (this._watchDesired) {
+            this._watchDesired = false;
+            this.startWatcher();
+          }
+        }, 1000);
+      });
+    } catch (e: any) {
+      console.warn('[AccountStore] 号池 watch 启动失败:', e.message);
+      this._watchDesired = false;
+    }
+  }
+
+  private scheduleReload(): void {
+    if (this._reloadTimer) return;
+    this._reloadTimer = setTimeout(() => {
+      this._reloadTimer = null;
+      this.reloadFromDisk();
+    }, 200);
+  }
+
+  /**
+   * 从磁盘重载共享号池（外部窗口写入时触发；自己写入的版本按 updatedAt 跳过）
+   */
+  private reloadFromDisk(): void {
+    if (!fs.existsSync(this.poolFilePath)) return;
+    try {
+      const data = JSON.parse(fs.readFileSync(this.poolFilePath, 'utf8'));
+      const incomingUpdatedAt = data.updatedAt || 0;
+      if (incomingUpdatedAt === this._lastWrittenUpdatedAt) {
+        return; // 自己刚写的版本，无需重载
+      }
+      if (!Array.isArray(data.accounts)) return;
+
+      const prevPrivacy = this.privacyMode;
+      this.accounts.clear();
+      for (const acc of data.accounts) {
+        this.accounts.set(acc.id, acc);
+      }
+      this.activeId = data.activeId || null;
+      this.privacyMode = Boolean(data.privacyMode);
+      this._lastWrittenUpdatedAt = incomingUpdatedAt;
+      this.normalizeActiveStatus();
+
+      if (prevPrivacy !== this.privacyMode) {
+        this.emit('privacyChange', this.privacyMode);
+      }
+      this.emit('change', this.getAll());
+    } catch (err: any) {
+      // 读失败 = 未知：保留内存现状，等下一次变更重试，严禁当空池清内存
+      console.warn('[AccountStore] 外部号池变更读取失败，保留内存现状:', err.message);
+    }
+  }
+
+  /**
+   * 释放文件监听资源
+   */
+  public dispose(): void {
+    this._watchDesired = false;
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = null;
+    }
+    if (this.fileWatcher) {
+      try { this.fileWatcher.close(); } catch { /* ignore */ }
+      this.fileWatcher = null;
+    }
   }
 
   /**

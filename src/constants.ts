@@ -115,8 +115,14 @@ export const PATHS = {
   // CodeBuddy CN 宿主指令与配置
   CODEBUDDY_APPDATA_DIR: path.join(APPDATA, 'CodeBuddy CN'),
   BYOK_SWITCH_FILE: path.join(APPDATA, 'CodeBuddy CN', 'byok-switch.json'),
+  BYOK_SWITCH_RESULT_FILE: path.join(APPDATA, 'CodeBuddy CN', 'byok-switch-result.json'),
   CODEBUDDY_SESSIONS_DB: path.join(APPDATA, 'CodeBuddy CN', 'codebuddy-sessions.vscdb'),
   CODEBUDDY_STORAGE_JSON: path.join(APPDATA, 'CodeBuddy CN', 'User', 'globalStorage', 'storage.json'),
+
+  // BuddyRelay 跨窗口共享中枢 (号池 / 账号锁，与宿主指令同区天然多窗口共享)
+  RELAY_DIR: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay'),
+  POOL_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'pool.json'),
+  LOCK_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'account-locks.json'),
 
   // 会话物理存储与软链接联结点 (跨账号会话穿透)
   EXTENSION_DATA_DIR: path.join(LOCALAPPDATA, 'CodeBuddyExtension', 'Data'),
@@ -127,12 +133,14 @@ export const PATHS = {
 } as const;
 
 // ============================================================================
-// 3. Patch v4 锚点与补丁特征码 (热切中枢自愈引擎核心)
+// 3. Patch v5 锚点与补丁特征码 (热切中枢自愈引擎核心 · v5 新增切换回执闭环)
 // ============================================================================
 
-export const PATCH_V4 = {
-  VERSION: 'v4',
+export const PATCH_V5 = {
+  VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
+  // v5 特征码：v4 补丁无此标记，用于强制自愈升级
+  V5_MARKER: '/*__BYOK_V5__*/',
 
   // 锚点 1: AM 构造函数注入全局会话实例
   AM_ANCHOR: 'AM=class{constructor(t,e,i){',
@@ -154,9 +162,11 @@ export const PATCH_V4 = {
   ANCHOR_RESTORE: 'async restoreSession(){try{await this.storageService.whenReady;',
   RESTORE_REPLACEMENT: 'async restoreSession(){this.startByokWatcher();try{await this.storageService.whenReady;',
 
-  // 注入的完整 WATCHER_METHODS 源码块
+  // 注入的完整 WATCHER_METHODS 源码块 (v5: 每种切换结局均写回执 byok-switch-result.json)
   WATCHER_METHODS:
+    '/*__BYOK_V5__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
+    '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const f=pm.join(process.env.APPDATA||".","CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now();fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}catch(_){}}' +
     '__ensureJunction(targetUid){' +
     'try{' +
     'const la=process.env.LOCALAPPDATA;if(!la)return;' +
@@ -177,7 +187,7 @@ export const PATCH_V4 = {
     '}' +
     '}catch(e){this.__byokLog("junc err "+e.message)}' +
     '}' +
-    '__byokApplySwitch(s){' +
+    '__byokApplySwitch(s,ts){' +
     'const nextUid=s.account.uid;' +
     'const done=()=>{' +
     'try{this.storageService.store("genie.userId",nextUid,-1,1)}catch(_){}' +
@@ -205,8 +215,8 @@ export const PATCH_V4 = {
     '}catch(e){this.__byokLog("sess sync err "+e.message)}' +
     'this.__byokLog("switched to uid="+nextUid);' +
     '};' +
-    'try{this.storeSession(s).then(done).catch(e=>{this.__byokLog("store fail "+e.message)})}' +
-    'catch(e){this.__byokLog("store err "+e.message)}' +
+    'try{this.storeSession(s).then(()=>{done();this.__byokReceipt({ok:!0,uid:s.account.uid,ts:ts})}).catch(e=>{this.__byokLog("store fail "+e.message);this.__byokReceipt({ok:!1,uid:s.account.uid,ts:ts,err:"store_fail: "+e.message})})}' +
+    'catch(e){this.__byokLog("store err "+e.message);this.__byokReceipt({ok:!1,uid:s.account.uid,ts:ts,err:"store_err: "+e.message})}' +
     '}' +
     'startByokWatcher(){' +
     'if(this.__byokStarted)return;this.__byokStarted=1;' +
@@ -222,13 +232,13 @@ export const PATCH_V4 = {
     'if(err)return;' +
     'fs.unlink(f,()=>{});' +
     'let cmd=null;' +
-    'try{cmd=JSON.parse(txt)}catch(_){this.__byokLog("bad json");return}' +
+    'try{cmd=JSON.parse(txt)}catch(_){this.__byokLog("bad json");this.__byokReceipt({ok:!1,err:"bad_json",ts:0});return}' +
     'const s=cmd&&cmd.session;' +
-    'if(!s||!s.account||!s.auth){this.__byokLog("bad cmd");return}' +
+    'if(!s||!s.account||!s.auth){this.__byokLog("bad cmd");this.__byokReceipt({ok:!1,err:"bad_cmd",ts:cmd?cmd.ts||0:0});return}' +
     'const cur=this.currentSession&&this.currentSession.account?this.currentSession.account.uid:null;' +
     'const next=s.account.uid;' +
-    'if(cur===next){this.__byokLog("same uid skip");return}' +
-    'this.__byokApplySwitch(s);' +
+    'if(cur===next){this.__byokLog("same uid skip");this.__byokReceipt({ok:!0,skipped:!0,uid:next,ts:cmd.ts||0});return}' +
+    'this.__byokApplySwitch(s,cmd.ts||0);' +
     '});' +
     '},2000);' +
     '}catch(e){this.__byokLog("watcher err "+e.message)}' +

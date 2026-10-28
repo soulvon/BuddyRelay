@@ -7,6 +7,7 @@ import { CheckinService } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
 import { OAuthService } from './oauthService';
 import { GrowthTaskService, GrowthTask } from './growthTaskService';
+import { getOtherLockedUids } from './accountLock';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -173,6 +174,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       (sum, acc) => sum + (acc.totalCredits || 0),
       0
     );
+    // 跨窗口占用：其他存活窗口正持有的账号（排除当前活跃号）
+    const activeUid = active?.uid || '';
+    const lockedUids = Array.from(getOtherLockedUids()).filter(u => u !== activeUid);
 
     const cfg = vscode.workspace.getConfiguration('buddyRelay');
     const settings = {
@@ -240,7 +244,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         settings,
         isOperating: this.isOperating,
         operationMessage: this.currentOperationMessage,
-        privacyMode: this.store.getPrivacyMode()
+        privacyMode: this.store.getPrivacyMode(),
+        lockedUids
       }
     });
   }
@@ -259,9 +264,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const res = await this.switcher.switchAccount(target, this.store);
-      if (res.success) {
-        this.sendNotify('success', 
-          `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email}`
+      if (res.success && res.receipt?.verified) {
+        this.sendNotify('success',
+          `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email} (宿主回执确认)`
+        );
+      } else if (res.success) {
+        this.sendNotify('error',
+          `BuddyRelay: 已切换至 ${target.nickname || target.email}，${res.message}`
         );
       } else {
         this.sendNotify('error', `切号异常: ${res.message}`);
@@ -865,7 +874,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * Webview 内 toast 通知（Kite 同款右下角浮层）
    */
-  public sendNotify(level: 'success' | 'error', message: string): void {
+  public sendNotify(level: 'success' | 'error' | 'warn', message: string): void {
     if (!this._view) {
       return;
     }

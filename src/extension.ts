@@ -9,6 +9,7 @@ import { OAuthService } from './oauthService';
 import { StatusBarManager } from './statusBar';
 import { SidebarProvider } from './sidebarProvider';
 import { checkForUpdates } from './updater';
+import { initAccountLock, acquireLock, releaseLock, startHeartbeat, stopHeartbeat } from './accountLock';
 
 let checkinTimer: NodeJS.Timeout | null = null;
 let quotaRefreshTimer: NodeJS.Timeout | null = null;
@@ -21,6 +22,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 1. 初始化核心存储与调度服务
   const store = new AccountStore(context);
+  context.subscriptions.push({ dispose: () => store.dispose() });
   const switcher = new SeamlessSwitcher();
   const oauthService = new OAuthService();
   const checkinService = new CheckinService();
@@ -28,6 +30,27 @@ export async function activate(context: vscode.ExtensionContext) {
   const autoSwitcher = new AutoSwitcher(store, switcher, oauthService);
   autoSwitcherInstance = autoSwitcher;
   const checkinScheduler = new CheckinScheduler(store, checkinService);
+
+  // 1.5 跨窗口账号锁：初始化并为当前活跃账号持锁 (心跳自动续期，退出释放)
+  const windowName = `窗口 ${vscode.env.sessionId.slice(0, 8).toUpperCase()}`;
+  initAccountLock(`${vscode.env.sessionId}:${process.pid}`, windowName);
+  let lastLockedUid: string | null = store.getActive()?.uid || null;
+  if (lastLockedUid) {
+    acquireLock(lastLockedUid);
+  }
+  startHeartbeat();
+  // 活跃账号变更时跟随迁移锁（含本窗口切换与外部窗口切换后的状态重载）
+  store.on('change', () => {
+    const uid = store.getActive()?.uid || null;
+    if (uid !== lastLockedUid) {
+      lastLockedUid = uid;
+      if (uid) {
+        acquireLock(uid);
+      } else {
+        releaseLock();
+      }
+    }
+  });
 
   // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
   statusBarManager = new StatusBarManager(store, switcher);
@@ -389,4 +412,9 @@ export function deactivate() {
     statusBarManager.dispose();
     statusBarManager = null;
   }
+  // 跨窗口账号锁：退出时释放本窗口持有并停止心跳
+  try {
+    releaseLock();
+    stopHeartbeat();
+  } catch (_) {}
 }
