@@ -37,8 +37,12 @@ export class StatusBarManager implements vscode.Disposable {
     // 监听号池状态变化自动更新
     const storeChangeListener = () => this.update();
     this.store.on('change', storeChangeListener);
+    this.store.on('privacyChange', storeChangeListener);
     this.disposables.push({
-      dispose: () => this.store.removeListener('change', storeChangeListener)
+      dispose: () => {
+        this.store.removeListener('change', storeChangeListener);
+        this.store.removeListener('privacyChange', storeChangeListener);
+      }
     });
 
     this.update();
@@ -53,7 +57,7 @@ export class StatusBarManager implements vscode.Disposable {
     const isPrivacy = this.store.getPrivacyMode();
 
     if (!active) {
-      this.statusBarItem.text = '🪙 Buddy: 未登录';
+      this.statusBarItem.text = '$(credit-card) Buddy: 未登录';
       const emptyMd = new vscode.MarkdownString('**BuddyRelay** · 当前未登录\n\n点击立即添加或切换账号');
       emptyMd.supportThemeIcons = true;
       this.statusBarItem.tooltip = emptyMd;
@@ -74,7 +78,7 @@ export class StatusBarManager implements vscode.Disposable {
       this.statusBarItem.text = `$(warning) Buddy: ${name} (429冷却)`;
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
-      this.statusBarItem.text = `🪙 Buddy: ${name} (${creditsText})`;
+      this.statusBarItem.text = `$(credit-card) Buddy: ${name} (${creditsText})`;
       this.statusBarItem.backgroundColor = undefined;
     }
 

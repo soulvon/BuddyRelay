@@ -131,9 +131,9 @@ gate('G17 确认模态框: onDelete 使用 showConfirm 确认', html.includes('a
 gate('G18 Toast 悬浮通知: fixed 定位与浮层层级存在', /\.toast-container\s*\{[^}]*position:\s*fixed !important[^}]*z-index:\s*99999 !important/.test(html));
 gate('G18 Toast 悬浮通知: 卡片阴影与圆角存在', /\.toast\s*\{[^}]*border-radius:\s*var\(--radius-md[^}]*box-shadow:\s*0 4px 18px/.test(html));
 
-// ── G19: 状态栏金币图标与数字无逗号 ──
+// ── G19: 状态栏点数/卡片图标与数字无逗号 ──
 const statusBarTs = fs.readFileSync(path.join(ROOT, 'src', 'statusBar.ts'), 'utf8');
-gate('G19 状态栏: 使用金币图标 🪙', statusBarTs.includes('🪙 Buddy:'));
+gate('G19 状态栏: 使用点数/卡片图标 $(credit-card)', statusBarTs.includes('$(credit-card) Buddy:'));
 gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.includes('toLocaleString'));
 
 // ── G20: README 社区图链与合规门控 ──
@@ -196,6 +196,34 @@ gate('G27 智能导入: 文件选择导入按钮存在', html.includes('id="btnI
 gate('G27 智能导入: 后端支持 importAccountsFile 对话框指令', sidebarProviderTs.includes("case 'importAccountsFile':"));
 gate('G27 智能导入: 后端支持 JWT Payload 智能解码提取元数据', sidebarProviderTs.includes('parseJwtPayload('));
 gate('G27 智能导入: 后端支持已有账号 Token 智能覆盖更新', sidebarProviderTs.includes('existing.accessToken = acc.accessToken') || sidebarProviderTs.includes('existing.lastUsed = Date.now()'));
+
+// ── G28: 零 Emoji 违规扫描门控 ──
+const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/u;
+const filesToAuditForEmoji = [
+  'resources/webview/sidebar.html',
+  'src/statusBar.ts',
+  'src/sidebarProvider.ts',
+  'src/accountStore.ts',
+  'src/extension.ts'
+];
+let emojiFound = false;
+let emojiHitInfo = '';
+for (const rel of filesToAuditForEmoji) {
+  const p = path.join(ROOT, rel);
+  if (fs.existsSync(p)) {
+    const txt = fs.readFileSync(p, 'utf8');
+    const lines = txt.split('\n');
+    for (let li = 0; li < lines.length; li++) {
+      if (emojiRegex.test(lines[li])) {
+        emojiFound = true;
+        emojiHitInfo = `${rel}:${li + 1}: ${lines[li].trim()}`;
+        break;
+      }
+    }
+    if (emojiFound) break;
+  }
+}
+gate('G28 视觉规范: 彻底杜绝 Emoji，100% 采用专业 SVG/Codicon 图标', !emojiFound, emojiHitInfo);
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

@@ -574,7 +574,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       for (let i = 0; i < targets.length; i++) {
         if (this._abortTaskBatch) {
           wasStopped = true;
-          this.sendTaskProgress('⚠️ 用户已中止后续批处理', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          this.sendTaskProgress('用户已中止后续批处理', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
           details.push({
             accountName: targets[i].nickname || targets[i].email,
             status: 'stopped',
@@ -770,7 +770,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       for (let i = 0; i < targets.length; i++) {
         if (this._abortTaskBatch) {
           wasStopped = true;
-          this.sendTaskProgress('⚠️ 用户已中止批量报名', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          this.sendTaskProgress('用户已中止批量报名', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
           details.push({
             accountName: targets[i].nickname || targets[i].email,
             status: 'stopped',
