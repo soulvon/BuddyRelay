@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.5.0', packageJson.version === '0.5.0');
-gate('G21 版本一致性: README 徽标版本对齐 0.5.0', readmeMd.includes('version-0.5.0'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.5.0', readmeMd.includes('buddy-relay-0.5.0.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.5.1', packageJson.version === '0.5.1');
+gate('G21 版本一致性: README 徽标版本对齐 0.5.1', readmeMd.includes('version-0.5.1'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.5.1', readmeMd.includes('buddy-relay-0.5.1.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -277,7 +277,7 @@ gate('G35 开关隐形: .as-switch input 绝对隐形杜绝复选框泄露', htm
 // ── G36: 资产安全出口 (号池备份导出/Token复制/失效号重授) 门控 ──
 gate('G36 资产出口: sidebarProvider 提供 handleExportAccounts (支持 full 与 masked 模式)', sidebarProviderTs.includes('handleExportAccounts(') && sidebarProviderTs.includes("mode: 'full' | 'masked'"));
 gate('G36 资产出口: sidebar.html 提供备份导出模态框与按钮', html.includes('id="btnExportPool"') && html.includes('id="exportModalOverlay"'));
-gate('G36 资产出口: sidebar.html 卡片提供复制 AccessToken 与失效号重新授权操作', html.includes('onCopyToken(') && html.includes('onReauth('));
+gate('G36 资产出口: sidebar.html 卡片提供失效号重新授权操作', html.includes('onReauth('))
 
 // ── G37: 业务标签 (Tags) 与账号备注 (Notes) 门控 ──
 gate('G37 标签备注: AccountStore 支持 updateNotes, updateTags 与 getAllTags', accountStoreTs.includes('updateNotes(') && accountStoreTs.includes('updateTags(') && accountStoreTs.includes('getAllTags('));

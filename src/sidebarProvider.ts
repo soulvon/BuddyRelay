@@ -162,10 +162,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.handleExportAccounts(message.mode);
           break;
 
-        case 'copyToken':
-          await this.handleCopyToken(String(message.accountId));
-          break;
-
         case 'reauthAccount':
           await this.handleReauthAccount(String(message.accountId));
           break;
@@ -1269,19 +1265,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     } catch (e: any) {
       this.sendNotify('error', `导出文件写入失败: ${e.message}`);
     }
-  }
-
-  /**
-   * 复制单个账号的 AccessToken 到剪贴板
-   */
-  public async handleCopyToken(accountId: string): Promise<void> {
-    const acc = this.store.get(accountId);
-    if (!acc || !acc.accessToken) {
-      this.sendNotify('error', '未找到有效 AccessToken');
-      return;
-    }
-    await vscode.env.clipboard.writeText(acc.accessToken);
-    this.sendNotify('success', `已将 [${acc.nickname || acc.email}] AccessToken 复制到剪贴板`);
   }
 
   /**

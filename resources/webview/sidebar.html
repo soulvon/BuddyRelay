@@ -322,6 +322,37 @@
       background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
     }
 
+    /* ── 账号启停状态圆点（替代"已启用/已禁用"文字，克制极简） ── */
+    .status-dot-btn {
+      width: 14px !important;
+      height: 14px !important;
+      min-width: 14px !important;
+      min-height: 14px !important;
+      padding: 0 !important;
+      border-radius: 50% !important;
+      border: 1.5px solid transparent !important;
+      cursor: pointer !important;
+      flex-shrink: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-sizing: border-box !important;
+      transition: all 0.15s !important;
+      background: transparent !important;
+    }
+    .status-dot-btn.is-on {
+      background: var(--gh-green, #3fb950) !important;
+      border-color: color-mix(in srgb, var(--gh-green, #3fb950) 45%, transparent) !important;
+      box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--gh-green, #3fb950) 16%, transparent) !important;
+    }
+    .status-dot-btn.is-off {
+      background: transparent !important;
+      border-color: var(--muted, #8c8c8c) !important;
+    }
+    .status-dot-btn.is-off:hover {
+      border-color: var(--gh-green, #3fb950) !important;
+    }
+
     /* ── 今日算力流水明细条目与统计胶囊徽标 ── */
     .usage-summary-badges {
       display: inline-flex;
@@ -1473,7 +1504,7 @@
               <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">自动更新检测</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <span id="currentVersionTag" class="version-tag-pill">v0.5.0</span>
+              <span id="currentVersionTag" class="version-tag-pill">v0.5.1</span>
               <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">检查更新</button>
             </div>
           </div>
@@ -2472,7 +2503,7 @@
 
         const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : (isDisabled ? '账号已禁用' : '执行每日签到领算力')}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
 
-        const statusToggleBtn = `<button class="status-toggle-btn ${isDisabled ? 'is-disabled' : 'is-enabled'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '点击启用账号' : '点击禁用账号'}">${isDisabled ? '已禁用' : '已启用'}</button>`;
+        const statusToggleBtn = `<button class="status-dot-btn ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '账号已禁用，点击启用' : '账号启用中，点击禁用'}" aria-label="${isDisabled ? '启用账号' : '禁用账号'}"></button>`;
 
         return `
           <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${acc.id}">
@@ -2525,9 +2556,6 @@
               <div class="grid-actions-right">
                 ${statusToggleBtn}
                 ${checkinBtn}
-                <button class="icon-btn" onclick="onCopyToken('${acc.id}')" title="复制 AccessToken 密钥">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
                 <button class="icon-btn" onclick="onEditMeta('${acc.id}')" title="设置业务标签与备注">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
@@ -2578,11 +2606,6 @@
 
     window.onRefresh = function(id) {
       vscode.postMessage({ command: 'refreshStatus' });
-    };
-
-    // ── 复制 Token ──
-    window.onCopyToken = function(id) {
-      vscode.postMessage({ command: 'copyToken', accountId: id });
     };
 
     // ── 原地重新授权 ──
