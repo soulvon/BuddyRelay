@@ -6,7 +6,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-0.4.5-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.4.6-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -39,7 +39,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 
 ### 方式一：扩展面板安装（推荐）
 
-1. 下载最新版 `buddy-relay-0.4.5.vsix`；
+1. 下载最新版 `buddy-relay-0.4.6.vsix`；
 2. 打开 **CodeBuddy CN** 或 **WorkBuddy** 编辑器；
 3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
 4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
@@ -48,7 +48,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 ### 方式二：命令行安装
 
 ```bash
-buddycn --install-extension buddy-relay-0.4.5.vsix --force
+buddycn --install-extension buddy-relay-0.4.6.vsix --force
 ```
 
 ---
@@ -62,7 +62,7 @@ buddycn --install-extension buddy-relay-0.4.5.vsix --force
 > 支持一键隐私脱敏、状态栏金币图标 🪙 实时显示、算力余额精准双包对账与低额度智能告警。
 
 <div align="center">
-  <img src="resources/preview-dashboard.png" width="480" alt="BuddyRelay 账号池与配额仪表盘">
+  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-dashboard.webp" width="480" alt="BuddyRelay 账号池与配额仪表盘">
 </div>
 
 ---
@@ -71,7 +71,7 @@ buddycn --install-extension buddy-relay-0.4.5.vsix --force
 > 支持官方 OAuth 网页/扫码登录、**Cockpit Tools 本地 AES-256-GCM 密文池一键迁移**、本地已登录会话直读与 JSON 批量导入。
 
 <div align="center">
-  <img src="resources/preview-import.png" width="480" alt="BuddyRelay 添加账号模态框">
+  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-import.webp" width="480" alt="BuddyRelay 添加账号模态框">
 </div>
 
 ---
@@ -81,7 +81,7 @@ buddycn --install-extension buddy-relay-0.4.5.vsix --force
 > 任务中心顶部直观展示宠物打工地点、出游倒计时与连签天数；自动双源报名、前置依赖自愈、打工收成与达标奖励自动打捞入袋。
 
 <div align="center">
-  <img src="resources/preview-tasks.png" width="480" alt="BuddyRelay 成长体系自动化与出游看板">
+  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-tasks.webp" width="480" alt="BuddyRelay 成长体系自动化与出游看板">
 </div>
 
 ---
@@ -239,7 +239,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 
 | 💬 QQ 交流群（1075342078） | ☕ 微信赞赏（请作者喝杯咖啡） |
 | :---: | :---: |
-| <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.png" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp" width="180" alt="微信赞赏码"> |
+| <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.webp" width="180" alt="BuddyRelay QQ 交流群二维码"> | <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp" width="180" alt="微信赞赏码"> |
 | 验证信息请注明 "BuddyRelay" | 感谢你的支持与鼓励！ |
 
 </div>

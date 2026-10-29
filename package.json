@@ -1,9 +1,32 @@
 {
   "name": "buddy-relay",
-  "displayName": "BuddyRelay",
-  "description": "CodeBuddy / WorkBuddy（国内版/国际版）多账号管理与无感切号扩展，支持会话保留、额度守护与每日签到。",
-  "version": "0.4.5",
+  "displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
+  "description": "Seamless multi-account manager & hot account switcher for CodeBuddy / WorkBuddy AI IDEs. Switch without restart, keep all sessions, quota guard, auto check-in & tasks, usage audit.",
+  "version": "0.4.6",
   "publisher": "soulvon",
+  "keywords": [
+    "codebuddy",
+    "workbuddy",
+    "multi-account",
+    "account switcher",
+    "account manager",
+    "ai ide",
+    "quota",
+    "check-in",
+    "session",
+    "automation",
+    "多账号",
+    "切号",
+    "签到",
+    "额度"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "galleryBanner": {
+    "color": "#0f766e",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/soulvon/BuddyRelay"

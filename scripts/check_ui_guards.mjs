@@ -139,13 +139,13 @@ gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.
 // ── G20: README 社区图链与合规门控 ──
 const readmeMd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
 gate('G20 README: 彻底去除 Linux.do 宣传', !readmeMd.toLowerCase().includes('linux.do') && !readmeMd.includes('Linux.do'));
-gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.png') && readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp'));
+gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/qq-group-qrcode.webp') && readmeMd.includes('https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/wechat-reward.webp'));
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.4.5', packageJson.version === '0.4.5');
-gate('G21 版本一致性: README 徽标版本对齐 0.4.5', readmeMd.includes('version-0.4.5'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.4.5', readmeMd.includes('buddy-relay-0.4.5.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.4.6', packageJson.version === '0.4.6');
+gate('G21 版本一致性: README 徽标版本对齐 0.4.6', readmeMd.includes('version-0.4.6'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.4.6', readmeMd.includes('buddy-relay-0.4.6.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -174,10 +174,10 @@ gate(
   readmeMd.includes('一键做任务')
 );
 gate(
-  'G24 README 包含实机配图',
-  readmeMd.includes('preview-dashboard.png') &&
-  readmeMd.includes('preview-import.png') &&
-  readmeMd.includes('preview-tasks.png')
+  'G24 README 包含实机配图 (webp 压缩版)',
+  readmeMd.includes('preview-dashboard.webp') &&
+  readmeMd.includes('preview-import.webp') &&
+  readmeMd.includes('preview-tasks.webp')
 );
 
 // ── G25: 账号启用/禁用门控 ──

@@ -32,6 +32,8 @@ Thumbs.db
 
 # 排除非运行时大图与二维码（README 与详情页已走 GitHub Raw 远程链接，绝不硬塞进安装包膨胀体积）
 resources/preview-*.png
+resources/preview-*.webp
 resources/qq-group-qrcode.png
+resources/qq-group-qrcode.webp
 resources/wechat-reward.webp
 
