@@ -831,6 +831,41 @@
                   </div>
                 </div>
               </div>
+
+              <!-- 经营统计与流水对账折叠抽屉（位于“我的账号”总览内，支持默认折叠/展开） -->
+              <details class="list-details" id="usageDetails" style="margin-top: 8px; border-top: 1px dashed var(--card-border); padding-top: 4px;">
+                <summary class="list-summary" style="padding: 4px 2px; cursor: pointer;">
+                  <div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--vscode-foreground);">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
+                      <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    <span>经营统计与流水</span>
+                  </div>
+                  <div style="flex:1"></div>
+                  <div id="usageSummaryBadge" style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);white-space:nowrap;">
+                    <span id="usageAwardedBadge" style="color:var(--ac-emerald, #10b981);">+0 点</span>
+                    <span id="usageConsumedBadge" style="color:var(--gh-red, #ef4444);">-0 点</span>
+                  </div>
+                  <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="width:20px;height:20px;margin-left:4px;" onclick="event.stopPropagation();">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                  </button>
+                </summary>
+                <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
+                  <!-- 号池大盘状态统计 -->
+                  <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
+                    <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个（≥ 80%）</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个（≤ 30%）</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
+                  </div>
+
+                  <!-- 今日流水记录列表 -->
+                  <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">今日流水记录</div>
+                  <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;padding-right:2px;">
+                    <div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </details>
@@ -915,41 +950,6 @@
       <div id="emptyState" class="empty-state" hidden>
         <p style="margin-bottom: 8px;">还没有账号</p>
         <button class="add-account-btn" style="flex:none;display:inline-flex;" onclick="openAddModal()">添加账号</button>
-      </div>
-
-      <!-- 经营统计与算力对账抽屉面板（支持全量折叠，聚合大盘统计与流水明细） -->
-      <div class="card list-card" style="margin-top: 10px;">
-        <details class="list-details" id="usageDetails">
-          <summary class="list-summary" style="padding: 6px 2px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            <h3 style="font-size: 11.5px;font-weight:600;">经营统计与流水对账</h3>
-            <div style="flex:1"></div>
-            <div id="usageSummaryBadge" style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);white-space:nowrap;">
-              <span id="usageAwardedBadge" style="color:var(--ac-emerald, #10b981);">+0 点</span>
-              <span id="usageConsumedBadge" style="color:var(--gh-red, #ef4444);">-0 点</span>
-            </div>
-            <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="width:20px;height:20px;margin-left:4px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-            </button>
-          </summary>
-          <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
-            <!-- 号池大盘状态统计（原顶部图3信息迁移至此，支持一键折叠） -->
-            <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
-              <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
-              <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个（≥ 80%）</span></div>
-              <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个（≤ 30%）</span></div>
-              <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
-            </div>
-
-            <!-- 今日流水记录列表 -->
-            <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">今日流水记录</div>
-            <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;padding-right:2px;">
-              <div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>
-            </div>
-          </div>
-        </details>
       </div>
 
     </div>
