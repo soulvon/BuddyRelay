@@ -167,8 +167,8 @@ export class SeamlessSwitcher {
 
     // 若已经打好补丁且语法自检正常，直接放行
     if (check.isPatched) {
-      const syntaxValid = this.validateSyntax(mainPath);
-      if (syntaxValid) {
+      const syntaxCheck = this.validateSyntax(mainPath);
+      if (syntaxCheck.valid) {
         return {
           success: true,
           mainJsPath: mainPath,
@@ -256,13 +256,13 @@ export class SeamlessSwitcher {
     }
     src = src.replace(PATCH_V5.ANCHOR_RESTORE, PATCH_V5.RESTORE_REPLACEMENT);
 
-    // 4. 原子安全写入
-    const tmpWritePath = `${mainPath}.tmp_${Date.now()}`;
+    // 4. 原子安全写入：文件名必须以 .js 结尾，兼容现代 Node.js ESM/CJS loader 扩展名校验规范
+    const tmpWritePath = `${mainPath}.tmp_${Date.now()}.js`;
     fs.writeFileSync(tmpWritePath, src, 'utf8');
 
     // 5. Node 语法自检
-    const valid = this.validateSyntax(tmpWritePath);
-    if (!valid) {
+    const checkRes = this.validateSyntax(tmpWritePath);
+    if (!checkRes.valid) {
       if (fs.existsSync(tmpWritePath)) {
         fs.unlinkSync(tmpWritePath);
       }
@@ -270,7 +270,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'Patch v5 语法自检失败，已中止写入以防损坏 IDE',
+        message: `Patch v5 语法自检失败: ${checkRes.error || '语法错误'}，已中止写入以防损坏 IDE`,
         error: 'SYNTAX_CHECK_FAILED'
       };
     }
@@ -299,16 +299,35 @@ export class SeamlessSwitcher {
 
   /**
    * 使用 node --check 验证 JS 语法合法性
+   * 优先使用全局 node，无全局 node 时回退至 CodeBuddy 内置 Electron 运行环境
    */
-  public validateSyntax(filePath: string): boolean {
+  public validateSyntax(filePath: string): { valid: boolean; error?: string } {
+    // 1. 尝试全局 node
     try {
       child_process.execSync(`node --check "${filePath}"`, {
         stdio: 'pipe',
         timeout: 5000
       });
-      return true;
-    } catch (err) {
-      return false;
+      return { valid: true };
+    } catch (nodeErr: any) {
+      // 2. 若无系统全局 node 或未加入 PATH，回退使用宿主 process.execPath (设置 ELECTRON_RUN_AS_NODE)
+      const isMissingNode = nodeErr.code === 'ENOENT' ||
+        (nodeErr.message && (nodeErr.message.includes('not recognized') || nodeErr.message.includes('找不到')));
+      if (isMissingNode && process.execPath) {
+        try {
+          child_process.execSync(`"${process.execPath}" --check "${filePath}"`, {
+            stdio: 'pipe',
+            timeout: 5000,
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+          });
+          return { valid: true };
+        } catch (electronErr: any) {
+          const errMsg = electronErr.stderr ? electronErr.stderr.toString().trim() : electronErr.message;
+          return { valid: false, error: errMsg };
+        }
+      }
+      const errMsg = nodeErr.stderr ? nodeErr.stderr.toString().trim() : nodeErr.message;
+      return { valid: false, error: errMsg };
     }
   }
 
