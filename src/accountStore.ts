@@ -179,6 +179,9 @@ export class AccountStore extends EventEmitter {
         if (Array.isArray(data.accounts)) {
           this.accounts.clear();
           for (const acc of data.accounts) {
+            if (acc.notes && (acc.notes.includes('额度见底标记') || acc.notes.includes('探针预检失败'))) {
+              delete acc.notes;
+            }
             this.accounts.set(acc.id, acc);
           }
           this.activeId = data.activeId || null;

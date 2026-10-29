@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
   "description": "CodeBuddy / WorkBuddy（国内版/国际版）多账号管理与无感切号扩展，支持会话保留、额度守护与每日签到。",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "soulvon",
   "repository": {
     "type": "git",

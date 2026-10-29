@@ -796,9 +796,6 @@
             <h3>我的账号</h3>
             <div style="flex:1"></div>
             <span class="grid-count" id="gridCount">0 个</span>
-            <button class="btn-outline" id="btnExportPool" style="font-size:11px;height:24px;padding:0 8px;line-height:22px;margin-right:6px;" title="备份导出号池数据">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              导出</button>
             <button class="add-account-btn" id="btnAddOAuth">添加账号</button>
           </summary>
           <div class="list-body">
@@ -833,12 +830,6 @@
                     <span class="summary-stat-max" id="summaryWeeklyMax">/ 0</span>
                   </div>
                 </div>
-              </div>
-              <div class="summary-status-grid" id="summaryStatusGrid">
-                <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
-                <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个（≥ 80%）</span></div>
-                <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个（≤ 30%）</span></div>
-                <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
               </div>
             </div>
           </div>
@@ -891,6 +882,11 @@
             <path d="M8 16H3v5"/>
           </svg>
         </button>
+        <button class="toolbar-icon-btn" id="btnExportPool" title="备份导出号池数据">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
         <div style="flex:1"></div>
         <button class="btn-outline" id="btnGrowthTasks" title="Buddy 成长任务：报名、完成与领奖">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
@@ -921,14 +917,14 @@
         <button class="add-account-btn" style="flex:none;display:inline-flex;" onclick="openAddModal()">添加账号</button>
       </div>
 
-      <!-- 算力流水对账抽屉面板 -->
+      <!-- 经营统计与算力对账抽屉面板（支持全量折叠，聚合大盘统计与流水明细） -->
       <div class="card list-card" style="margin-top: 10px;">
         <details class="list-details" id="usageDetails">
           <summary class="list-summary" style="padding: 6px 2px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
-              <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
-            <h3 style="font-size: 11.5px;font-weight:600;">今日算力对账流水</h3>
+            <h3 style="font-size: 11.5px;font-weight:600;">经营统计与流水对账</h3>
             <div style="flex:1"></div>
             <div id="usageSummaryBadge" style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);white-space:nowrap;">
               <span id="usageAwardedBadge" style="color:var(--ac-emerald, #10b981);">+0 点</span>
@@ -938,8 +934,18 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
             </button>
           </summary>
-          <div class="list-body" style="padding-top: 6px;">
-            <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;padding-right:2px;">
+          <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
+            <!-- 号池大盘状态统计（原顶部图3信息迁移至此，支持一键折叠） -->
+            <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
+              <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
+              <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个（≥ 80%）</span></div>
+              <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个（≤ 30%）</span></div>
+              <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
+            </div>
+
+            <!-- 今日流水记录列表 -->
+            <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">今日流水记录</div>
+            <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;padding-right:2px;">
               <div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>
             </div>
           </div>
@@ -2375,8 +2381,11 @@
           ? `<div class="grid-card-tags">${acc.tags.map(t => `<span class="grid-card-tag" onclick="event.stopPropagation();onFilterByTag('${escHtml(t)}')">${escHtml(t)}</span>`).join('')}</div>`
           : '';
 
-        const notesHtml = acc.notes
-          ? `<div class="grid-card-notes" onclick="onEditMeta('${acc.id}')" title="点击编辑备注与业务标签">${escHtml(acc.notes)}</div>`
+        const cleanNotes = (acc.notes && !acc.notes.includes('额度见底标记') && !acc.notes.includes('探针预检失败'))
+          ? acc.notes.trim()
+          : '';
+        const notesHtml = cleanNotes
+          ? `<div class="grid-card-notes" onclick="onEditMeta('${acc.id}')" title="点击编辑备注与业务标签">${escHtml(cleanNotes)}</div>`
           : '';
 
         const leftAction = acc.status === 'expired'

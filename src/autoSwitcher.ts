@@ -113,7 +113,7 @@ export class AutoSwitcher extends EventEmitter {
       });
 
       if (res.status === 401 || (res.data && res.data.code === 401)) {
-        await this.store.updateStatus(account.id, 'expired', { notes: '探针预检失败: Token 已过期 (401)' });
+        await this.store.updateStatus(account.id, 'expired');
         return { valid: false, reason: '401 Unauthorized (已标记失效)' };
       }
       if (res.status === 429 || (res.data && res.data.code === 429)) {
@@ -219,9 +219,7 @@ export class AutoSwitcher extends EventEmitter {
     try {
       const current = this.store.get(currentUid);
       if (current) {
-        await this.store.updateStatus(current.id, 'idle', {
-          notes: `[${new Date().toLocaleString()}] 额度见底标记: ${reasonMessage}`
-        });
+        await this.store.updateStatus(current.id, 'idle');
       }
 
       // 2. 候选探针预检（跳过坏号）
