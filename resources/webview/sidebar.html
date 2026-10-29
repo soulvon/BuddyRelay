@@ -231,9 +231,31 @@
       100% { background-position: -200% 0; }
     }
 
-    /* 总量积分数值：中性灰黑，不参与等级配色 */
+    /* 总量积分数值：显眼放大 + 胶囊药丸高亮，突出核心总资产指标 */
     .grid-quota-val.is-neutral {
       color: var(--vscode-foreground, #3b3b3b);
+      font-size: 13.5px !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.2px !important;
+      background: color-mix(in srgb, var(--vscode-foreground) 4.5%, transparent) !important;
+      padding: 1px 7px 2px !important;
+      border-radius: 4px !important;
+      border: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent) !important;
+      display: inline-flex !important;
+      align-items: baseline !important;
+      gap: 2px !important;
+      line-height: 1.2 !important;
+    }
+
+    body.vscode-light .grid-quota-val.is-neutral {
+      background: rgba(0, 0, 0, 0.04) !important;
+      border-color: rgba(0, 0, 0, 0.08) !important;
+    }
+
+    .grid-quota-unit {
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      opacity: 0.72 !important;
     }
 
     /* ── 搜索框美化重构（替换 main.css 的灰底） ── */
@@ -2176,10 +2198,10 @@
             </div>
 
             <div class="grid-card-quotas">
-              <div class="grid-quota-item">
-                <div class="grid-quota-head">
-                  <span>总量积分</span>
-                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal} 点</span>
+              <div class="grid-quota-item" style="margin-bottom: 2px;">
+                <div class="grid-quota-head" style="align-items: center;">
+                  <span style="font-weight: 500; font-size: 11px;">总量积分</span>
+                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal}<span class="grid-quota-unit">点</span></span>
                 </div>
               </div>
 
