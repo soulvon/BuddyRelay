@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
   "description": "CodeBuddy / WorkBuddy（国内版/国际版）多账号管理与无感切号扩展，支持会话保留、额度守护与每日签到。",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "publisher": "soulvon",
   "repository": {
     "type": "git",
@@ -226,10 +226,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs",
+    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs",
+    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "package": "vsce package",
     "guard": "node scripts/check_ui_guards.mjs"
   },

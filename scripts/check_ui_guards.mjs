@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.3.5', packageJson.version === '0.3.5');
-gate('G21 版本一致性: README 徽标版本对齐 0.3.5', readmeMd.includes('version-0.3.5'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.3.5', readmeMd.includes('buddy-relay-0.3.5.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.4.0', packageJson.version === '0.4.0');
+gate('G21 版本一致性: README 徽标版本对齐 0.4.0', readmeMd.includes('version-0.4.0'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.4.0', readmeMd.includes('buddy-relay-0.4.0.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -273,6 +273,33 @@ gate('G34 更新体系: 后端 sidebarProvider 响应 checkUpdate 指令', sideb
 
 // ── G35: 开关隐形防复选框穿透泄露门控 ──
 gate('G35 开关隐形: .as-switch input 绝对隐形杜绝复选框泄露', html.includes('.as-switch input[type="checkbox"]') && html.includes('display: none !important'));
+
+// ── G36: 资产安全出口 (号池备份导出/Token复制/失效号重授) 门控 ──
+gate('G36 资产出口: sidebarProvider 提供 handleExportAccounts (支持 full 与 masked 模式)', sidebarProviderTs.includes('handleExportAccounts(') && sidebarProviderTs.includes("mode: 'full' | 'masked'"));
+gate('G36 资产出口: sidebar.html 提供备份导出模态框与按钮', html.includes('id="btnExportPool"') && html.includes('id="exportModalOverlay"'));
+gate('G36 资产出口: sidebar.html 卡片提供复制 AccessToken 与失效号重新授权操作', html.includes('onCopyToken(') && html.includes('onReauth('));
+
+// ── G37: 业务标签 (Tags) 与账号备注 (Notes) 门控 ──
+gate('G37 标签备注: AccountStore 支持 updateNotes, updateTags 与 getAllTags', accountStoreTs.includes('updateNotes(') && accountStoreTs.includes('updateTags(') && accountStoreTs.includes('getAllTags('));
+gate('G37 标签备注: sidebar.html 卡片展示标签与备注', html.includes('grid-card-tags') && html.includes('grid-card-notes'));
+gate('G37 标签备注: sidebar.html 提供标签与备注编辑模态框', html.includes('id="editMetaModalOverlay"') && html.includes('onEditMeta('));
+gate('G37 标签备注: 顶部标签栏动态合并自定义业务标签并支持筛选', html.includes('getEffectiveTagDefs(') && html.includes("activeTag.startsWith('custom:')"));
+
+// ── G38: 自动切号候选探针预检与频率熔断保护 门控 ──
+gate('G38 调度防线: autoSwitcher 提供候选账号轻量探针预检 (probeAccount)', autoSwitcherTs.includes('probeAccount('));
+gate('G38 调度防线: autoSwitcher 提供智能预检挑选 (findAndVerifyNextAccount)', autoSwitcherTs.includes('findAndVerifyNextAccount('));
+gate('G38 调度防线: autoSwitcher 内置频率熔断器 (checkCircuitBreaker)', autoSwitcherTs.includes('checkCircuitBreaker()') && autoSwitcherTs.includes('breakerTrippedUntil'));
+
+// ── G39: 算力流水对账与调度审计引擎 (UsageTracker) 门控 ──
+const usageTrackerPath = path.join(ROOT, 'src', 'usageTracker.ts');
+const usageTrackerTs = fs.existsSync(usageTrackerPath) ? fs.readFileSync(usageTrackerPath, 'utf8') : '';
+gate('G39 流水引擎: usageTracker.ts 存在且支持 Delta 快照差值对账', usageTrackerTs.includes('recordSnapshot(') && usageTrackerTs.includes('deltaCredits'));
+gate('G39 流水引擎: usageTracker 提供今日经营总账 (getDailySummary) 与流水查询', usageTrackerTs.includes('getDailySummary(') && usageTrackerTs.includes('getRecentRecords('));
+
+// ── G40: 侧栏【今日算力对账流水】抽屉面板与状态推流 门控 ──
+gate('G40 流水面板: sidebar.html 包含今日流水折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"'));
+gate('G40 流水面板: sidebar.html 包含新增与消耗双色汇总徽标', html.includes('id="usageAwardedBadge"') && html.includes('id="usageConsumedBadge"'));
+gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', sidebarProviderTs.includes('usageSummary:') && sidebarProviderTs.includes('recentRecords:'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

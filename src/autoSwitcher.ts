@@ -1,8 +1,10 @@
 import { EventEmitter } from 'events';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
-import { OAuthService } from './oauthService';
+import { OAuthService, httpRequest } from './oauthService';
 import { getOtherLockedUids } from './accountLock';
+import { API_ENDPOINTS } from './constants';
+import { UsageTracker } from './usageTracker';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
@@ -18,6 +20,7 @@ export interface AutoSwitcherOptions {
   strategy?: RotationStrategy;
   defaultCooldownMs?: number; // 429 默认冷却时间 (默认 5 分钟)
   autoRefreshTokens?: boolean;
+  usageTracker?: UsageTracker;
 }
 
 /**
@@ -28,6 +31,7 @@ export class AutoSwitcher extends EventEmitter {
   private store: AccountStore;
   private switcher: SeamlessSwitcher;
   private oauthService: OAuthService;
+  private usageTracker?: UsageTracker;
   private strategy: RotationStrategy;
   private defaultCooldownMs: number;
   private autoRefreshTokens: boolean;
@@ -36,6 +40,10 @@ export class AutoSwitcher extends EventEmitter {
   private isRotating: boolean = false;
   private lastAutoSwitchAt: number = 0;
   private getConfig: (() => { enabled: boolean; thresholdPercent: number; cooldownMinutes: number } | null) | null = null;
+
+  // 熔断保护器状态（60秒内连续切号上限 5 次，超限熔断 2 分钟）
+  private breakerTrippedUntil: number = 0;
+  private switchTimestamps: number[] = [];
 
   constructor(
     store: AccountStore,
@@ -47,46 +55,106 @@ export class AutoSwitcher extends EventEmitter {
     this.store = store;
     this.switcher = switcher || new SeamlessSwitcher();
     this.oauthService = oauthService || new OAuthService();
+    this.usageTracker = options?.usageTracker;
     this.strategy = options?.strategy || 'lru';
     this.defaultCooldownMs = options?.defaultCooldownMs || 5 * 60 * 1000;
     this.autoRefreshTokens = options?.autoRefreshTokens ?? true;
   }
 
   /**
-   * 筛选并获取下一个可用账号
+   * 检查切号频率熔断器
    */
-  public getNextAvailableAccount(currentUid?: string): CodeBuddyAccount | null {
+  public isCircuitBreakerTripped(): boolean {
+    return Date.now() < this.breakerTrippedUntil;
+  }
+
+  /**
+   * 熔断拦截检测并记录本次切号
+   */
+  public checkCircuitBreaker(): void {
+    const now = Date.now();
+    if (now < this.breakerTrippedUntil) {
+      const remainSec = Math.ceil((this.breakerTrippedUntil - now) / 1000);
+      throw new Error(`[AutoSwitcher] 自动切号频率熔断保护中，防止打爆号池 (剩余冷却 ${remainSec} 秒)`);
+    }
+
+    this.switchTimestamps = this.switchTimestamps.filter(t => now - t <= 60_000);
+    if (this.switchTimestamps.length >= 5) {
+      this.breakerTrippedUntil = now + 120_000; // 熔断 2 分钟
+      if (this.usageTracker) {
+        this.usageTracker.recordAction({
+          type: 'warn',
+          accountId: 'system',
+          accountName: '调度中枢',
+          title: '切号频率熔断触发',
+          detail: `60秒内连续切号已达 ${this.switchTimestamps.length} 次，暂停自动切换 2 分钟以防号池连坐`
+        });
+      }
+      this.emit('circuit_breaker', { trippedUntil: this.breakerTrippedUntil, count: this.switchTimestamps.length });
+      throw new Error(`[AutoSwitcher] 触发切号频率熔断器：60秒内切号已达 ${this.switchTimestamps.length} 次，暂停自动切号 2 分钟以保护号池`);
+    }
+
+    this.switchTimestamps.push(now);
+  }
+
+  /**
+   * 候选账号轻量探针预检（Tencent API 连通性与 Token 有效性检查）
+   */
+  public async probeAccount(account: CodeBuddyAccount): Promise<{ valid: boolean; reason?: string }> {
+    const url = `${API_ENDPOINTS.CODEBUDDY_CN_BASE}${API_ENDPOINTS.CHECKIN_ACTIVITY_STATUS}`;
+    try {
+      const res = await httpRequest(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${account.accessToken}`,
+          'X-User-Id': account.uid
+        },
+        timeout: 6000
+      });
+
+      if (res.status === 401 || (res.data && res.data.code === 401)) {
+        await this.store.updateStatus(account.id, 'expired', { notes: '探针预检失败: Token 已过期 (401)' });
+        return { valid: false, reason: '401 Unauthorized (已标记失效)' };
+      }
+      if (res.status === 429 || (res.data && res.data.code === 429)) {
+        await this.store.markRateLimited(account.id, this.defaultCooldownMs);
+        return { valid: false, reason: '429 Rate Limited (已进入冷却)' };
+      }
+      if (res.status === 200 && res.data && res.data.code === 0) {
+        return { valid: true };
+      }
+      return { valid: true, reason: `HTTP ${res.status}` };
+    } catch (err: any) {
+      // 探针网络波动或超时，保守放行避免误伤
+      return { valid: true, reason: 'network_warn' };
+    }
+  }
+
+  /**
+   * 筛选并排序候选账号列表
+   */
+  public getCandidateAccounts(currentUid?: string): CodeBuddyAccount[] {
     const all = this.store.getAll();
     const now = Date.now();
-    // 跨窗口互斥：读取其他存活窗口正持有的账号
     const otherLocked = getOtherLockedUids();
 
-    // 1. 过滤并自愈到期的 rate_limited 账号
     const candidates: CodeBuddyAccount[] = [];
     for (const acc of all) {
-      // 检查 429 冷却是否已到期，到期则恢复
       if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil <= now) {
         acc.status = 'idle';
         delete acc.rateLimitUntil;
         this.store.upsert(acc).catch(() => {});
       }
 
-      // 排除禁用与已失效的账号
       if (acc.status === 'disabled' || acc.status === 'expired') {
         continue;
       }
-
-      // 排除仍在 429 冷却中的账号
       if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil > now) {
         continue;
       }
-
-      // 排除当前正在使用的账号
       if (currentUid && (acc.uid === currentUid || acc.id === currentUid)) {
         continue;
       }
-
-      // 排除被其他存活窗口占用的账号（防止双窗口抢号横跳）
       if (otherLocked.has(acc.uid)) {
         continue;
       }
@@ -94,50 +162,47 @@ export class AutoSwitcher extends EventEmitter {
       candidates.push(acc);
     }
 
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    // 2. 根据调度策略选出最佳账号
     if (this.strategy === 'highest_quota') {
-      // 优先剩余算力占比最高的账号（无配额数据时退回 LRU）
       candidates.sort((a, b) => {
-        const aPct = a.activityPackage
-          ? a.activityPackage.percent
-          : a.totalCredits != null
-          ? -1
-          : -2;
-        const bPct = b.activityPackage
-          ? b.activityPackage.percent
-          : b.totalCredits != null
-          ? -1
-          : -2;
-        if (bPct !== aPct) {
-          return bPct - aPct;
-        }
+        const aPct = a.activityPackage ? a.activityPackage.percent : (a.totalCredits != null ? -1 : -2);
+        const bPct = b.activityPackage ? b.activityPackage.percent : (b.totalCredits != null ? -1 : -2);
+        if (bPct !== aPct) return bPct - aPct;
         return (a.lastUsed || 0) - (b.lastUsed || 0);
       });
-      return candidates[0];
-    } else if (this.strategy === 'round_robin') {
-      // 取第一个
-      return candidates[0];
     } else if (this.strategy === 'health_priority') {
-      // 优先选未被限制过且连续签到天数多的账号
-      candidates.sort((a, b) => {
-        const aStreak = a.checkinStreak || 0;
-        const bStreak = b.checkinStreak || 0;
-        return bStreak - aStreak;
-      });
-      return candidates[0];
-    } else {
-      // 默认 LRU: 选最近最少使用的账号 (lastUsed 最小)
+      candidates.sort((a, b) => (b.checkinStreak || 0) - (a.checkinStreak || 0));
+    } else if (this.strategy === 'lru') {
       candidates.sort((a, b) => (a.lastUsed || 0) - (b.lastUsed || 0));
-      return candidates[0];
     }
+
+    return candidates;
   }
 
   /**
-   * 触发因额度耗尽引起的平滑热切
+   * 筛选并获取下一个可用账号 (同步挑选首个)
+   */
+  public getNextAvailableAccount(currentUid?: string): CodeBuddyAccount | null {
+    const cands = this.getCandidateAccounts(currentUid);
+    return cands.length > 0 ? cands[0] : null;
+  }
+
+  /**
+   * 智能预检筛选：通过轻量探针逐个检验候选账号，找到首个真实可用的健康账号
+   */
+  public async findAndVerifyNextAccount(currentUid?: string): Promise<CodeBuddyAccount | null> {
+    const candidates = this.getCandidateAccounts(currentUid);
+    for (const cand of candidates) {
+      const probe = await this.probeAccount(cand);
+      if (probe.valid) {
+        return cand;
+      }
+      console.log(`[AutoSwitcher][Probe] 候选 ${cand.nickname || cand.email} 未通过预检: ${probe.reason}，顺延下一位`);
+    }
+    return null;
+  }
+
+  /**
+   * 触发因额度耗尽引起的平滑热切（带熔断保护与候选预检）
    */
   public async handleQuotaExhausted(
     currentUid: string,
@@ -146,6 +211,9 @@ export class AutoSwitcher extends EventEmitter {
     if (this.isRotating) {
       throw new Error('[AutoSwitcher] 调度器正在切号中，请勿重复并发调用');
     }
+
+    // 1. 频率熔断检测
+    this.checkCircuitBreaker();
     this.isRotating = true;
 
     try {
@@ -156,13 +224,24 @@ export class AutoSwitcher extends EventEmitter {
         });
       }
 
-      const next = this.getNextAvailableAccount(currentUid);
+      // 2. 候选探针预检（跳过坏号）
+      const next = await this.findAndVerifyNextAccount(currentUid);
       if (!next) {
-        throw new Error('[AutoSwitcher] 号池告急：已无可用的备用就绪账号');
+        throw new Error('[AutoSwitcher] 号池告急：无健康且可用备用账号（其余账号可能已失效或在冷却中）');
       }
 
-      // 执行底层热切
+      // 3. 执行底层热切
       const res = await this.switcher.switchAccount(next, this.store);
+
+      if (res.success && this.usageTracker) {
+        this.usageTracker.recordAction({
+          type: 'switch',
+          accountId: next.id,
+          accountName: next.nickname || next.email,
+          title: '自动切号 (额度见底)',
+          detail: `原账号 ${current?.nickname || currentUid} 额度见底，已平滑热切至 ${next.nickname || next.email}`
+        });
+      }
 
       this.emit('rotation', {
         fromUid: currentUid,
@@ -179,7 +258,7 @@ export class AutoSwitcher extends EventEmitter {
   }
 
   /**
-   * 触发因 429 速率限制引起的自动轮换
+   * 触发因 429 速率限制引起的自动轮换（带熔断保护与候选预检）
    */
   public async handleRateLimit429(
     currentUid: string,
@@ -189,19 +268,34 @@ export class AutoSwitcher extends EventEmitter {
     if (this.isRotating) {
       throw new Error('[AutoSwitcher] 调度器正在切号中，请勿重复并发调用');
     }
+
+    // 1. 频率熔断检测
+    this.checkCircuitBreaker();
     this.isRotating = true;
 
     try {
       const cooldown = cooldownMs || this.defaultCooldownMs;
       await this.store.markRateLimited(currentUid, cooldown);
 
-      const next = this.getNextAvailableAccount(currentUid);
+      // 2. 候选探针预检
+      const next = await this.findAndVerifyNextAccount(currentUid);
       if (!next) {
         throw new Error(`[AutoSwitcher] 当前账号触发 429，且号池无其它就绪账号可供轮换 (冷却 ${cooldown / 1000}秒)`);
       }
 
-      // 执行底层热切
+      // 3. 执行底层热切
       const res = await this.switcher.switchAccount(next, this.store);
+
+      const current = this.store.get(currentUid);
+      if (res.success && this.usageTracker) {
+        this.usageTracker.recordAction({
+          type: 'switch',
+          accountId: next.id,
+          accountName: next.nickname || next.email,
+          title: '自动切号 (429 限流轮换)',
+          detail: `原账号 ${current?.nickname || currentUid} 触发 429，已切换至 ${next.nickname || next.email}`
+        });
+      }
 
       this.emit('rotation', {
         fromUid: currentUid,

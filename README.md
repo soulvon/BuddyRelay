@@ -6,7 +6,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-0.3.5-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -39,7 +39,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 
 ### 方式一：扩展面板安装（推荐）
 
-1. 下载最新版 `buddy-relay-0.3.5.vsix`；
+1. 下载最新版 `buddy-relay-0.4.0.vsix`；
 2. 打开 **CodeBuddy CN** 或 **WorkBuddy** 编辑器；
 3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
 4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
@@ -48,7 +48,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 ### 方式二：命令行安装
 
 ```bash
-buddycn --install-extension buddy-relay-0.3.5.vsix --force
+buddycn --install-extension buddy-relay-0.4.0.vsix --force
 ```
 
 ---
@@ -128,25 +128,35 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 - **跨窗口账号锁**：每个窗口为当前账号持心跳锁，卡片直观标注"他窗占用"，崩溃残留锁自动清理；
 - **自动切号防抢号**：自动轮换候选自动排除其他窗口正持有的账号，杜绝双窗口抢号横跳。
 
-### ⚡ 3. 额度监控与自动守护
+### ⚡ 3. 额度监控与自动守护（探针预检 + 频率熔断）
 - **配额直读对账**：穿透底层计量接口，精准查询基础体验包与活动赠送包的真实可用算力；
-- **见底自动轮换**：当前账号算力低于设定阈值（默认 10%）或触发 429 限流时，自动无感切换至号池中剩余额度最多的健康账号；
-- **智能防抖冷却**：设置 5 分钟冷却窗口与并发保护，杜绝多窗口频繁交叉切换。
+- **候选探针预检**：自动切号前打入轻量健康度探针，自动识别并跳过已失效或在冷却中的账号；
+- **切号频率熔断保护**：60 秒内切号超过 5 次自动触发熔断冷却，防止号池大面积受限时陷入死循环；
+- **智能防抖冷却**：设置自定义冷却窗口与并发保护，杜绝多窗口频繁交叉切换。
 
-### 📥 4. 多渠道账号导入
-- **官方 OAuth 登录**：调起系统默认浏览器进入官方授权页，扫码或确认后自动入库；
-- **Cockpit Tools 导入**：自动解密本机 `%USERPROFILE%\.antigravity_cockpit` 密文账号池，按 UID 去重快速迁移；
-- **JSON 文本导入**：支持直接粘贴账号配置数据一键批量解析。
+### 📥 4. 账号资产出入闭环与分组管理
+- **号池备份与导出**：支持一键导出为标准 JSON 备份，提供「完整凭证模式」与「脱敏安全模式」；
+- **单号凭证提取**：卡片一键复制 AccessToken 密钥，方便外部脚本挂载与凭证流转；
+- **失效号原地重授**：Token 过期账号提供原地唤起浏览器 OAuth 重新授权，凭证原地刷新自愈，无需删号重录；
+- **自定义业务标签 (Tags)**：支持自定义标签（如主力/挂机/出海），顶部标签栏动态提取并支持一键多维筛选；
+- **卡片备注备忘 (Notes)**：支持为每个账号记录独立备注说明，一目了然；
+- **多渠道导入**：官方 OAuth、Cockpit Tools 密文解密导入与 JSON 文本/文件导入。
 
-### 🎁 5. 每日任务自动化（一键签到 · 一键做任务）
+### 📋 5. 算力流水对账与事件审计
+- **快照差值测算 (Delta Snapshot)**：周期对账精准捕获会话与代码补全的真实算力净消耗；
+- **全生命周期审计**：详细记录每日定时签到到账、宠物出游打工到账、手动切号与自动切号事件；
+- **侧栏今日流水面板**：侧栏底部常驻展开收起流水抽屉，今日新增、净消耗与切号明细清晰可视。
+
+### 🎁 6. 每日任务自动化（一键签到 · 一键做任务）
 - **一键签到**：支持每日定点自动签到（带随机抖动与拟人化账号间隔），杜绝断签；
 - **一键做任务**：自动双源任务接单、前置依赖自动自愈、宠物出游打工、连登礼包兑换与达标奖励自动打捞；
 - **状态全景看板**：任务中心顶部直观展示宠物打工地点、出游倒计时、连签进度条与盲盒能量。
 
-### 🔄 6. 自动检查与一键更新
+### 🔄 7. 自动检查与一键更新
 - **GitHub 自动检测**：扩展启动后静默比对 GitHub Releases 最新版本号；
-- **一键下载并重载**：发现新版本时在右下角提醒，点击「立即更新」自动下载 VSIX 并静默安装，提示一键重载生效；
-- **手动检查命令**：随时可在命令面板运行 `BuddyRelay: 检查新版本更新`。
+- **更新日志智能摘要**：弹窗直接展示本次发布的核心更新要点，支持在编辑器内以 Markdown 预览完整更新说明；
+- **多维操作选项**：提供「立即更新」、「查看完整日志」、「仅下载安装包」等灵活操作；
+- **手动检查命令**：设置面板提供常驻版本号展示与「检查更新」快捷按钮。
 
 ---
 

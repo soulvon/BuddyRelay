@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AccountStore, CodeBuddyAccount, QuotaPackageItem } from './accountStore';
+import { AccountStore, CodeBuddyAccount, QuotaPackageItem, maskName, maskUid } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { CheckinService } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
@@ -9,6 +9,7 @@ import { OAuthService } from './oauthService';
 import { GrowthTaskService, GrowthTask } from './growthTaskService';
 import { getOtherLockedUids } from './accountLock';
 import { checkForUpdates, getCurrentVersion } from './updater';
+import { UsageTracker } from './usageTracker';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -20,6 +21,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private importer: CockpitImporter;
   private oauthService: OAuthService;
   private growthTasks: GrowthTaskService;
+  private usageTracker?: UsageTracker;
   private extensionUri: vscode.Uri;
   private isOperating: boolean = false;
   private currentOperationMessage: string = '';
@@ -31,7 +33,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     switcher: SeamlessSwitcher,
     checkinService: CheckinService,
     importer: CockpitImporter,
-    oauthService: OAuthService
+    oauthService: OAuthService,
+    usageTracker?: UsageTracker
   ) {
     this.extensionUri = extensionUri;
     this.store = store;
@@ -39,6 +42,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.checkinService = checkinService;
     this.importer = importer;
     this.oauthService = oauthService;
+    this.usageTracker = usageTracker;
     this.growthTasks = new GrowthTaskService();
 
     // 监听号池状态变化并主动推流给 Webview
@@ -153,6 +157,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'checkUpdate':
           await checkForUpdates(false);
           break;
+
+        case 'exportAccounts':
+          await this.handleExportAccounts(message.mode);
+          break;
+
+        case 'copyToken':
+          await this.handleCopyToken(String(message.accountId));
+          break;
+
+        case 'reauthAccount':
+          await this.handleReauthAccount(String(message.accountId));
+          break;
+
+        case 'updateNotes':
+          await this.handleUpdateNotes(String(message.accountId), String(message.notes || ''));
+          break;
+
+        case 'updateTags':
+          await this.handleUpdateTags(String(message.accountId), Array.isArray(message.tags) ? message.tags : []);
+          break;
+
+        case 'clearUsage':
+          this.usageTracker?.clearRecords();
+          this.sendNotify('success', '今日算力流水记录已清空');
+          this.postStateToWebview();
+          break;
       }
     });
 
@@ -239,7 +269,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             checkinStreak: acc.checkinStreak ?? 0,
             todayCheckedIn: Boolean(acc.todayCheckedIn),
             rateLimitUntil: acc.rateLimitUntil,
-            lastUsed: acc.lastUsed
+            lastUsed: acc.lastUsed,
+            notes: acc.notes || '',
+            tags: Array.isArray(acc.tags) ? acc.tags : []
           };
         }),
         activeId: active?.id || null,
@@ -257,7 +289,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         operationMessage: this.currentOperationMessage,
         privacyMode: this.store.getPrivacyMode(),
         lockedUids,
-        version: getCurrentVersion()
+        version: getCurrentVersion(),
+        allTags: this.store.getAllTags(),
+        usageSummary: this.usageTracker?.getDailySummary(),
+        recentRecords: this.usageTracker?.getRecentRecords(25) || []
       }
     });
   }
@@ -1186,6 +1221,111 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     } finally {
       this.setOperating(false);
     }
+  }
+
+  /**
+   * 号池全量备份导出（支持完整凭证备份与脱敏分享模式）
+   */
+  public async handleExportAccounts(mode: 'full' | 'masked' = 'full'): Promise<void> {
+    const list = this.store.getAll();
+    if (list.length === 0) {
+      this.sendNotify('error', '导出失败：号池为空');
+      return;
+    }
+
+    const isMasked = mode === 'masked';
+    const exportData = list.map(acc => {
+      if (isMasked) {
+        return {
+          id: acc.id,
+          uid: maskUid(acc.uid, true),
+          email: maskName(acc.email, true),
+          nickname: maskName(acc.nickname, true),
+          status: acc.status,
+          totalCredits: acc.totalCredits ?? 0,
+          paymentType: acc.paymentType || 'free',
+          notes: acc.notes,
+          tags: acc.tags
+        };
+      }
+      return acc;
+    });
+
+    const defaultFileName = isMasked
+      ? `buddyrelay-accounts-masked-${new Date().toISOString().slice(0, 10)}.json`
+      : `buddyrelay-accounts-backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+    const uri = await vscode.window.showSaveDialog({
+      filters: { 'JSON Files': ['json'] },
+      defaultUri: vscode.Uri.file(defaultFileName),
+      title: isMasked ? '导出脱敏号池数据' : '导出号池完整凭证备份'
+    });
+
+    if (!uri) return;
+
+    try {
+      fs.writeFileSync(uri.fsPath, JSON.stringify(exportData, null, 2), 'utf8');
+      this.sendNotify('success', `号池已成功导出 (${isMasked ? '脱敏模式' : '完整备份'}): ${path.basename(uri.fsPath)}`);
+    } catch (e: any) {
+      this.sendNotify('error', `导出文件写入失败: ${e.message}`);
+    }
+  }
+
+  /**
+   * 复制单个账号的 AccessToken 到剪贴板
+   */
+  public async handleCopyToken(accountId: string): Promise<void> {
+    const acc = this.store.get(accountId);
+    if (!acc || !acc.accessToken) {
+      this.sendNotify('error', '未找到有效 AccessToken');
+      return;
+    }
+    await vscode.env.clipboard.writeText(acc.accessToken);
+    this.sendNotify('success', `已将 [${acc.nickname || acc.email}] AccessToken 复制到剪贴板`);
+  }
+
+  /**
+   * 失效账号原地重新唤起浏览器 OAuth 授权更新
+   */
+  public async handleReauthAccount(accountId: string): Promise<void> {
+    const target = this.store.get(accountId);
+    if (!target) {
+      this.sendNotify('error', '账号不存在');
+      return;
+    }
+
+    this.setOperating(true, `正在为 [${target.nickname || target.email}] 调起浏览器重新登录授权...`);
+    try {
+      const refreshed = await this.oauthService.loginAndSave(this.store, {
+        onAuthUrl: (url) => {
+          vscode.env.openExternal(vscode.Uri.parse(url));
+          this.sendNotify('success', '已调起浏览器授权页，请在浏览器中扫码或登录...');
+        }
+      });
+      this.sendNotify('success', `账号 [${refreshed.nickname || refreshed.email}] 原地重新授权成功，凭证已刷新！`);
+    } catch (err: any) {
+      this.sendNotify('error', `重新授权失败: ${err.message}`);
+    } finally {
+      this.setOperating(false);
+    }
+  }
+
+  /**
+   * 更新单个账号的备注信息 (Notes)
+   */
+  public async handleUpdateNotes(accountId: string, notes: string): Promise<void> {
+    await this.store.updateNotes(accountId, notes);
+    this.sendNotify('success', '账号备注已保存');
+    this.postStateToWebview();
+  }
+
+  /**
+   * 更新单个账号的自定义业务标签 (Tags)
+   */
+  public async handleUpdateTags(accountId: string, tags: string[]): Promise<void> {
+    await this.store.updateTags(accountId, tags);
+    this.sendNotify('success', '业务标签已更新');
+    this.postStateToWebview();
   }
 
   /**

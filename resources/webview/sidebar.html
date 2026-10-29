@@ -258,6 +258,83 @@
       opacity: 0.72 !important;
     }
 
+    /* ── 业务标签与备注样式 ── */
+    .grid-card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 2px;
+    }
+    .grid-card-tag {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: color-mix(in srgb, var(--ac-blue, #3b82f6) 12%, transparent);
+      color: var(--ac-blue, #3b82f6);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .grid-card-tag:hover {
+      background: color-mix(in srgb, var(--ac-blue, #3b82f6) 22%, transparent);
+    }
+    .grid-card-notes {
+      font-size: 10.5px;
+      color: var(--muted);
+      line-height: 1.35;
+      padding: 3px 6px;
+      background: color-mix(in srgb, var(--vscode-foreground) 3.5%, transparent);
+      border-radius: 3px;
+      border-left: 2px solid var(--ac-emerald, #10b981);
+      cursor: pointer;
+      margin-top: 3px;
+      word-break: break-all;
+    }
+    .grid-card-notes:hover {
+      background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+    }
+
+    /* ── 今日算力流水明细条目 ── */
+    .usage-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: var(--subtle-bg);
+      border: 1px solid var(--card-border);
+    }
+    .usage-item-time {
+      font-family: var(--font-mono, monospace);
+      color: var(--muted);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .usage-item-name {
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      max-width: 68px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .usage-item-title {
+      flex: 1;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .usage-item-delta {
+      font-family: var(--font-mono, monospace);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .usage-item-delta.is-plus { color: var(--ac-emerald, #10b981); }
+    .usage-item-delta.is-minus { color: var(--gh-red, #ef4444); }
+    .usage-item-delta.is-info { color: var(--ac-blue, #3b82f6); }
+
     /* ── 搜索框美化重构（替换 main.css 的灰底） ── */
     body.vscode-light .search-bar {
       background: #ffffff !important;
@@ -321,6 +398,8 @@
     #addAccountOverlay[hidden],
     #confirmOverlay[hidden],
     #settingsModalOverlay[hidden],
+    #exportModalOverlay[hidden],
+    #editMetaModalOverlay[hidden],
     .modal-overlay[hidden] {
       display: none !important;
     }
@@ -717,6 +796,9 @@
             <h3>我的账号</h3>
             <div style="flex:1"></div>
             <span class="grid-count" id="gridCount">0 个</span>
+            <button class="btn-outline" id="btnExportPool" style="font-size:11px;height:24px;padding:0 8px;line-height:22px;margin-right:6px;" title="备份导出号池数据">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              导出</button>
             <button class="add-account-btn" id="btnAddOAuth">添加账号</button>
           </summary>
           <div class="list-body">
@@ -837,6 +919,31 @@
       <div id="emptyState" class="empty-state" hidden>
         <p style="margin-bottom: 8px;">还没有账号</p>
         <button class="add-account-btn" style="flex:none;display:inline-flex;" onclick="openAddModal()">添加账号</button>
+      </div>
+
+      <!-- 算力流水对账抽屉面板 -->
+      <div class="card list-card" style="margin-top: 10px;">
+        <details class="list-details" id="usageDetails">
+          <summary class="list-summary" style="padding: 6px 2px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
+              <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
+            </svg>
+            <h3 style="font-size: 11.5px;font-weight:600;">今日算力对账流水</h3>
+            <div style="flex:1"></div>
+            <div id="usageSummaryBadge" style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);white-space:nowrap;">
+              <span id="usageAwardedBadge" style="color:var(--ac-emerald, #10b981);">+0 点</span>
+              <span id="usageConsumedBadge" style="color:var(--gh-red, #ef4444);">-0 点</span>
+            </div>
+            <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="width:20px;height:20px;margin-left:4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            </button>
+          </summary>
+          <div class="list-body" style="padding-top: 6px;">
+            <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;padding-right:2px;">
+              <div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>
+            </div>
+          </div>
+        </details>
       </div>
 
     </div>
@@ -1088,6 +1195,57 @@
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="modal-cancel-btn" id="confirmCancel" style="padding:4px 14px;font-size:11px;">取消</button>
           <button class="primary" id="confirmOk" style="min-width:70px;padding:4px 14px;font-size:11px;">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出号池选择模态框 -->
+  <div id="exportModalOverlay" class="modal-overlay" hidden>
+    <div class="modal-box" style="width:min(380px,92vw);">
+      <div class="modal-header">
+        <h3>备份导出号池</h3>
+        <button class="modal-close" id="exportModalClose" title="关闭">×</button>
+      </div>
+      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:11px;color:var(--muted);line-height:1.5;">请选择需要导出的数据格式与安全级别：</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="card auto-switch-card" id="btnExportFull" style="cursor:pointer;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);">
+            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">完整凭证备份 (.json)</div>
+            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">包含完整 AccessToken 与 RefreshToken，可直接用于换机恢复或批量导入。</div>
+          </div>
+          <div class="card auto-switch-card" id="btnExportMasked" style="cursor:pointer;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);">
+            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">脱敏安全概览 (.json)</div>
+            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">剥离密钥令牌，隐藏手机号与UID中间位，适合对外公示或多环境对账。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑标签与备注模态框 -->
+  <div id="editMetaModalOverlay" class="modal-overlay" hidden>
+    <div class="modal-box" style="width:min(400px,92vw);">
+      <div class="modal-header">
+        <h3>编辑业务标签与备注</h3>
+        <button class="modal-close" id="editMetaClose" title="关闭">×</button>
+      </div>
+      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">目标账号</div>
+          <div id="editMetaAccountName" style="font-size:12px;color:var(--vscode-foreground);font-weight:600;"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">自定义业务标签 (以空格分隔多个)</div>
+          <input type="text" id="editMetaTags" class="search-input" style="width:100%;box-sizing:border-box;height:28px;padding:4px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);" placeholder="例如: 主力 挂机 出海A">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">备注说明</div>
+          <textarea id="editMetaNotes" style="width:100%;box-sizing:border-box;height:60px;padding:6px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);color:var(--vscode-foreground);font-family:inherit;resize:none;" placeholder="添加备注，如到期日、绑卡信息或特殊用途..."></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+          <button class="modal-cancel-btn" id="editMetaCancel" style="padding:4px 14px;font-size:11px;">取消</button>
+          <button class="primary" id="editMetaSave" style="min-width:70px;padding:4px 14px;font-size:11px;">保存</button>
         </div>
       </div>
     </div>
@@ -1954,27 +2112,58 @@
       renderCards();
     });
 
-    // ── 标签筛选 ──
-    const TAG_DEFS = [
+    // ── 标签筛选（支持系统状态标签 + 用户自定义业务标签 Tags 动态提取） ──
+    const SYSTEM_TAG_DEFS = [
       { key: 'all',       label: '全部' },
       { key: 'checked',   label: '已签' },
       { key: 'unchecked', label: '未签' },
       { key: 'low',       label: '低额度' }
     ];
 
+    function getEffectiveTagDefs() {
+      const defs = [...SYSTEM_TAG_DEFS];
+      const customSet = new Set();
+      currentAccounts.forEach(a => {
+        if (Array.isArray(a.tags)) {
+          a.tags.forEach(t => {
+            const clean = String(t).trim();
+            if (clean) customSet.add(clean);
+          });
+        }
+      });
+      Array.from(customSet).sort().forEach(t => {
+        defs.push({ key: 'custom:' + t, label: t, isCustom: true });
+      });
+      return defs;
+    }
+
     function getTagCounts() {
       const total = currentAccounts.length;
       const checked = currentAccounts.filter(a => a.todayCheckedIn).length;
       const low = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent <= 30).length;
-      return { all: total, checked, unchecked: total - checked, low };
+      const counts = { all: total, checked, unchecked: total - checked, low };
+      const customSet = new Set();
+      currentAccounts.forEach(a => {
+        if (Array.isArray(a.tags)) {
+          a.tags.forEach(t => {
+            const clean = String(t).trim();
+            if (clean) customSet.add(clean);
+          });
+        }
+      });
+      customSet.forEach(t => {
+        counts['custom:' + t] = currentAccounts.filter(a => Array.isArray(a.tags) && a.tags.includes(t)).length;
+      });
+      return counts;
     }
 
     function renderTagBar() {
       const counts = getTagCounts();
+      const defs = getEffectiveTagDefs();
       tagList.innerHTML = '';
-      TAG_DEFS.forEach(def => {
+      defs.forEach(def => {
         const chip = document.createElement('span');
-        chip.className = 'tag-chip' + (activeTag === def.key ? ' is-active' : '');
+        chip.className = 'tag-chip' + (activeTag === def.key ? ' is-active' : '') + (def.isCustom ? ' is-custom' : '');
         chip.textContent = def.label + '(' + (counts[def.key] || 0) + ')';
         chip.onclick = () => {
           activeTag = def.key;
@@ -1986,7 +2175,7 @@
         };
         tagList.appendChild(chip);
       });
-      const def = TAG_DEFS.find(d => d.key === activeTag) || TAG_DEFS[0];
+      const def = defs.find(d => d.key === activeTag) || defs[0];
       filterLabel.textContent = def.key === 'all' ? 'ALL' : def.label;
       filterCount.textContent = '(' + (counts[activeTag] || 0) + ')';
       if (filterDropdown && !filterDropdown.hidden) {
@@ -2001,9 +2190,10 @@
 
     function renderFilterDropdown() {
       const counts = getTagCounts();
+      const defs = getEffectiveTagDefs();
       const el = document.getElementById('filterOptions');
       el.innerHTML = '';
-      TAG_DEFS.forEach(def => {
+      defs.forEach(def => {
         const opt = document.createElement('div');
         opt.className = 'filter-option';
         const active = activeTag === def.key;
@@ -2132,6 +2322,10 @@
       if (activeTag === 'checked') list = list.filter(a => a.todayCheckedIn);
       else if (activeTag === 'unchecked') list = list.filter(a => !a.todayCheckedIn);
       else if (activeTag === 'low') list = list.filter(a => a.activityPackage && a.activityPackage.percent <= 30);
+      else if (activeTag.startsWith('custom:')) {
+        const tag = activeTag.slice(7);
+        list = list.filter(a => Array.isArray(a.tags) && a.tags.includes(tag));
+      }
 
       if (!currentAccounts || currentAccounts.length === 0) {
         accountGrid.innerHTML = '';
@@ -2177,9 +2371,19 @@
           healthBadge = '<span class="grid-disabled-tag">已禁用</span>';
         }
 
-        const leftAction = isActive
-          ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> 使用中</span>'
-          : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${isDisabled ? '账号已禁用，无法切换' : '切换至该账号'}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`;
+        const tagsHtml = (acc.tags && acc.tags.length > 0)
+          ? `<div class="grid-card-tags">${acc.tags.map(t => `<span class="grid-card-tag" onclick="event.stopPropagation();onFilterByTag('${escHtml(t)}')">${escHtml(t)}</span>`).join('')}</div>`
+          : '';
+
+        const notesHtml = acc.notes
+          ? `<div class="grid-card-notes" onclick="onEditMeta('${acc.id}')" title="点击编辑备注与业务标签">${escHtml(acc.notes)}</div>`
+          : '';
+
+        const leftAction = acc.status === 'expired'
+          ? `<button class="grid-switch-btn" style="background:var(--gh-orange, #d97706)!important;" onclick="onReauth('${acc.id}')" title="Token已过期，点击调起浏览器重新登录授权">重新授权</button>`
+          : (isActive
+              ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> 使用中</span>'
+              : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${isDisabled ? '账号已禁用，无法切换' : '切换至该账号'}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`);
 
         const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : (isDisabled ? '账号已禁用' : '执行每日签到领算力')}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
 
@@ -2195,7 +2399,9 @@
             <div class="grid-card-meta">
               <span class="grid-plan-chip tier-free">${planLabel}</span>
               ${healthBadge}
+              ${tagsHtml}
             </div>
+            ${notesHtml}
 
             <div class="grid-card-quotas">
               <div class="grid-quota-item" style="margin-bottom: 2px;">
@@ -2234,6 +2440,12 @@
               <div class="grid-actions-right">
                 ${statusToggleBtn}
                 ${checkinBtn}
+                <button class="icon-btn" onclick="onCopyToken('${acc.id}')" title="复制 AccessToken 密钥">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button class="icon-btn" onclick="onEditMeta('${acc.id}')" title="设置业务标签与备注">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
                 <button class="icon-btn" onclick="onRefresh('${acc.id}')" title="刷新该账号配额">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                 </button>
@@ -2283,6 +2495,137 @@
       vscode.postMessage({ command: 'refreshStatus' });
     };
 
+    // ── 复制 Token ──
+    window.onCopyToken = function(id) {
+      vscode.postMessage({ command: 'copyToken', accountId: id });
+    };
+
+    // ── 原地重新授权 ──
+    window.onReauth = function(id) {
+      vscode.postMessage({ command: 'reauthAccount', accountId: id });
+    };
+
+    // ── 点击标签筛选 ──
+    window.onFilterByTag = function(tag) {
+      activeTag = 'custom:' + tag;
+      renderTagBar();
+      renderCards();
+    };
+
+    // ── 渲染今日算力对账流水 ──
+    function renderUsageRecords(records, summary) {
+      const container = document.getElementById('usageRecordsList');
+      const awardedBadge = document.getElementById('usageAwardedBadge');
+      const consumedBadge = document.getElementById('usageConsumedBadge');
+      if (summary) {
+        if (awardedBadge) awardedBadge.textContent = '+' + fmtNum(summary.totalAwarded || 0) + ' 点';
+        if (consumedBadge) consumedBadge.textContent = '-' + fmtNum(summary.totalConsumed || 0) + ' 点';
+      }
+      if (!container) return;
+      if (!Array.isArray(records) || records.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>';
+        return;
+      }
+      container.innerHTML = records.map(r => {
+        const deltaClass = r.type === 'consume' ? 'is-minus' : (r.type === 'reward' ? 'is-plus' : 'is-info');
+        const deltaText = r.deltaCredits ? (r.deltaCredits > 0 ? '+' + r.deltaCredits : String(r.deltaCredits)) : '';
+        return '<div class="usage-item" title="' + escHtml(r.detail || '') + '">'
+          + '<span class="usage-item-time">' + escHtml(r.timeStr) + '</span>'
+          + '<span class="usage-item-name" title="' + escHtml(r.accountName) + '">' + escHtml(r.accountName) + '</span>'
+          + '<span class="usage-item-title">' + escHtml(r.title) + '</span>'
+          + (deltaText ? '<span class="usage-item-delta ' + deltaClass + '">' + deltaText + '</span>' : '')
+          + '</div>';
+      }).join('');
+    }
+
+    // ── 导出号池模态框 ──
+    const btnExportPool = document.getElementById('btnExportPool');
+    const exportModalOverlay = document.getElementById('exportModalOverlay');
+    const exportModalClose = document.getElementById('exportModalClose');
+    const btnExportFull = document.getElementById('btnExportFull');
+    const btnExportMasked = document.getElementById('btnExportMasked');
+
+    if (btnExportPool) {
+      btnExportPool.addEventListener('click', () => {
+        exportModalOverlay.hidden = false;
+      });
+    }
+    if (exportModalClose) {
+      exportModalClose.addEventListener('click', () => {
+        exportModalOverlay.hidden = true;
+      });
+    }
+    if (btnExportFull) {
+      btnExportFull.addEventListener('click', () => {
+        exportModalOverlay.hidden = true;
+        vscode.postMessage({ command: 'exportAccounts', mode: 'full' });
+      });
+    }
+    if (btnExportMasked) {
+      btnExportMasked.addEventListener('click', () => {
+        exportModalOverlay.hidden = true;
+        vscode.postMessage({ command: 'exportAccounts', mode: 'masked' });
+      });
+    }
+    if (exportModalOverlay) {
+      exportModalOverlay.addEventListener('click', e => {
+        if (e.target === exportModalOverlay) exportModalOverlay.hidden = true;
+      });
+    }
+
+    // ── 编辑标签与备注模态框 ──
+    let editingAccountId = '';
+    const editMetaModalOverlay = document.getElementById('editMetaModalOverlay');
+    const editMetaClose = document.getElementById('editMetaClose');
+    const editMetaCancel = document.getElementById('editMetaCancel');
+    const editMetaSave = document.getElementById('editMetaSave');
+    const editMetaAccountName = document.getElementById('editMetaAccountName');
+    const editMetaTags = document.getElementById('editMetaTags');
+    const editMetaNotes = document.getElementById('editMetaNotes');
+
+    window.onEditMeta = function(id) {
+      editingAccountId = id;
+      const acc = currentAccounts.find(a => a.id === id);
+      if (!acc) return;
+      editMetaAccountName.textContent = acc.nickname || acc.email;
+      editMetaTags.value = Array.isArray(acc.tags) ? acc.tags.join(' ') : '';
+      editMetaNotes.value = acc.notes || '';
+      editMetaModalOverlay.hidden = false;
+    };
+
+    if (editMetaClose) {
+      editMetaClose.addEventListener('click', () => { editMetaModalOverlay.hidden = true; });
+    }
+    if (editMetaCancel) {
+      editMetaCancel.addEventListener('click', () => { editMetaModalOverlay.hidden = true; });
+    }
+    if (editMetaModalOverlay) {
+      editMetaModalOverlay.addEventListener('click', e => {
+        if (e.target === editMetaModalOverlay) editMetaModalOverlay.hidden = true;
+      });
+    }
+    if (editMetaSave) {
+      editMetaSave.addEventListener('click', () => {
+        if (!editingAccountId) return;
+        const notes = editMetaNotes.value.trim();
+        const tags = editMetaTags.value.trim().split(/\s+/).filter(Boolean);
+        vscode.postMessage({ command: 'updateNotes', accountId: editingAccountId, notes });
+        vscode.postMessage({ command: 'updateTags', accountId: editingAccountId, tags });
+        editMetaModalOverlay.hidden = true;
+      });
+    }
+
+    // ── 清空流水 ──
+    const btnClearUsage = document.getElementById('btnClearUsage');
+    if (btnClearUsage) {
+      btnClearUsage.addEventListener('click', async () => {
+        const ok = await showConfirm('确定要清空今日的算力流水记录吗？', '清空对账流水', '确定清空', true);
+        if (ok) {
+          vscode.postMessage({ command: 'clearUsage' });
+        }
+      });
+    }
+
     window.addEventListener('message', event => {
       const msg = event.data;
       if (msg.command === 'updateState') {
@@ -2318,6 +2661,9 @@
         renderSummary();
         renderCards();
         renderAcctChips();
+        if (msg.data) {
+          renderUsageRecords(msg.data.recentRecords, msg.data.usageSummary);
+        }
       } else if (msg.command === 'notify') {
         if (switchingId) {
           switchingId = '';

@@ -69,6 +69,8 @@ export interface CodeBuddyAccount {
   rateLimitUntil?: number;
   /** 备注说明 */
   notes?: string;
+  /** 自定义业务标签集合 (如 主力, 挂机, 出海A) */
+  tags?: string[];
 }
 
 const STORAGE_KEY = 'buddyrelay.accounts.pool';       // 旧 globalState 迁移源（只读迁移，不再写入）
@@ -605,6 +607,44 @@ export class AccountStore extends EventEmitter {
       delete acc.rateLimitUntil;
       await this.persist();
     }
+  }
+
+  /**
+   * 更新账号备注信息
+   */
+  public async updateNotes(idOrUid: string, notes: string): Promise<void> {
+    const acc = this.get(idOrUid);
+    if (!acc) return;
+    acc.notes = notes ? notes.trim() : undefined;
+    await this.persist();
+  }
+
+  /**
+   * 更新账号标签集合
+   */
+  public async updateTags(idOrUid: string, tags: string[]): Promise<void> {
+    const acc = this.get(idOrUid);
+    if (!acc) return;
+    const clean = Array.isArray(tags)
+      ? tags.map(t => String(t).trim()).filter(Boolean)
+      : [];
+    acc.tags = Array.from(new Set(clean));
+    await this.persist();
+  }
+
+  /**
+   * 获取号池中所有已使用的自定义标签列表
+   */
+  public getAllTags(): string[] {
+    const set = new Set<string>();
+    for (const acc of this.accounts.values()) {
+      if (Array.isArray(acc.tags)) {
+        for (const t of acc.tags) {
+          if (t) set.add(t);
+        }
+      }
+    }
+    return Array.from(set).sort();
   }
 
   /**

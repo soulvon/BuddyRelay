@@ -10,12 +10,14 @@ import { StatusBarManager } from './statusBar';
 import { SidebarProvider } from './sidebarProvider';
 import { checkForUpdates } from './updater';
 import { initAccountLock, acquireLock, releaseLock, startHeartbeat, stopHeartbeat } from './accountLock';
+import { UsageTracker } from './usageTracker';
 
 let checkinTimer: NodeJS.Timeout | null = null;
 let quotaRefreshTimer: NodeJS.Timeout | null = null;
 let checkinScheduler: CheckinScheduler | null = null;
 let statusBarManager: StatusBarManager | null = null;
 let autoSwitcherInstance: AutoSwitcher | null = null;
+let usageTrackerInstance: UsageTracker | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[BuddyRelay] 正在启动会话保护与交互体系...');
@@ -27,7 +29,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const oauthService = new OAuthService();
   const checkinService = new CheckinService();
   const importer = new CockpitImporter();
-  const autoSwitcher = new AutoSwitcher(store, switcher, oauthService);
+  const usageTracker = new UsageTracker();
+  usageTrackerInstance = usageTracker;
+  const autoSwitcher = new AutoSwitcher(store, switcher, oauthService, { usageTracker });
   autoSwitcherInstance = autoSwitcher;
   const checkinScheduler = new CheckinScheduler(store, checkinService);
 
@@ -66,7 +70,8 @@ export async function activate(context: vscode.ExtensionContext) {
     switcher,
     checkinService,
     importer,
-    oauthService
+    oauthService,
+    usageTracker
   );
 
   // 注册 Webview 视图提供者
@@ -262,7 +267,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   // 7. 定时任务：定点自动签到 + 额度守卫自动切换 + 配额刷新
-  setupScheduledTasks(store, checkinService, autoSwitcher, checkinScheduler, sidebarProvider);
+  setupScheduledTasks(store, checkinService, autoSwitcher, checkinScheduler, sidebarProvider, usageTracker);
 
   console.log('[BuddyRelay] 界面与调度体系已就绪');
 }
@@ -275,7 +280,8 @@ function setupScheduledTasks(
   checkinService: CheckinService,
   autoSwitcher: AutoSwitcher,
   checkinScheduler: CheckinScheduler,
-  sidebarProvider: SidebarProvider
+  sidebarProvider: SidebarProvider,
+  usageTracker?: UsageTracker
 ): void {
   const config = vscode.workspace.getConfiguration('buddyRelay');
 
@@ -285,6 +291,16 @@ function setupScheduledTasks(
       'success',
       `BuddyRelay: 定时自动签到完成 ${success}/${total}，共新领 ${awarded} 点算力`
     );
+    if (awarded > 0 && usageTracker) {
+      usageTracker.recordAction({
+        type: 'reward',
+        accountId: 'batch',
+        accountName: '全员账号',
+        deltaCredits: awarded,
+        title: '每日定时自动签到',
+        detail: `定点签到完成 ${success}/${total} 个账号，新领 ${awarded} 点算力`
+      });
+    }
     statusBarManager?.update();
     sidebarProvider.postStateToWebview();
     // 签到完成后顺手跑一轮成长任务（报名+领奖），配置可关
@@ -348,6 +364,10 @@ function setupScheduledTasks(
       const active = store.getActive();
       if (active) {
         await checkinService.syncAccountStatus(active, store);
+        const refreshed = store.get(active.id);
+        if (refreshed && refreshed.totalCredits !== undefined && usageTracker) {
+          usageTracker.recordSnapshot(refreshed, refreshed.totalCredits, '后台巡检对账');
+        }
       }
       statusBarManager?.update();
     } catch (_) {}
