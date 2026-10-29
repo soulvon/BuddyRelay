@@ -123,6 +123,7 @@ export class AccountStore extends EventEmitter {
   // 本窗口最近一次写入的 updatedAt（外部重载时用于识别并跳过自己写的版本）
   private _lastWrittenUpdatedAt: number = 0;
   private _reloadTimer: NodeJS.Timeout | null = null;
+  private _retryTimer: NodeJS.Timeout | null = null;
   private fileWatcher: fs.FSWatcher | null = null;
   private _watchDesired: boolean = false;
 
@@ -292,10 +293,11 @@ export class AccountStore extends EventEmitter {
     try {
       const watchDir = path.dirname(this.poolFilePath);
       fs.mkdirSync(watchDir, { recursive: true });
-      // 监听目录而非文件本身：Windows 上 rename 替换会使文件级 watcher 失效
+      const base = path.basename(this.poolFilePath);
+      // 监听目录而非文件本身：Windows/Linux 上 rename 替换会使文件级 watcher 失效
       this.fileWatcher = fs.watch(watchDir, (_evt, filename) => {
-        // Windows 上 rename 事件的 filename 可能为 null，此时也视为变化
-        if (!filename || filename === path.basename(this.poolFilePath)) {
+        // 兼容 Windows (filename为null/目标名) 与 Linux inotify (带tmp后缀或目标名)
+        if (!filename || filename === base || filename.startsWith(base) || filename.includes(base)) {
           this.scheduleReload();
         }
       });
@@ -321,7 +323,7 @@ export class AccountStore extends EventEmitter {
     this._reloadTimer = setTimeout(() => {
       this._reloadTimer = null;
       this.reloadFromDisk();
-    }, 200);
+    }, 150);
   }
 
   /**
@@ -352,7 +354,13 @@ export class AccountStore extends EventEmitter {
       }
       this.emit('change', this.getAll());
     } catch (err: any) {
-      // 读失败 = 未知：保留内存现状，等下一次变更重试，严禁当空池清内存
+      // 读失败 = 未知：若处于写文件瞬间竞争，150ms 后兜底重试一次
+      if (!this._retryTimer) {
+        this._retryTimer = setTimeout(() => {
+          this._retryTimer = null;
+          this.reloadFromDisk();
+        }, 150);
+      }
       console.warn('[AccountStore] 外部号池变更读取失败，保留内存现状:', err.message);
     }
   }
@@ -365,6 +373,10 @@ export class AccountStore extends EventEmitter {
     if (this._reloadTimer) {
       clearTimeout(this._reloadTimer);
       this._reloadTimer = null;
+    }
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
     }
     if (this.fileWatcher) {
       try { this.fileWatcher.close(); } catch { /* ignore */ }

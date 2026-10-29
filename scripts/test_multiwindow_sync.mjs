@@ -30,6 +30,14 @@ function gate(name, cond, detail = '') {
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitFor(fn, timeout = 3000, interval = 50) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (fn()) return true;
+    await sleep(interval);
+  }
+  return fn();
+}
 
 async function main() {
   // 双窗口共享的号池文件（临时目录）
@@ -60,19 +68,19 @@ async function main() {
     status: 'idle', createdAt: Date.now(), lastUsed: 2
   });
   await winA.setActive('acc-2');
-  await sleep(900); // 等待 watcher 防抖 200ms + 重载
-  gate('场景2: 窗口B免重启感知A的切号', winB.getActive() && winB.getActive().id === 'acc-2',
+  const winBDetectedSwitch = await waitFor(() => winB.getActive() && winB.getActive().id === 'acc-2');
+  gate('场景2: 窗口B免重启感知A的切号', winBDetectedSwitch,
     `B.active=${winB.getActive() ? winB.getActive().id : 'null'}`);
 
   // ── 场景 3: 窗口B反向删除 → 窗口A同步 ──
   await winB.delete('acc-1');
-  await sleep(900);
-  gate('场景3: 窗口A免重启感知B的删除', winA.count() === 1 && !winA.get('acc-1'));
+  const winADetectedDelete = await waitFor(() => winA.count() === 1 && !winA.get('acc-1'));
+  gate('场景3: 窗口A免重启感知B的删除', winADetectedDelete);
 
   // ── 场景 4: 隐私模式跨窗口同步 ──
   await winB.setPrivacyMode(true);
-  await sleep(900);
-  gate('场景4: 窗口A感知B的隐私模式切换', winA.getPrivacyMode() === true);
+  const winADetectedPrivacy = await waitFor(() => winA.getPrivacyMode() === true);
+  gate('场景4: 窗口A感知B的隐私模式切换', winADetectedPrivacy);
   await winA.setPrivacyMode(false);
 
   // ── 场景 5: 池文件损坏时严禁当空池覆盖（留证改名） ──
