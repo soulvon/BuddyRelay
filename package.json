@@ -201,10 +201,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs",
+    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs",
     "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs",
+    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs",
     "package": "vsce package",
     "guard": "node scripts/check_ui_guards.mjs"
   },
