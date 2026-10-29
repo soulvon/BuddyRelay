@@ -7,9 +7,38 @@
   <link rel="stylesheet" href="{{CSS_URI}}">
   <style>
     /* ════════════════════════════════════════════════════════════
-       仅为布局胶水（BuddyRelay 独有元素），视觉规则全部来自
-       Kite 原版 main.css，严禁在此覆盖任何原版样式。
+       高质量现代无衬线与优雅等宽字体体系
+       消灭粗糙等宽打字机体与汉字衬线宋体回退，全面统一现代设计质感
        ════════════════════════════════════════════════════════════ */
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+      --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "SF Mono", Monaco, "Menlo", monospace;
+    }
+
+    body, button, input, select, textarea, .app {
+      font-family: var(--font-sans) !important;
+    }
+
+    /* 所有数字、配额指标与大盘状态：统一使用现代无衬线体 + 等宽数字对齐，彻底告别丑陋衬线宋体 */
+    .summary-status-val,
+    .summary-count,
+    .summary-stat-num,
+    .summary-stat-max,
+    .summary-stat-pct,
+    .grid-quota-val,
+    .grid-extra-val {
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
+      font-feature-settings: "tnum" !important;
+    }
+
+    /* 真正需要等宽代码质感的局部（如账号 UID、任务编码、流水时间戳） */
+    .grid-extra-val[data-field="uid"] {
+      font-family: var(--font-mono) !important;
+      font-size: 10.5px !important;
+      letter-spacing: 0.2px;
+    }
+
     .app {
       padding: 6px 10px 20px;
     }
@@ -293,7 +322,36 @@
       background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
     }
 
-    /* ── 今日算力流水明细条目 ── */
+    /* ── 今日算力流水明细条目与统计胶囊徽标 ── */
+    .usage-summary-badges {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .usage-badge-pill {
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      padding: 1px 7px !important;
+      border-radius: 999px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      line-height: 1.4 !important;
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
+      letter-spacing: -0.1px !important;
+    }
+    .usage-badge-pill.is-plus {
+      color: var(--ac-emerald, #10b981) !important;
+      background: color-mix(in srgb, var(--ac-emerald, #10b981) 12%, transparent) !important;
+      border: 1px solid color-mix(in srgb, var(--ac-emerald, #10b981) 22%, transparent) !important;
+    }
+    .usage-badge-pill.is-minus {
+      color: var(--gh-red, #ef4444) !important;
+      background: color-mix(in srgb, var(--gh-red, #ef4444) 10%, transparent) !important;
+      border: 1px solid color-mix(in srgb, var(--gh-red, #ef4444) 20%, transparent) !important;
+    }
+
     .usage-item {
       display: flex;
       align-items: center;
@@ -305,10 +363,11 @@
       border: 1px solid var(--card-border);
     }
     .usage-item-time {
-      font-family: var(--font-mono, monospace);
+      font-family: var(--font-mono) !important;
       color: var(--muted);
       font-size: 10px;
       flex-shrink: 0;
+      letter-spacing: -0.2px;
     }
     .usage-item-name {
       font-weight: 600;
@@ -327,13 +386,30 @@
       white-space: nowrap;
     }
     .usage-item-delta {
-      font-family: var(--font-mono, monospace);
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
       font-weight: 600;
       flex-shrink: 0;
+      letter-spacing: -0.2px;
     }
     .usage-item-delta.is-plus { color: var(--ac-emerald, #10b981); }
     .usage-item-delta.is-minus { color: var(--gh-red, #ef4444); }
     .usage-item-delta.is-info { color: var(--ac-blue, #3b82f6); }
+
+    .version-tag-pill {
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
+      color: var(--muted) !important;
+      background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent) !important;
+      padding: 1px 7px !important;
+      border-radius: 4px !important;
+      border: 1px solid var(--card-border) !important;
+      line-height: 1.4 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+    }
 
     /* ── 搜索框美化重构（替换 main.css 的灰底） ── */
     body.vscode-light .search-bar {
@@ -842,9 +918,9 @@
                     <span>统计</span>
                   </div>
                   <div style="flex:1"></div>
-                  <div id="usageSummaryBadge" style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);white-space:nowrap;">
-                    <span id="usageAwardedBadge" style="color:var(--ac-emerald, #10b981);">+0 点</span>
-                    <span id="usageConsumedBadge" style="color:var(--gh-red, #ef4444);">-0 点</span>
+                  <div id="usageSummaryBadge" class="usage-summary-badges">
+                    <span id="usageAwardedBadge" class="usage-badge-pill is-plus">+0 点</span>
+                    <span id="usageConsumedBadge" class="usage-badge-pill is-minus">-0 点</span>
                   </div>
                   <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="width:20px;height:20px;margin-left:4px;" onclick="event.stopPropagation();">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
@@ -1132,7 +1208,7 @@
           <div class="modal-progress-text" id="taskBatchProgressText">准备执行…</div>
 
           <div id="taskProgressBox" style="margin-top:12px;padding:8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:rgba(0,0,0,0.03);max-height:160px;overflow-y:auto;">
-            <div id="taskProgressLines" style="display:flex;flex-direction:column;gap:3px;font-size:11px;font-family:var(--vscode-editor-font-family,monospace);"></div>
+            <div id="taskProgressLines" style="display:flex;flex-direction:column;gap:3px;font-size:11px;font-family:var(--font-mono);"></div>
           </div>
 
           <div style="display:flex;justify-content:flex-end;margin-top:14px;">
@@ -1397,7 +1473,7 @@
               <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">自动更新检测</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <span id="currentVersionTag" style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);">v0.4.3</span>
+              <span id="currentVersionTag" class="version-tag-pill">v0.4.4</span>
               <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">检查更新</button>
             </div>
           </div>
@@ -2083,7 +2159,7 @@
             '<span class="' + statusClass + '">' + statusLabel + '</span>' +
           '</div>' +
           '<div class="grid-quota-head" style="margin-top:2px;">' +
-            '<span style="font-family:var(--vscode-editor-font-family,monospace);opacity:0.7;">' + escHtml(t.taskCode) + '</span>' +
+            '<span style="font-family:var(--font-mono);font-size:10.5px;opacity:0.75;">' + escHtml(t.taskCode) + '</span>' +
             '<span class="grid-quota-val ' + (t.current >= t.target && t.target > 0 ? 'is-ok' : '') + '">' + t.current + ' / ' + t.target + '</span>' +
           '</div>' +
           (action ? '<div class="grid-card-actions">' + action + '</div>' : '') +

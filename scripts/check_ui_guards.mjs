@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.4.3', packageJson.version === '0.4.3');
-gate('G21 版本一致性: README 徽标版本对齐 0.4.3', readmeMd.includes('version-0.4.3'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.4.3', readmeMd.includes('buddy-relay-0.4.3.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.4.4', packageJson.version === '0.4.4');
+gate('G21 版本一致性: README 徽标版本对齐 0.4.4', readmeMd.includes('version-0.4.4'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.4.4', readmeMd.includes('buddy-relay-0.4.4.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -300,6 +300,12 @@ gate('G39 流水引擎: usageTracker 提供今日经营总账 (getDailySummary) 
 gate('G40 流水面板: sidebar.html 包含统计折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"') && html.includes('<span>统计</span>'));
 gate('G40 流水面板: sidebar.html 包含新增与消耗双色汇总徽标', html.includes('id="usageAwardedBadge"') && html.includes('id="usageConsumedBadge"'));
 gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', sidebarProviderTs.includes('usageSummary:') && sidebarProviderTs.includes('recentRecords:'));
+
+// ── G41: 高质量字体体系与无衬线/等宽数字门控 ──
+gate('G41 字体系统: 定义全局高质量无衬线体 (--font-sans)', html.includes('--font-sans:') && html.includes('body, button, input, select, textarea, .app'));
+gate('G41 字体系统: 定义现代优雅等宽字体 (--font-mono)', html.includes('--font-mono:') && html.includes('Cascadia Code'));
+gate('G41 字体系统: 数值与大盘指标声明 tabular-nums 等宽对齐', html.includes('font-variant-numeric: tabular-nums !important') && html.includes('.summary-status-val'));
+gate('G41 字体系统: 抽屉统计徽标采用无衬线胶囊药丸 .usage-badge-pill', html.includes('.usage-badge-pill') && html.includes('.usage-summary-badges'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);
