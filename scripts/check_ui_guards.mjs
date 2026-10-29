@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.4.7', packageJson.version === '0.4.7');
-gate('G21 版本一致性: README 徽标版本对齐 0.4.7', readmeMd.includes('version-0.4.7'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.4.7', readmeMd.includes('buddy-relay-0.4.7.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.4.8', packageJson.version === '0.4.8');
+gate('G21 版本一致性: README 徽标版本对齐 0.4.8', readmeMd.includes('version-0.4.8'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.4.8', readmeMd.includes('buddy-relay-0.4.8.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');

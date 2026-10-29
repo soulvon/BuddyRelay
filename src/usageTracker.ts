@@ -15,6 +15,8 @@ export interface UsageRecord {
   balanceAfter?: number;
   title: string;
   detail?: string;
+  /** 单调递增写入序号：同一毫秒内多条记录的排序兜底键 */
+  seq?: number;
 }
 
 export interface DailySummary {
@@ -39,6 +41,7 @@ export class UsageTracker {
   private records: UsageRecord[] = [];
   private lastCreditsMap: Map<string, number> = new Map();
   private switchTimestamps: number[] = [];
+  private _seq: number = 0;
 
   constructor(customFilePath?: string) {
     this.filePath = customFilePath || path.join(PATHS.RELAY_DIR, 'usage-records.json');
@@ -55,6 +58,8 @@ export class UsageTracker {
       const data = JSON.parse(raw);
       if (Array.isArray(data.records)) {
         this.records = data.records;
+        // 恢复单调序号基线，保证重启后 seq 依旧递增
+        this._seq = this.records.reduce((max, r) => Math.max(max, r.seq || 0), 0);
       }
     } catch (_) {
       this.records = [];
@@ -121,7 +126,8 @@ export class UsageTracker {
     if (delta < 0) {
       // 算力消耗 (写代码 / AI 对话)
       this.records.push({
-        id: `rec_${ts}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `rec_${ts}_${this._seq}`,
+        seq: this._seq,
         ts,
         timeStr,
         dateStr,
@@ -137,7 +143,8 @@ export class UsageTracker {
     } else {
       // 算力增加 (签到或任务奖励到账)
       this.records.push({
-        id: `rec_${ts}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `rec_${ts}_${this._seq}`,
+        seq: this._seq,
         ts,
         timeStr,
         dateStr,
@@ -168,7 +175,8 @@ export class UsageTracker {
     const ts = Date.now();
     const { timeStr, dateStr } = this.formatTime(ts);
     this.records.push({
-      id: `rec_${ts}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `rec_${ts}_${this._seq}`,
+        seq: this._seq,
       ts,
       timeStr,
       dateStr,
@@ -197,7 +205,7 @@ export class UsageTracker {
    * 避免读取动作覆盖本窗口刚写入的记录（跨平台文件时序差异防线）
    */
   public getRecentRecords(limit: number = 50): UsageRecord[] {
-    return [...this.records].sort((a, b) => b.ts - a.ts).slice(0, limit);
+    return [...this.records].sort((a, b) => (b.ts - a.ts) || ((b.seq || 0) - (a.seq || 0))).slice(0, limit);
   }
 
   /**
