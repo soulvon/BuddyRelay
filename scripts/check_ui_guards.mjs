@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.4.2', packageJson.version === '0.4.2');
-gate('G21 版本一致性: README 徽标版本对齐 0.4.2', readmeMd.includes('version-0.4.2'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.4.2', readmeMd.includes('buddy-relay-0.4.2.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.4.3', packageJson.version === '0.4.3');
+gate('G21 版本一致性: README 徽标版本对齐 0.4.3', readmeMd.includes('version-0.4.3'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.4.3', readmeMd.includes('buddy-relay-0.4.3.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -296,8 +296,8 @@ const usageTrackerTs = fs.existsSync(usageTrackerPath) ? fs.readFileSync(usageTr
 gate('G39 流水引擎: usageTracker.ts 存在且支持 Delta 快照差值对账', usageTrackerTs.includes('recordSnapshot(') && usageTrackerTs.includes('deltaCredits'));
 gate('G39 流水引擎: usageTracker 提供今日经营总账 (getDailySummary) 与流水查询', usageTrackerTs.includes('getDailySummary(') && usageTrackerTs.includes('getRecentRecords('));
 
-// ── G40: 侧栏【今日算力对账流水】抽屉面板与状态推流 门控 ──
-gate('G40 流水面板: sidebar.html 包含今日流水折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"'));
+// ── G40: 侧栏【统计】抽屉面板与状态推流 门控 ──
+gate('G40 流水面板: sidebar.html 包含统计折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"') && html.includes('<span>统计</span>'));
 gate('G40 流水面板: sidebar.html 包含新增与消耗双色汇总徽标', html.includes('id="usageAwardedBadge"') && html.includes('id="usageConsumedBadge"'));
 gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', sidebarProviderTs.includes('usageSummary:') && sidebarProviderTs.includes('recentRecords:'));
 
