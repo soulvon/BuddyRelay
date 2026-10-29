@@ -193,9 +193,10 @@ export class UsageTracker {
 
   /**
    * 获取时间倒序排列的流水列表
+   * 注意：仅在构造时加载一次磁盘状态；运行期以内存为权威（save 为全量原子写），
+   * 避免读取动作覆盖本窗口刚写入的记录（跨平台文件时序差异防线）
    */
   public getRecentRecords(limit: number = 50): UsageRecord[] {
-    this.load(); // 保证读到其他窗口最新写入
     return [...this.records].sort((a, b) => b.ts - a.ts).slice(0, limit);
   }
 
@@ -203,7 +204,6 @@ export class UsageTracker {
    * 获取今日经营对账总报表
    */
   public getDailySummary(targetDate?: string): DailySummary {
-    this.load();
     const today = targetDate || this.formatTime(Date.now()).dateStr;
     let totalConsumed = 0;
     let totalAwarded = 0;
