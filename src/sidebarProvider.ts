@@ -189,11 +189,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       dailyTime: cfg.get<string>('autoCheckin.dailyTime', '00:10'),
       randomJitterMinutes: cfg.get<number>('autoCheckin.randomJitterMinutes', 30),
       perAccountDelaySeconds: cfg.get<number>('autoCheckin.perAccountDelaySeconds', 15),
+      refreshIntervalMinutes: cfg.get<number>('refreshIntervalMinutes', 15),
+      growthTasksAutoAfterCheckin: cfg.get<boolean>('growthTasks.autoAfterCheckin', true),
+      startupMakeup: cfg.get<boolean>('autoCheckin.startupMakeup', true),
+      autoUseMakeupCard: cfg.get<boolean>('growthTasks.autoUseMakeupCard', true),
       autoSwitchEnabled: cfg.get<boolean>('autoSwitch.enabled', true),
       quotaThresholdPercent: cfg.get<number>('autoSwitch.quotaThresholdPercent', 10),
       autoSwitchStrategy: cfg.get<string>('autoSwitch.strategy', 'highest_quota'),
       cooldownMinutes: cfg.get<number>('autoSwitch.cooldownMinutes', 5),
-      growthTasksAutoAfterCheckin: cfg.get<boolean>('growthTasks.autoAfterCheckin', true),
+      autoSwitchOn429: cfg.get<boolean>('autoSwitch.on429', true),
+      autoSwitchNotify: cfg.get<boolean>('autoSwitch.notifyOnSwitch', true),
+      privacyModeDefault: cfg.get<boolean>('privacyModeDefault', false),
       updateAutoCheck: cfg.get<boolean>('update.autoCheck', true),
       updateAutoInstall: cfg.get<boolean>('update.autoInstall', false)
     };
@@ -1060,11 +1066,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if ('dailyTime' in settings) await cfg.update('autoCheckin.dailyTime', String(settings.dailyTime || '00:10'), vscode.ConfigurationTarget.Global);
       if ('randomJitterMinutes' in settings) await cfg.update('autoCheckin.randomJitterMinutes', Number(settings.randomJitterMinutes || 30), vscode.ConfigurationTarget.Global);
       if ('perAccountDelaySeconds' in settings) await cfg.update('autoCheckin.perAccountDelaySeconds', Number(settings.perAccountDelaySeconds || 15), vscode.ConfigurationTarget.Global);
+      if ('refreshIntervalMinutes' in settings) await cfg.update('refreshIntervalMinutes', Number(settings.refreshIntervalMinutes || 15), vscode.ConfigurationTarget.Global);
+      if ('growthTasksAutoAfterCheckin' in settings) await cfg.update('growthTasks.autoAfterCheckin', Boolean(settings.growthTasksAutoAfterCheckin), vscode.ConfigurationTarget.Global);
+      if ('startupMakeup' in settings) await cfg.update('autoCheckin.startupMakeup', Boolean(settings.startupMakeup), vscode.ConfigurationTarget.Global);
+      if ('autoUseMakeupCard' in settings) await cfg.update('growthTasks.autoUseMakeupCard', Boolean(settings.autoUseMakeupCard), vscode.ConfigurationTarget.Global);
       if ('autoSwitchEnabled' in settings) await cfg.update('autoSwitch.enabled', Boolean(settings.autoSwitchEnabled), vscode.ConfigurationTarget.Global);
       if ('quotaThresholdPercent' in settings) await cfg.update('autoSwitch.quotaThresholdPercent', Number(settings.quotaThresholdPercent || 10), vscode.ConfigurationTarget.Global);
       if ('autoSwitchStrategy' in settings) await cfg.update('autoSwitch.strategy', String(settings.autoSwitchStrategy || 'highest_quota'), vscode.ConfigurationTarget.Global);
       if ('cooldownMinutes' in settings) await cfg.update('autoSwitch.cooldownMinutes', Number(settings.cooldownMinutes || 5), vscode.ConfigurationTarget.Global);
-      if ('growthTasksAutoAfterCheckin' in settings) await cfg.update('growthTasks.autoAfterCheckin', Boolean(settings.growthTasksAutoAfterCheckin), vscode.ConfigurationTarget.Global);
+      if ('autoSwitchOn429' in settings) await cfg.update('autoSwitch.on429', Boolean(settings.autoSwitchOn429), vscode.ConfigurationTarget.Global);
+      if ('autoSwitchNotify' in settings) await cfg.update('autoSwitch.notifyOnSwitch', Boolean(settings.autoSwitchNotify), vscode.ConfigurationTarget.Global);
+      if ('privacyModeDefault' in settings) await cfg.update('privacyModeDefault', Boolean(settings.privacyModeDefault), vscode.ConfigurationTarget.Global);
       if ('updateAutoCheck' in settings) await cfg.update('update.autoCheck', Boolean(settings.updateAutoCheck), vscode.ConfigurationTarget.Global);
       if ('updateAutoInstall' in settings) await cfg.update('update.autoInstall', Boolean(settings.updateAutoInstall), vscode.ConfigurationTarget.Global);
       this.sendNotify('success', 'BuddyRelay: 规则设置已更新并实时生效');

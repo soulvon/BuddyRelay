@@ -29,7 +29,7 @@ function check(title, condition, detail = '') {
 }
 
 async function runAudit() {
-  console.log('=== 开始 BuddyRelay v0.3.2 深度端到端审查 ===\n');
+  console.log('=== 开始 BuddyRelay 深度端到端审查 ===\n');
 
   // ──────────────────────────────────────────────────────────
   // 维度一：CSS 尺寸死锁与防折行审查（杜绝任何情况下的按钮撑大变高）

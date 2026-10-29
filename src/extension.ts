@@ -52,6 +52,12 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // 1.8 检查是否默认开启隐私脱敏模式
+  const defaultPrivacy = vscode.workspace.getConfiguration('buddyRelay').get<boolean>('privacyModeDefault', false);
+  if (defaultPrivacy && !store.getPrivacyMode()) {
+    store.setPrivacyMode(true).catch(() => {});
+  }
+
   // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
   statusBarManager = new StatusBarManager(store, switcher);
   const sidebarProvider = new SidebarProvider(
@@ -236,16 +242,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 7. 自动轮换事件 → webview toast 通知
   autoSwitcher.on('rotation', (ev: any) => {
-    const reasonText =
-      ev.reason === 'rate_limited_429'
-        ? '触发 429 速率限制'
-        : ev.reason === 'quota_exhausted'
-        ? '额度见底'
-        : '调度轮换';
-    sidebarProvider.sendNotify(
-      'success',
-      `BuddyRelay: ${reasonText}，已自动无感切换至 ${ev.targetAccount.nickname || ev.targetAccount.email}`
-    );
+    const notifyEnabled = vscode.workspace
+      .getConfiguration('buddyRelay')
+      .get<boolean>('autoSwitch.notifyOnSwitch', true);
+    if (notifyEnabled) {
+      const reasonText =
+        ev.reason === 'rate_limited_429'
+          ? '触发 429 速率限制'
+          : ev.reason === 'quota_exhausted'
+          ? '额度见底'
+          : '调度轮换';
+      sidebarProvider.sendNotify(
+        'success',
+        `BuddyRelay: ${reasonText}，已自动无感切换至 ${ev.targetAccount.nickname || ev.targetAccount.email}`
+      );
+    }
     statusBarManager?.update();
     sidebarProvider.postStateToWebview();
   });
@@ -290,7 +301,7 @@ function setupScheduledTasks(
   }
 
   // 2. 启动时漏签兜底（覆盖"关机错过定点"的场景）
-  if (config.get<boolean>('autoCheckin', true)) {
+  if (config.get<boolean>('autoCheckin', true) && config.get<boolean>('autoCheckin.startupMakeup', true)) {
     setTimeout(async () => {
       await performDailyCheckinIfNeeded(store, checkinService);
     }, 5000);
@@ -299,7 +310,7 @@ function setupScheduledTasks(
   // 3. 每 4 小时跨天漏签守护（兜底中的兜底）
   checkinTimer = setInterval(async () => {
     const cfg = vscode.workspace.getConfiguration('buddyRelay');
-    if (cfg.get<boolean>('autoCheckin', true)) {
+    if (cfg.get<boolean>('autoCheckin', true) && cfg.get<boolean>('autoCheckin.startupMakeup', true)) {
       await performDailyCheckinIfNeeded(store, checkinService);
     }
   }, 4 * 60 * 60 * 1000);

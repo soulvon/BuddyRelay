@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.3.3', packageJson.version === '0.3.3');
-gate('G21 版本一致性: README 徽标版本对齐 0.3.3', readmeMd.includes('version-0.3.3'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.3.3', readmeMd.includes('buddy-relay-0.3.3.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.3.4', packageJson.version === '0.3.4');
+gate('G21 版本一致性: README 徽标版本对齐 0.3.4', readmeMd.includes('version-0.3.4'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.3.4', readmeMd.includes('buddy-relay-0.3.4.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -188,7 +188,7 @@ gate('G25 账号启停: accountStore 提供 toggleStatus 方法', accountStoreTs
 // ── G26: 偏好与规则设置模态框门控 ──
 gate('G26 设置面板: 工具栏齿轮按钮存在', html.includes('id="btnSettings"'));
 gate('G26 设置面板: 规则设置模态框 #settingsModalOverlay 存在', html.includes('id="settingsModalOverlay"'));
-gate('G26 设置面板: 签到与切号表单控件完备', html.includes('id="setCheckinEnabled"') && html.includes('id="setAutoSwitchEnabled"') && html.includes('id="setQuotaThreshold"'));
+gate('G26 设置面板: 签到与切号表单控件完备', html.includes('id="setCheckinEnabled"') && html.includes('id="setAutoSwitchEnabled"') && html.includes('id="setQuotaThreshold"') && html.includes('id="setRefreshInterval"') && html.includes('id="setAutoSwitchOn429"'));
 gate('G26 设置面板: 后端支持 saveSettings 指令', sidebarProviderTs.includes("case 'saveSettings':"));
 
 // ── G27: Kite 智能匹配导入中枢门控 ──
@@ -270,6 +270,9 @@ gate('G34 更新体系: updater 支持更新日志摘要提取 (formatChangelogS
 gate('G34 更新体系: updater 支持查看完整日志与仅下载安装包', updaterTs.includes('showFullChangelog(') && updaterTs.includes('downloadOnly('));
 gate('G34 更新体系: 设置面板提供手动检查更新入口与版本展示', html.includes('id="btnManualCheckUpdate"') && html.includes('id="currentVersionTag"'));
 gate('G34 更新体系: 后端 sidebarProvider 响应 checkUpdate 指令', sidebarProviderTs.includes("case 'checkUpdate':"));
+
+// ── G35: 开关隐形防复选框穿透泄露门控 ──
+gate('G35 开关隐形: .as-switch input 绝对隐形杜绝复选框泄露', html.includes('.as-switch input[type="checkbox"]') && html.includes('display: none !important'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);

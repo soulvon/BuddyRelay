@@ -190,6 +190,29 @@
       box-shadow: none !important;
     }
 
+    /* ── .as-switch 滑动开关底层 input 绝对隐形（特异性高于 input[type="checkbox"]，杜绝泄漏） ── */
+    .as-switch input,
+    .as-switch input[type="checkbox"],
+    .as-switch input[type="checkbox"]:checked {
+      display: none !important;
+      position: absolute !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+    .as-switch input[type="checkbox"]:checked::after {
+      display: none !important;
+    }
+
     .task-progress-line.is-doing { color: var(--ac-blue, #3b82f6); }
     .task-progress-line.is-ok { color: var(--ac-emerald, #10b981); }
     .task-progress-line.is-fail { color: var(--gh-red, #ef4444); }
@@ -1050,19 +1073,19 @@
 
   <!-- 规则与调度设置模态框 -->
   <div id="settingsModalOverlay" class="modal-overlay" hidden>
-    <div class="modal-box" style="width:min(440px,94vw);max-height:86vh;">
+    <div class="modal-box" style="width:min(450px,94vw);max-height:88vh;display:flex;flex-direction:column;">
       <div class="modal-header">
         <h3>规则与调度设置</h3>
         <button class="modal-close" id="settingsModalClose" title="关闭">×</button>
       </div>
-      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
         
-        <!-- 1. 每日自动签到 -->
+        <!-- 1. 每日自动签到与任务 -->
         <div class="card auto-switch-card" style="border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">每日自动签到</span>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">每日自动签到与任务</span>
             </div>
             <label class="as-switch" title="启用/禁用每日自动签到">
               <input type="checkbox" id="setCheckinEnabled">
@@ -1084,7 +1107,7 @@
               </div>
             </div>
           </div>
-          <div class="v2-param-grid" style="grid-template-columns: 1fr;">
+          <div class="v2-param-grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
             <div class="v2-param-cell">
               <span class="v2-param-label">账号签到间隔</span>
               <div style="display:flex;align-items:center;gap:4px;">
@@ -1092,12 +1115,27 @@
                 <span class="v2-param-unit">秒</span>
               </div>
             </div>
+            <div class="v2-param-cell">
+              <span class="v2-param-label">后台配额巡检</span>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <input type="number" class="v2-param-val" id="setRefreshInterval" min="5" max="120">
+                <span class="v2-param-unit">分</span>
+              </div>
+            </div>
           </div>
           <div class="v2-hint" style="padding: 2px 0 0;">错开整点定点时间，并按拟人化随机间隔逐个签到，模拟真人操作。</div>
-          <div style="padding-top:6px;border-top:1px dashed var(--card-border);">
+          <div style="padding-top:6px;border-top:1px dashed var(--card-border);display:flex;flex-direction:column;gap:6px;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setGrowthAfterCheckin">
-              <span>签到完成后自动跑一轮成长任务（接单、打工与领奖）</span>
+              <span>签到完成后自动跑一轮成长任务（接单、出游打工与领奖）</span>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
+              <input type="checkbox" id="setStartupMakeup">
+              <span>启动编辑器时自动检查并补签今日漏签账号（漏签守护）</span>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
+              <input type="checkbox" id="setAutoUseMakeupCard">
+              <span>若发生断签，在可用余额允许时自动使用补签卡续签</span>
             </label>
           </div>
         </div>
@@ -1141,17 +1179,39 @@
             </select>
           </div>
           <div class="v2-hint" style="padding: 2px 0 0;">当前账号算力耗尽或触发 429 速率限制时，自动无感切到备用账号。</div>
+          <div style="padding-top:6px;border-top:1px dashed var(--card-border);display:flex;flex-direction:column;gap:6px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
+              <input type="checkbox" id="setAutoSwitchOn429">
+              <span>账号遭遇 429 速率限制时自动切换备用账号</span>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
+              <input type="checkbox" id="setAutoSwitchNotify">
+              <span>自动切号触发时弹出 Toast 通知提示</span>
+            </label>
+          </div>
         </div>
 
-        <!-- 3. 自动更新与常规 -->
+        <!-- 3. 隐私模式与自动更新 -->
         <div class="card auto-switch-card" style="border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">隐私保护与常规</span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;padding: 2px 0;">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
+              <input type="checkbox" id="setPrivacyModeDefault">
+              <span>启动编辑器时默认开启隐私脱敏模式（隐藏手机号、邮箱与 UID）</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px dashed var(--card-border);">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">自动更新检测</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <span id="currentVersionTag" style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);">v0.3.3</span>
+              <span id="currentVersionTag" style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);">v0.3.4</span>
               <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">检查更新</button>
             </div>
           </div>
@@ -1340,11 +1400,17 @@
     const setDailyTime = document.getElementById('setDailyTime');
     const setRandomJitter = document.getElementById('setRandomJitter');
     const setPerAccountDelay = document.getElementById('setPerAccountDelay');
+    const setRefreshInterval = document.getElementById('setRefreshInterval');
     const setGrowthAfterCheckin = document.getElementById('setGrowthAfterCheckin');
+    const setStartupMakeup = document.getElementById('setStartupMakeup');
+    const setAutoUseMakeupCard = document.getElementById('setAutoUseMakeupCard');
     const setAutoSwitchEnabled = document.getElementById('setAutoSwitchEnabled');
     const setQuotaThreshold = document.getElementById('setQuotaThreshold');
     const setAutoSwitchStrategy = document.getElementById('setAutoSwitchStrategy');
     const setCooldownMinutes = document.getElementById('setCooldownMinutes');
+    const setAutoSwitchOn429 = document.getElementById('setAutoSwitchOn429');
+    const setAutoSwitchNotify = document.getElementById('setAutoSwitchNotify');
+    const setPrivacyModeDefault = document.getElementById('setPrivacyModeDefault');
     const setUpdateAutoCheck = document.getElementById('setUpdateAutoCheck');
     const setUpdateAutoInstall = document.getElementById('setUpdateAutoInstall');
 
@@ -1363,13 +1429,19 @@
       setDailyTime.value = cfg.dailyTime || '00:10';
       setRandomJitter.value = cfg.randomJitterMinutes != null ? cfg.randomJitterMinutes : 30;
       setPerAccountDelay.value = cfg.perAccountDelaySeconds != null ? cfg.perAccountDelaySeconds : 15;
+      setRefreshInterval.value = cfg.refreshIntervalMinutes != null ? cfg.refreshIntervalMinutes : 15;
       setGrowthAfterCheckin.checked = cfg.growthTasksAutoAfterCheckin !== false;
+      setStartupMakeup.checked = cfg.startupMakeup !== false;
+      setAutoUseMakeupCard.checked = cfg.autoUseMakeupCard !== false;
 
       setAutoSwitchEnabled.checked = cfg.autoSwitchEnabled !== false;
       setQuotaThreshold.value = cfg.quotaThresholdPercent != null ? cfg.quotaThresholdPercent : 10;
       setAutoSwitchStrategy.value = cfg.autoSwitchStrategy || 'highest_quota';
       setCooldownMinutes.value = cfg.cooldownMinutes != null ? cfg.cooldownMinutes : 5;
+      setAutoSwitchOn429.checked = cfg.autoSwitchOn429 !== false;
+      setAutoSwitchNotify.checked = cfg.autoSwitchNotify !== false;
 
+      setPrivacyModeDefault.checked = cfg.privacyModeDefault === true;
       setUpdateAutoCheck.checked = cfg.updateAutoCheck !== false;
       setUpdateAutoInstall.checked = cfg.updateAutoInstall === true;
     }
@@ -1385,11 +1457,17 @@
         dailyTime: '00:10',
         randomJitterMinutes: 30,
         perAccountDelaySeconds: 15,
+        refreshIntervalMinutes: 15,
         growthTasksAutoAfterCheckin: true,
+        startupMakeup: true,
+        autoUseMakeupCard: true,
         autoSwitchEnabled: true,
         quotaThresholdPercent: 10,
         autoSwitchStrategy: 'highest_quota',
         cooldownMinutes: 5,
+        autoSwitchOn429: true,
+        autoSwitchNotify: true,
+        privacyModeDefault: false,
         updateAutoCheck: true,
         updateAutoInstall: false
       });
@@ -1401,11 +1479,17 @@
         dailyTime: setDailyTime.value.trim() || '00:10',
         randomJitterMinutes: parseInt(setRandomJitter.value, 10) || 30,
         perAccountDelaySeconds: parseInt(setPerAccountDelay.value, 10) || 15,
+        refreshIntervalMinutes: parseInt(setRefreshInterval.value, 10) || 15,
         growthTasksAutoAfterCheckin: setGrowthAfterCheckin.checked,
+        startupMakeup: setStartupMakeup.checked,
+        autoUseMakeupCard: setAutoUseMakeupCard.checked,
         autoSwitchEnabled: setAutoSwitchEnabled.checked,
         quotaThresholdPercent: parseInt(setQuotaThreshold.value, 10) || 10,
         autoSwitchStrategy: setAutoSwitchStrategy.value,
         cooldownMinutes: parseInt(setCooldownMinutes.value, 10) || 5,
+        autoSwitchOn429: setAutoSwitchOn429.checked,
+        autoSwitchNotify: setAutoSwitchNotify.checked,
+        privacyModeDefault: setPrivacyModeDefault.checked,
         updateAutoCheck: setUpdateAutoCheck.checked,
         updateAutoInstall: setUpdateAutoInstall.checked
       };

@@ -310,6 +310,13 @@ export class AutoSwitcher extends EventEmitter {
    * 手动/外部触发 429 轮换的便捷入口
    */
   public async autoSwitchOn429(cooldownMs?: number): Promise<SwitchResult | null> {
+    try {
+      const vscode = await import('vscode');
+      const on429 = vscode.workspace.getConfiguration('buddyRelay').get<boolean>('autoSwitch.on429', true);
+      if (!on429) {
+        return null;
+      }
+    } catch (_) {}
     const active = this.store.getActive();
     if (!active || !active.uid) {
       return null;

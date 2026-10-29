@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay",
   "description": "CodeBuddy / WorkBuddy（国内版/国际版）多账号管理与无感切号扩展，支持会话保留、额度守护与每日签到。",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "publisher": "soulvon",
   "repository": {
     "type": "git",
@@ -150,10 +150,35 @@
           "default": 15,
           "description": "多账号逐个签到之间的随机间隔上限（秒）"
         },
+        "buddyRelay.autoCheckin.startupMakeup": {
+          "type": "boolean",
+          "default": true,
+          "description": "启动时自动检查并补签今日未签到账号 (漏签守护)"
+        },
+        "buddyRelay.growthTasks.autoUseMakeupCard": {
+          "type": "boolean",
+          "default": true,
+          "description": "成长任务断签时是否自动使用补签卡"
+        },
         "buddyRelay.autoSwitch.enabled": {
           "type": "boolean",
           "default": true,
           "description": "启用额度见底自动无感切换"
+        },
+        "buddyRelay.autoSwitch.on429": {
+          "type": "boolean",
+          "default": true,
+          "description": "账号遭遇 429 速率限制时自动切换备用账号"
+        },
+        "buddyRelay.autoSwitch.notifyOnSwitch": {
+          "type": "boolean",
+          "default": true,
+          "description": "自动切换账号触发时是否弹出 Toast 通知提醒"
+        },
+        "buddyRelay.privacyModeDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "编辑器启动时是否默认开启隐私脱敏模式 (隐藏昵称/UID)"
         },
         "buddyRelay.autoSwitch.quotaThresholdPercent": {
           "type": "number",
