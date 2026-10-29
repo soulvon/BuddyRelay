@@ -8,6 +8,7 @@ import { CockpitImporter } from './cockpitImporter';
 import { OAuthService } from './oauthService';
 import { GrowthTaskService, GrowthTask } from './growthTaskService';
 import { getOtherLockedUids } from './accountLock';
+import { checkForUpdates, getCurrentVersion } from './updater';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -148,6 +149,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case 'saveSettings':
           await this.handleSaveSettings(message.settings);
           break;
+
+        case 'checkUpdate':
+          await checkForUpdates(false);
+          break;
       }
     });
 
@@ -245,7 +250,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         isOperating: this.isOperating,
         operationMessage: this.currentOperationMessage,
         privacyMode: this.store.getPrivacyMode(),
-        lockedUids
+        lockedUids,
+        version: getCurrentVersion()
       }
     });
   }

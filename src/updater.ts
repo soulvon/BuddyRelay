@@ -33,14 +33,14 @@ function getUpdateConfig(): UpdateConfig {
   };
 }
 
-function getCurrentVersion(): string {
+export function getCurrentVersion(): string {
   try {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
     );
-    return packageJson.version || '0.1.0';
+    return packageJson.version || '0.3.3';
   } catch (_) {
-    return '0.1.0';
+    return '0.3.3';
   }
 }
 
@@ -166,6 +166,92 @@ function compareVersions(a: string, b: string): number {
 }
 
 /**
+ * 格式化更新日志摘要，提取核心变更条目，过滤链接与噪音
+ */
+export function formatChangelogSummary(rawBody: string, maxItems: number = 5): string {
+  if (!rawBody || typeof rawBody !== 'string') return '';
+  const lines = rawBody
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    // 过滤噪音行（如 Full Changelog 链接与空分隔线）
+    .filter(l => !l.toLowerCase().includes('full changelog') && !l.startsWith('**Full Changelog**'));
+
+  const items: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('- ') || line.startsWith('* ') || /^\d+\.\s/.test(line)) {
+      items.push(line);
+    } else if (line.startsWith('#')) {
+      const title = line.replace(/^#+\s*/, '').trim();
+      if (title && !title.toLowerCase().includes('changelog')) {
+        items.push(`【${title}】`);
+      }
+    } else if (items.length < maxItems && line.length >= 4 && !line.startsWith('http')) {
+      items.push(`- ${line}`);
+    }
+    if (items.length >= maxItems) break;
+  }
+
+  return items.slice(0, maxItems).join('\n');
+}
+
+/**
+ * 在 VS Code 内部以 Markdown 预览文档打开完整更新说明
+ */
+export async function showFullChangelog(version: string, body: string, releaseUrl: string): Promise<void> {
+  const content = [
+    `# BuddyRelay v${version} 更新说明`,
+    '',
+    `> 官方发布页面: ${releaseUrl}`,
+    '',
+    '---',
+    '',
+    body ? body.trim() : '（本次发布未附带详细说明）',
+    '',
+    '---',
+    '*提示：可在命令面板运行「BuddyRelay: 检查新版本更新」或在设置面板点击「检查更新」安装最新版。*'
+  ].join('\n');
+
+  try {
+    const doc = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content
+    });
+    await vscode.window.showTextDocument(doc, { preview: true });
+  } catch (err: any) {
+    vscode.window.showErrorMessage(`打开更新日志失败: ${err.message}`);
+  }
+}
+
+/**
+ * 仅下载安装包到临时文件夹（方便留底或分发，Kite 同款）
+ */
+export async function downloadOnly(downloadUrl: string, version: string): Promise<void> {
+  const tempDir = os.tmpdir();
+  const vsixPath = path.join(tempDir, `buddy-relay-${version}.vsix`);
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `正在下载 BuddyRelay v${version} 安装包...`,
+      cancellable: false
+    },
+    async () => {
+      await downloadFile(downloadUrl, vsixPath);
+    }
+  );
+
+  const choice = await vscode.window.showInformationMessage(
+    `BuddyRelay v${version} 安装包下载完成: ${vsixPath}`,
+    '打开所在文件夹'
+  );
+
+  if (choice === '打开所在文件夹') {
+    vscode.env.openExternal(vscode.Uri.file(tempDir));
+  }
+}
+
+/**
  * 检查更新核心方法
  * @param silent 是否静默检查（启动时静默，手动点击时弹窗）
  */
@@ -196,16 +282,42 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
       return false;
     }
 
-    const message = `BuddyRelay 发现新版本 v${latestVersion} (当前: v${currentVersion})`;
+    // 若开启了免确认静默安装且处于后台检查场景，直接静默更新
+    if (config.autoInstall && silent) {
+      await downloadAndInstall(vsixAsset.browser_download_url, latestVersion, true);
+      return true;
+    }
+
+    // 格式化更新日志摘要，直观告诉用户更新了什么
+    const summary = formatChangelogSummary(release.body);
+    const changelogBlock = summary ? `\n\n更新内容：\n${summary}` : '';
+    const message = `BuddyRelay 发现新版本 v${latestVersion} (当前: v${currentVersion})${changelogBlock}`;
+
     const actions = config.autoInstall
       ? ['立即更新', '稍后']
-      : ['立即更新', '查看发布页', '稍后'];
+      : ['立即更新', '查看完整日志', '仅下载安装包', '打开发布页', '稍后'];
 
     const choice = await vscode.window.showInformationMessage(message, ...actions);
 
     if (choice === '立即更新') {
       await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
-    } else if (choice === '查看发布页') {
+    } else if (choice === '仅下载安装包') {
+      await downloadOnly(vsixAsset.browser_download_url, latestVersion);
+    } else if (choice === '查看完整日志') {
+      await showFullChangelog(latestVersion, release.body, release.html_url);
+      // 日志打开后提示是否进一步更新
+      const nextChoice = await vscode.window.showInformationMessage(
+        `已打开 v${latestVersion} 完整更新说明，是否现在更新？`,
+        '立即更新',
+        '仅下载安装包',
+        '稍后'
+      );
+      if (nextChoice === '立即更新') {
+        await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
+      } else if (nextChoice === '仅下载安装包') {
+        await downloadOnly(vsixAsset.browser_download_url, latestVersion);
+      }
+    } else if (choice === '打开发布页') {
       vscode.env.openExternal(vscode.Uri.parse(release.html_url));
     }
 
@@ -218,7 +330,11 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
   }
 }
 
-async function downloadAndInstall(downloadUrl: string, version: string): Promise<void> {
+async function downloadAndInstall(
+  downloadUrl: string,
+  version: string,
+  isSilentAuto: boolean = false
+): Promise<void> {
   const tempDir = os.tmpdir();
   const vsixPath = path.join(tempDir, `buddy-relay-${version}.vsix`);
 
@@ -247,8 +363,12 @@ async function downloadAndInstall(downloadUrl: string, version: string): Promise
     }
   );
 
+  const promptMsg = isSilentAuto
+    ? `BuddyRelay 已自动更新至 v${version}，重新加载窗口后生效`
+    : `BuddyRelay v${version} 更新已安装，重新加载窗口后生效`;
+
   const reload = await vscode.window.showInformationMessage(
-    `BuddyRelay v${version} 更新已安装，重新加载窗口后生效`,
+    promptMsg,
     '立即重载',
     '稍后'
   );

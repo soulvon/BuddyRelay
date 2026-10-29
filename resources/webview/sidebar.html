@@ -1150,6 +1150,10 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">自动更新检测</span>
             </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span id="currentVersionTag" style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono, monospace);">v0.3.3</span>
+              <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">检查更新</button>
+            </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;padding: 2px 0;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
@@ -1414,6 +1418,21 @@
       btnImportAccountsFile.addEventListener('click', () => {
         vscode.postMessage({ command: 'importAccountsFile' });
         closeAddModal();
+      });
+    }
+
+    const btnManualCheckUpdate = document.getElementById('btnManualCheckUpdate');
+    if (btnManualCheckUpdate) {
+      btnManualCheckUpdate.addEventListener('click', () => {
+        btnManualCheckUpdate.disabled = true;
+        btnManualCheckUpdate.textContent = '检查中...';
+        vscode.postMessage({ command: 'checkUpdate' });
+        setTimeout(() => {
+          if (btnManualCheckUpdate) {
+            btnManualCheckUpdate.disabled = false;
+            btnManualCheckUpdate.textContent = '检查更新';
+          }
+        }, 3000);
       });
     }
 
@@ -2172,6 +2191,11 @@
         if (typeof backendPrivacy === 'boolean') {
           privacyMode = backendPrivacy;
           updatePrivacyUi();
+        }
+
+        if (msg.data && msg.data.version) {
+          const vEl = document.getElementById('currentVersionTag');
+          if (vEl) vEl.textContent = 'v' + msg.data.version;
         }
 
         // 长任务进度 → 常驻 loading toast；结束 → 自动消失

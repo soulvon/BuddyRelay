@@ -264,6 +264,13 @@ gate('G33 按钮原色彩: .grid-switch-btn 继承 main.css 渐变且不设硬�
 gate('G33 切换提示: 切号成功一律发送 success 纯净通知杜绝误报红框', sidebarProviderTs.includes("this.sendNotify('success',") && !sidebarProviderTs.includes("res.message`"));
 gate('G33 状态释放: switchingId 具备超时保护与 notify/updateState 自动重置', html.includes("switchingId = ''") && html.includes('_switchTimeout'));
 
+// ── G34: 更新系统透明度与操作完备性门控 ──
+const updaterTs = fs.readFileSync(path.join(ROOT, 'src', 'updater.ts'), 'utf8');
+gate('G34 更新体系: updater 支持更新日志摘要提取 (formatChangelogSummary)', updaterTs.includes('formatChangelogSummary('));
+gate('G34 更新体系: updater 支持查看完整日志与仅下载安装包', updaterTs.includes('showFullChangelog(') && updaterTs.includes('downloadOnly('));
+gate('G34 更新体系: 设置面板提供手动检查更新入口与版本展示', html.includes('id="btnManualCheckUpdate"') && html.includes('id="currentVersionTag"'));
+gate('G34 更新体系: 后端 sidebarProvider 响应 checkUpdate 指令', sidebarProviderTs.includes("case 'checkUpdate':"));
+
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);
 process.exit(failed > 0 ? 1 : 0);
