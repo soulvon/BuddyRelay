@@ -583,6 +583,118 @@
       background: var(--hover-bg, rgba(0, 0, 0, 0.06)) !important;
       color: var(--vscode-foreground) !important;
     }
+
+    /* ════════════════════════════════════════════════════════════
+       卡片底栏尺寸固化与文字防换行（绝不因文本/状态改变撑高变形）
+       ════════════════════════════════════════════════════════════ */
+    .grid-card-actions {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 3px !important;
+      margin-top: 4px !important;
+      padding-top: 6px !important;
+      border-top: 1px solid var(--card-border) !important;
+      flex-wrap: nowrap !important;
+      white-space: nowrap !important;
+      height: 26px !important;
+      min-height: 26px !important;
+      max-height: 26px !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+    }
+
+    .grid-switch-btn {
+      font-size: 11px !important;
+      padding: 0 10px !important;
+      height: 22px !important;
+      min-height: 22px !important;
+      max-height: 22px !important;
+      line-height: 22px !important;
+      border-radius: 999px !important;
+      background: var(--ac-emerald, #10b981) !important;
+      color: #fff !important;
+      border: none !important;
+      transition: all 0.15s !important;
+      font-family: inherit !important;
+      white-space: nowrap !important;
+      flex-shrink: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-sizing: border-box !important;
+    }
+
+    .grid-current-label {
+      font-size: 11px !important;
+      height: 22px !important;
+      line-height: 22px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      white-space: nowrap !important;
+      flex-shrink: 0 !important;
+    }
+
+    .btn-mini-spinner {
+      width: 9px !important;
+      height: 9px !important;
+      border: 2px solid rgba(255, 255, 255, 0.45) !important;
+      border-top-color: #fff !important;
+      border-radius: 50% !important;
+      display: inline-block !important;
+      margin-right: 4px !important;
+      flex-shrink: 0 !important;
+      animation: spin 0.7s linear infinite !important;
+      vertical-align: middle !important;
+    }
+
+    .grid-actions-right {
+      display: flex !important;
+      align-items: center !important;
+      gap: 3px !important;
+      margin-left: auto !important;
+      flex-shrink: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    .status-toggle-btn {
+      padding: 0 6px !important;
+      height: 20px !important;
+      min-height: 20px !important;
+      max-height: 20px !important;
+      line-height: 20px !important;
+      border-radius: 10px !important;
+      font-size: 10.5px !important;
+      font-weight: 500 !important;
+      border: 1px solid transparent !important;
+      transition: all 0.15s !important;
+      background: transparent !important;
+      font-family: inherit !important;
+      white-space: nowrap !important;
+      flex-shrink: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-sizing: border-box !important;
+    }
+
+    .icon-btn {
+      width: 20px !important;
+      height: 20px !important;
+      min-width: 20px !important;
+      min-height: 20px !important;
+      border-radius: 4px !important;
+      background: transparent !important;
+      border: none !important;
+      color: var(--muted) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transition: all 0.15s !important;
+      flex-shrink: 0 !important;
+      padding: 0 !important;
+      box-sizing: border-box !important;
+    }
   </style>
 </head>
 <body>
@@ -2053,10 +2165,18 @@
       vscode.postMessage({ command: 'toggleAccountStatus', accountId: id });
     };
 
+    let _switchTimeout = null;
     window.onSwitch = function(id) {
       switchingId = id;
       renderCards();
       vscode.postMessage({ command: 'switchAccount', accountId: id });
+      if (_switchTimeout) clearTimeout(_switchTimeout);
+      _switchTimeout = setTimeout(() => {
+        if (switchingId === id) {
+          switchingId = '';
+          renderCards();
+        }
+      }, 6000);
     };
 
     window.onCheckin = function(id) {
@@ -2098,12 +2218,21 @@
           showToast(operationMessage || '正在执行操作...', 'loading', 0, 'op');
         } else {
           removeToastByKey('op');
+          if (switchingId) {
+            switchingId = '';
+            if (_switchTimeout) clearTimeout(_switchTimeout);
+          }
         }
 
         renderSummary();
         renderCards();
         renderAcctChips();
       } else if (msg.command === 'notify') {
+        if (switchingId) {
+          switchingId = '';
+          if (_switchTimeout) clearTimeout(_switchTimeout);
+          renderCards();
+        }
         showToast(msg.message, msg.level === 'success' ? 'success' : (msg.level === 'warn' ? 'warn' : 'error'), 3200);
       } else if (msg.command === 'taskProgress') {
         if (typeof msg.percent === 'number') {

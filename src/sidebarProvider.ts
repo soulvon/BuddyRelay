@@ -264,13 +264,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const res = await this.switcher.switchAccount(target, this.store);
-      if (res.success && res.receipt?.verified) {
+      if (res.success) {
         this.sendNotify('success',
-          `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email} (宿主回执确认)`
-        );
-      } else if (res.success) {
-        this.sendNotify('error',
-          `BuddyRelay: 已切换至 ${target.nickname || target.email}，${res.message}`
+          `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email}`
         );
       } else {
         this.sendNotify('error', `切号异常: ${res.message}`);
