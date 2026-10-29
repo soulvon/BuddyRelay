@@ -126,7 +126,7 @@ export class UsageTracker {
     if (delta < 0) {
       // 算力消耗 (写代码 / AI 对话)
       this.records.push({
-        id: `rec_${ts}_${this._seq}`,
+        id: `rec_${ts}_${++this._seq}`,
         seq: this._seq,
         ts,
         timeStr,
@@ -143,7 +143,7 @@ export class UsageTracker {
     } else {
       // 算力增加 (签到或任务奖励到账)
       this.records.push({
-        id: `rec_${ts}_${this._seq}`,
+        id: `rec_${ts}_${++this._seq}`,
         seq: this._seq,
         ts,
         timeStr,
@@ -175,7 +175,7 @@ export class UsageTracker {
     const ts = Date.now();
     const { timeStr, dateStr } = this.formatTime(ts);
     this.records.push({
-      id: `rec_${ts}_${this._seq}`,
+      id: `rec_${ts}_${++this._seq}`,
         seq: this._seq,
       ts,
       timeStr,
