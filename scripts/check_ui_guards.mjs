@@ -143,9 +143,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.3.2', packageJson.version === '0.3.2');
-gate('G21 版本一致性: README 徽标版本对齐 0.3.2', readmeMd.includes('version-0.3.2'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.3.2', readmeMd.includes('buddy-relay-0.3.2.vsix'));
+gate('G21 版本一致性: package.json 版本为 0.3.3', packageJson.version === '0.3.3');
+gate('G21 版本一致性: README 徽标版本对齐 0.3.3', readmeMd.includes('version-0.3.3'));
+gate('G21 版本一致性: README 安装说明版本对齐 0.3.3', readmeMd.includes('buddy-relay-0.3.3.vsix'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -259,8 +259,8 @@ gate('G32 语法自检: validateSyntax 支持 ELECTRON_RUN_AS_NODE 降级', seam
 gate('G32 语法自检: validateSyntax 返回错误信息对象', seamlessSwitcherTs.includes('checkRes.error'));
 
 // ── G33: 卡片底栏尺寸固化与切换中状态安全门控 ──
-gate('G33 按钮防变形: .grid-card-actions 强锁 nowrap 与高度限制', html.includes('.grid-card-actions') && html.includes('white-space: nowrap !important') && html.includes('max-height: 26px !important'));
-gate('G33 按钮防变形: .grid-switch-btn 强锁高度 22px 与 flex-shrink 0', html.includes('.grid-switch-btn') && html.includes('height: 22px !important') && html.includes('flex-shrink: 0 !important'));
+gate('G33 按钮防截断: .grid-card-actions 强锁 nowrap 且禁止 overflow hidden 裁剪', html.includes('.grid-card-actions') && html.includes('white-space: nowrap !important') && !html.includes('.grid-card-actions {\n      display: flex !important;\n      align-items: center !important;\n      justify-content: space-between !important;\n      gap: 3px !important;\n      margin-top: 4px !important;\n      padding-top: 6px !important;\n      border-top: 1px solid var(--card-border) !important;\n      flex-wrap: nowrap !important;\n      white-space: nowrap !important;\n      height: 26px !important'));
+gate('G33 按钮原色彩: .grid-switch-btn 继承 main.css 渐变且不设硬编码纯色与高度截断', html.includes('.grid-switch-btn') && html.includes('white-space: nowrap !important') && !html.includes('background: var(--ac-emerald, #10b981) !important;'));
 gate('G33 切换提示: 切号成功一律发送 success 纯净通知杜绝误报红框', sidebarProviderTs.includes("this.sendNotify('success',") && !sidebarProviderTs.includes("res.message`"));
 gate('G33 状态释放: switchingId 具备超时保护与 notify/updateState 自动重置', html.includes("switchingId = ''") && html.includes('_switchTimeout'));
 

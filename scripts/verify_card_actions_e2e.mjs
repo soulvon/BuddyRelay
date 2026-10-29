@@ -38,44 +38,42 @@ async function runAudit() {
   const htmlPath = path.join(ROOT, 'resources', 'webview', 'sidebar.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
 
-  // 1. .grid-card-actions 容器死锁
+  // 1. .grid-card-actions 容器防折行与防截断
   const cardActionsRuleMatch = html.match(/\.grid-card-actions\s*\{([^}]+)\}/g);
   const cardActionsCss = cardActionsRuleMatch ? cardActionsRuleMatch.join('\n') : '';
-  check('底栏容器: 包含 flex-wrap: nowrap !important', cardActionsCss.includes('flex-wrap: nowrap !important'));
-  check('底栏容器: 包含 white-space: nowrap !important', cardActionsCss.includes('white-space: nowrap !important'));
-  check('底栏容器: 包含 height: 26px !important', cardActionsCss.includes('height: 26px !important'));
-  check('底栏容器: 包含 max-height: 26px !important', cardActionsCss.includes('max-height: 26px !important'));
-  check('底栏容器: 包含 overflow: hidden !important', cardActionsCss.includes('overflow: hidden !important'));
+  check('底栏容器: 包含 flex-wrap: nowrap !important 防折行', cardActionsCss.includes('flex-wrap: nowrap !important'));
+  check('底栏容器: 包含 white-space: nowrap !important 防折行', cardActionsCss.includes('white-space: nowrap !important'));
+  check('底栏容器: 不含 overflow hidden 避免裁切截断按钮', !cardActionsCss.includes('overflow: hidden !important'));
+  check('底栏容器: 不设硬编码死高度避免截断', !cardActionsCss.includes('height: 26px !important'));
 
-  // 2. .grid-switch-btn 切换按钮尺寸死锁
+  // 2. .grid-switch-btn 切换按钮防折行与保留原版色彩
   const switchBtnRuleMatch = html.match(/\.grid-switch-btn\s*\{([^}]+)\}/g);
   const switchBtnCss = switchBtnRuleMatch ? switchBtnRuleMatch.join('\n') : '';
-  check('切换按钮: 包含 height: 22px !important', switchBtnCss.includes('height: 22px !important'));
-  check('切换按钮: 包含 max-height: 22px !important', switchBtnCss.includes('max-height: 22px !important'));
-  check('切换按钮: 包含 line-height: 22px !important', switchBtnCss.includes('line-height: 22px !important'));
+  check('切换按钮: 不覆盖纯色实底 (完整保留 main.css 原版渐变与阴影)', !switchBtnCss.includes('background: var(--ac-emerald, #10b981) !important;'));
+  check('切换按钮: 不设硬编码死高度避免文字截断', !switchBtnCss.includes('height: 22px !important'));
   check('切换按钮: 包含 white-space: nowrap !important', switchBtnCss.includes('white-space: nowrap !important'));
   check('切换按钮: 包含 flex-shrink: 0 !important', switchBtnCss.includes('flex-shrink: 0 !important'));
   check('切换按钮: 包含 inline-flex 对齐', switchBtnCss.includes('display: inline-flex !important'));
 
-  // 3. .btn-mini-spinner 转圈动画尺寸死锁
+  // 3. .btn-mini-spinner 转圈动画
   const spinnerRuleMatch = html.match(/\.btn-mini-spinner\s*\{([^}]+)\}/g);
   const spinnerCss = spinnerRuleMatch ? spinnerRuleMatch.join('\n') : '';
-  check('小菊花动画: 宽高固定为 9px !important', spinnerCss.includes('width: 9px !important') && spinnerCss.includes('height: 9px !important'));
+  check('小菊花动画: 宽高固定为 10px !important', spinnerCss.includes('width: 10px !important') && spinnerCss.includes('height: 10px !important'));
   check('小菊花动画: 包含 flex-shrink: 0 !important', spinnerCss.includes('flex-shrink: 0 !important'));
 
-  // 4. .status-toggle-btn 状态按钮尺寸死锁
+  // 4. .status-toggle-btn 状态按钮防截断
   const statusToggleMatch = html.match(/\.status-toggle-btn\s*\{([^}]+)\}/g);
   const statusToggleCss = statusToggleMatch ? statusToggleMatch.join('\n') : '';
-  check('启停/已签按钮: 包含 height: 20px !important', statusToggleCss.includes('height: 20px !important'));
-  check('启停/已签按钮: 包含 max-height: 20px !important', statusToggleCss.includes('max-height: 20px !important'));
+  check('启停/已签按钮: 不设硬编码死高度避免上下截断', !statusToggleCss.includes('height: 20px !important'));
   check('启停/已签按钮: 包含 white-space: nowrap !important', statusToggleCss.includes('white-space: nowrap !important'));
   check('启停/已签按钮: 包含 flex-shrink: 0 !important', statusToggleCss.includes('flex-shrink: 0 !important'));
+  check('启停/已签按钮: 包含 inline-flex 居中', statusToggleCss.includes('display: inline-flex !important'));
 
-  // 5. .icon-btn 图标按钮尺寸死锁
+  // 5. .icon-btn 图标按钮
   const iconBtnMatch = html.match(/\.icon-btn\s*\{([^}]+)\}/g);
   const iconBtnCss = iconBtnMatch ? iconBtnMatch.join('\n') : '';
-  check('小图标按钮: 宽高严格锁定为 20px !important', iconBtnCss.includes('width: 20px !important') && iconBtnCss.includes('height: 20px !important'));
   check('小图标按钮: 包含 flex-shrink: 0 !important', iconBtnCss.includes('flex-shrink: 0 !important'));
+  check('小图标按钮: 包含 inline-flex 居中', iconBtnCss.includes('display: inline-flex !important'));
 
   console.log('');
 
