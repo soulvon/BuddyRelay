@@ -11,7 +11,7 @@
        消灭粗糙等宽打字机体与汉字衬线宋体回退，全面统一现代设计质感
        ════════════════════════════════════════════════════════════ */
     :root {
-      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
       --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "SF Mono", Monaco, "Menlo", monospace;
     }
 
@@ -109,6 +109,14 @@
     /* 顶部「N 个」药丸与「添加账号」按钮去外发光 */
     .grid-count {
       box-shadow: none !important;
+    }
+
+    /* 「N 个」药丽数字：12px 加粗 + 统一 sans 等宽数字（收敛 main.css 四段打架定义，此处为唯一权威） */
+    .grid-count {
+      font-size: 12px !important;
+      font-weight: 800 !important;
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
     }
 
     .list-summary .add-account-btn {
@@ -322,35 +330,48 @@
       background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
     }
 
-    /* ── 账号启停状态圆点（替代"已启用/已禁用"文字，克制极简） ── */
-    .status-dot-btn {
-      width: 14px !important;
-      height: 14px !important;
-      min-width: 14px !important;
-      min-height: 14px !important;
+    /* ── 账号启停开关（沿用 .as-switch 设计语言的小号按钮版，状态语义一目了然） ── */
+    .status-switch {
+      width: 26px !important;
+      height: 15px !important;
+      min-width: 26px !important;
+      min-height: 15px !important;
       padding: 0 !important;
-      border-radius: 50% !important;
-      border: 1.5px solid transparent !important;
+      border-radius: 8px !important;
+      border: none !important;
       cursor: pointer !important;
       flex-shrink: 0 !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
+      display: inline-block !important;
+      position: relative !important;
       box-sizing: border-box !important;
-      transition: all 0.15s !important;
-      background: transparent !important;
+      transition: background 0.2s !important;
+      vertical-align: middle !important;
     }
-    .status-dot-btn.is-on {
-      background: var(--gh-green, #3fb950) !important;
-      border-color: color-mix(in srgb, var(--gh-green, #3fb950) 45%, transparent) !important;
-      box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--gh-green, #3fb950) 16%, transparent) !important;
+    .status-switch .status-switch-thumb {
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      top: 2px;
+      left: 2px;
+      background: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .status-dot-btn.is-off {
-      background: transparent !important;
-      border-color: var(--muted, #8c8c8c) !important;
+    .status-switch.is-on {
+      background: color-mix(in srgb, var(--gh-green, #3fb950) 45%, #8b9a90) !important;
     }
-    .status-dot-btn.is-off:hover {
-      border-color: var(--gh-green, #3fb950) !important;
+    .status-switch.is-on:hover {
+      background: color-mix(in srgb, var(--gh-green, #3fb950) 58%, #8b9a90) !important;
+    }
+    .status-switch.is-on .status-switch-thumb {
+      transform: translateX(11px);
+    }
+    .status-switch.is-off {
+      background: color-mix(in srgb, var(--vscode-foreground) 20%, transparent) !important;
+    }
+    .status-switch.is-off:hover {
+      background: color-mix(in srgb, var(--gh-green, #3fb950) 35%, transparent) !important;
     }
 
     /* ── 今日算力流水明细条目与统计胶囊徽标 ── */
@@ -923,13 +944,13 @@
                     <span class="summary-stat-max" id="summaryDailyMax">/ 0</span>
                   </div>
                 </div>
-                <div class="summary-stat" id="summaryWeeklyStat">
+                <div class="summary-stat" id="summaryWeeklyStat" title="已启用账号的剩余算力 ÷ 总容量（基础体验包 + 活动赠送包），≤10% 红色告警、≤30% 橙色预警">
                   <div class="summary-stat-head">
                     <svg class="summary-stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                     </svg>
-                    <span class="summary-stat-label">号池总算力</span>
-                    <span class="summary-stat-pct" id="summaryWeeklyPct">0%</span>
+                    <span class="summary-stat-label">算力</span>
+                    <span class="summary-stat-pct" id="summaryWeeklyPct">剩 0%</span>
                   </div>
                   <div class="summary-bar"><div class="summary-bar-fill" id="summaryWeeklyBar" style="width:0%"></div></div>
                   <div class="summary-stat-footer">
@@ -949,20 +970,20 @@
                     <span>统计</span>
                   </div>
                   <div style="flex:1"></div>
-                  <div id="usageSummaryBadge" class="usage-summary-badges">
-                    <span id="usageAwardedBadge" class="usage-badge-pill is-plus">+0 点</span>
-                    <span id="usageConsumedBadge" class="usage-badge-pill is-minus">-0 点</span>
+                  <div id="usageSummaryBadge" class="usage-summary-badges" title="今日算力流水总账：新增=签到与任务到账，消耗=会话与补全净耗">
+                    <span id="usageAwardedBadge" class="usage-badge-pill is-plus">新增 +0</span>
+                    <span id="usageConsumedBadge" class="usage-badge-pill is-minus">消耗 -0</span>
                   </div>
-                  <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="width:20px;height:20px;margin-left:4px;" onclick="event.stopPropagation();">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                  <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="margin-left:4px;" onclick="event.stopPropagation();">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg>
                   </button>
                 </summary>
                 <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
                   <!-- 号池大盘状态统计 -->
                   <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
                     <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个（≥ 80%）</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个（≤ 30%）</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个 (≥ 80%)</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个 (≤ 30%)</span></div>
                     <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
                   </div>
 
@@ -1366,12 +1387,12 @@
 
   <!-- 规则与调度设置模态框 -->
   <div id="settingsModalOverlay" class="modal-overlay" hidden>
-    <div class="modal-box" style="width:min(450px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-box" style="width:min(450px,94vw);max-height:88vh;">
       <div class="modal-header">
         <h3>规则与调度设置</h3>
         <button class="modal-close" id="settingsModalClose" title="关闭">×</button>
       </div>
-      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
+      <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
         
         <!-- 1. 每日自动签到与任务 -->
         <div class="card auto-switch-card" style="border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
@@ -1520,15 +1541,14 @@
           </div>
         </div>
 
-        <!-- 操作区 -->
-        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px;">
-          <button class="btn-outline" id="btnSettingsReset" type="button" style="font-size:11px;height:30px;">恢复默认</button>
-          <div style="display:flex;gap:8px;">
-            <button class="modal-cancel-btn" id="btnSettingsCancel" type="button" style="font-size:11px;height:30px;">取消</button>
-            <button class="primary" id="btnSettingsSave" type="button" style="font-size:11px;height:30px;min-width:80px;">保存设置</button>
-          </div>
-        </div>
+      </div>
 
+      <div class="modal-footer">
+        <button class="btn-outline" id="btnSettingsReset" type="button" style="font-size:11px;height:30px;">恢复默认</button>
+        <div style="display:flex;gap:8px;">
+          <button class="modal-cancel-btn" id="btnSettingsCancel" type="button" style="font-size:11px;height:30px;">取消</button>
+          <button class="primary" id="btnSettingsSave" type="button" style="font-size:11px;height:30px;min-width:80px;">保存设置</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2391,11 +2411,18 @@
       summaryDailyNum.textContent = checked;
       summaryDailyMax.textContent = '/ ' + total;
 
-      const totalRemain = currentAccounts.reduce((s, a) => s + (a.totalCredits || 0), 0);
-      const totalCap = currentAccounts.reduce((s, a) => s + ((a.activityPackage && a.activityPackage.total) || 0), 0);
+      // 口径：仅启用账号；分子=全部剩余（基础+活动），分母=全部容量（基础+活动），防止基础包余额导致破百
+      const activeAccounts = currentAccounts.filter(a => a.status !== 'disabled');
+      const totalRemain = activeAccounts.reduce((s, a) => s + (a.totalCredits || 0), 0);
+      const totalCap = activeAccounts.reduce((s, a) => {
+        const base = (a.basePackage && a.basePackage.total) || 0;
+        const act = (a.activityPackage && a.activityPackage.total) || 0;
+        return s + base + act;
+      }, 0);
       const creditPct = totalCap > 0 ? Math.round((totalRemain / totalCap) * 1000) / 10 : 0;
-      summaryWeeklyPct.textContent = creditPct + '%';
+      summaryWeeklyPct.textContent = '剩 ' + creditPct + '%';
       summaryWeeklyBar.style.width = Math.min(100, creditPct) + '%';
+      summaryWeeklyBar.className = 'summary-bar-fill ' + levelClass(creditPct, totalRemain);
       summaryWeeklyNum.textContent = fmtNum(totalRemain);
       summaryWeeklyMax.textContent = '/ ' + fmtNum(totalCap);
 
@@ -2405,8 +2432,8 @@
 
       const high = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent >= 80).length;
       const low = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent <= 30).length;
-      summaryHighQuota.textContent = high + ' 个（≥ 80%）';
-      summaryLowQuota.textContent = low + ' 个（≤ 30%）';
+      summaryHighQuota.textContent = high + ' 个 (≥ 80%)';
+      summaryLowQuota.textContent = low + ' 个 (≤ 30%)';
 
       updateLastRefreshText();
     }
@@ -2503,7 +2530,7 @@
 
         const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : (isDisabled ? '账号已禁用' : '执行每日签到领算力')}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
 
-        const statusToggleBtn = `<button class="status-dot-btn ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '账号已禁用，点击启用' : '账号启用中，点击禁用'}" aria-label="${isDisabled ? '启用账号' : '禁用账号'}"></button>`;
+        const statusToggleBtn = `<button class="status-switch ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '账号已禁用，点击启用' : '账号启用中，点击禁用'}" aria-label="${isDisabled ? '启用账号' : '禁用账号'}"><span class="status-switch-thumb"></span></button>`;
 
         return `
           <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${acc.id}">
@@ -2554,7 +2581,6 @@
             <div class="grid-card-actions">
               ${leftAction}
               <div class="grid-actions-right">
-                ${statusToggleBtn}
                 ${checkinBtn}
                 <button class="icon-btn" onclick="onEditMeta('${acc.id}')" title="设置业务标签与备注">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -2565,6 +2591,7 @@
                 <button class="icon-btn" onclick="onDelete('${acc.id}')" title="从号池移除">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
+                ${statusToggleBtn}
               </div>
             </div>
           </div>
@@ -2626,8 +2653,8 @@
       const awardedBadge = document.getElementById('usageAwardedBadge');
       const consumedBadge = document.getElementById('usageConsumedBadge');
       if (summary) {
-        if (awardedBadge) awardedBadge.textContent = '+' + fmtNum(summary.totalAwarded || 0) + ' 点';
-        if (consumedBadge) consumedBadge.textContent = '-' + fmtNum(summary.totalConsumed || 0) + ' 点';
+        if (awardedBadge) awardedBadge.textContent = '新增 +' + fmtNum(summary.totalAwarded || 0);
+        if (consumedBadge) consumedBadge.textContent = '消耗 ' + (summary.totalConsumed ? '-' + fmtNum(summary.totalConsumed) : '0');
       }
       if (!container) return;
       if (!Array.isArray(records) || records.length === 0) {
