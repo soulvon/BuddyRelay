@@ -6,7 +6,7 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.0.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.0.4-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -37,7 +37,7 @@ BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDE
 
 ### Option 1: Extensions panel (recommended)
 
-1. Download the latest `buddy-relay-1.0.3.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.0.4.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** or **WorkBuddy**;
 3. Open the Extensions view (`Ctrl+Shift+X` / macOS `Cmd+Shift+X`);
 4. Click the `...` menu ➔ **"Install from VSIX..."**;
@@ -46,7 +46,7 @@ BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDE
 ### Option 2: Command line
 
 ```bash
-buddycn --install-extension buddy-relay-1.0.3.vsix --force
+buddycn --install-extension buddy-relay-1.0.4.vsix --force
 ```
 
 ---

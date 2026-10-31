@@ -30,7 +30,7 @@ function getUpdateConfig(): UpdateConfig {
   const config = vscode.workspace.getConfiguration('buddyRelay.update');
   return {
     autoCheck: config.get('autoCheck', true),
-    autoInstall: config.get('autoInstall', false)
+    autoInstall: config.get('autoInstall', true)
   };
 }
 
@@ -39,9 +39,9 @@ export function getCurrentVersion(): string {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
     );
-    return packageJson.version || "1.0.3";
+    return packageJson.version || "1.0.4";
   } catch (_) {
-    return "1.0.3";
+    return "1.0.4";
   }
 }
 

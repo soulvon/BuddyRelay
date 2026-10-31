@@ -3,6 +3,7 @@ import { AccountStore, CodeBuddyAccount, maskName, maskUid } from './accountStor
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { t } from './i18n';
 import { detectHostEdition } from './host';
+import { isTodayCheckedIn } from './checkinService';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -92,7 +93,7 @@ export class StatusBarManager implements vscode.Disposable {
     md.appendMarkdown(t('status.tooltipAccount', name));
     md.appendMarkdown(t('status.tooltipUid', isPrivacy ? maskUid(active.uid) : active.uid));
     md.appendMarkdown(t('status.tooltipCredits', typeof active.totalCredits === 'number' ? t('status.creditsReady', fmtNum(active.totalCredits)) : t('status.ready')));
-    md.appendMarkdown(t('status.tooltipCheckin', active.todayCheckedIn ? t('status.checked') : t('status.unchecked'), active.checkinStreak || 0));
+    md.appendMarkdown(t('status.tooltipCheckin', isTodayCheckedIn(active) ? t('status.checked') : t('status.unchecked'), active.checkinStreak || 0));
     md.appendMarkdown('---\n\n');
     md.appendMarkdown(`$(arrow-swap) ${t('status.tooltipClick')}`);
 
@@ -140,7 +141,7 @@ export class StatusBarManager implements vscode.Disposable {
         items.push({
           label: `${icon} ${labelName}`,
           description: `[${statusLabel}] ${creditsStr}`,
-          detail: t('qp.detailStreak', displayUid, acc.checkinStreak || 0, acc.todayCheckedIn ? t('qp.checkedToday') : t('qp.notCheckedToday')),
+          detail: t('qp.detailStreak', displayUid, acc.checkinStreak || 0, isTodayCheckedIn(acc) ? t('qp.checkedToday') : t('qp.notCheckedToday')),
           actionType: 'account',
           account: acc
         });

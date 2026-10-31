@@ -37,5 +37,6 @@
   "config.autoSwitch.cooldownMinutes": "两次自动切换之间的最小间隔（分钟），防止反复横跳",
   "config.growthTasks.autoAfterCheckin": "每日自动签到完成后自动跑一轮成长任务（报名+领奖）",
   "config.update.autoCheck": "启动时自动在后台静默检查 GitHub 最新发布版本",
-  "config.update.autoInstall": "发现新版本时是否自动静默下载安装"
+  "config.update.autoInstall": "发现新版本时是否自动静默下载安装",
+  "config.mainJsPath": "热切换使用的 CodeBuddy main.js 自定义路径（留空自动探测，修改后重载窗口生效）"
 }

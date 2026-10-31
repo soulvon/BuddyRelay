@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
   "description": "Seamless multi-account manager & hot account switcher for CodeBuddy / WorkBuddy AI IDEs. Switch without restart, keep all sessions, quota guard, auto check-in & tasks, usage audit.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "soulvon",
   "keywords": [
     "codebuddy",
@@ -254,8 +254,13 @@
         },
         "buddyRelay.update.autoInstall": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.update.autoInstall%"
+        },
+        "buddyRelay.mainJsPath": {
+          "type": "string",
+          "default": "",
+          "description": "%config.mainJsPath%"
         }
       }
     }

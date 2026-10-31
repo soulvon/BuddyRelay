@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount } from './accountStore';
-import { CheckinService } from './checkinService';
+import { CheckinService, todayCN } from './checkinService';
 
 /**
  * Cockpit Tools 式每日定时签到调度器
@@ -128,7 +128,7 @@ export class CheckinScheduler {
     try {
       const cfg = this.getConfig();
       const accounts = this.store.getAll();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayCN();
       const pending = accounts.filter(
         (acc: CodeBuddyAccount) =>
           acc.status !== 'disabled' &&

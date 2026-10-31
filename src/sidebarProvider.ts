@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount, QuotaPackageItem, maskName, maskUid } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
-import { CheckinService } from './checkinService';
+import { CheckinService, isTodayCheckedIn } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
 import { OAuthService } from './oauthService';
 import { GrowthTaskService, GrowthTask } from './growthTaskService';
@@ -13,6 +13,7 @@ import { UsageTracker } from './usageTracker';
 import { t, getLangDict } from './i18n';
 import { detectHostEdition } from './host';
 import { isCnAccount } from './domain';
+import { readHostLoginUid } from './hostSession';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -203,7 +204,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const accounts = this.store.getAll();
     const active = this.store.getActive();
-    const checkedTodayCount = accounts.filter((a) => a.todayCheckedIn).length;
+    const checkedTodayCount = accounts.filter((a) => isTodayCheckedIn(a)).length;
     const totalCredits = accounts.reduce(
       (sum, acc) => sum + (acc.totalCredits || 0),
       0
@@ -267,7 +268,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             basePackage: basePkg,
             activityPackage: actPkg,
             checkinStreak: acc.checkinStreak ?? 0,
-            todayCheckedIn: Boolean(acc.todayCheckedIn),
+            todayCheckedIn: isTodayCheckedIn(acc),
             rateLimitUntil: acc.rateLimitUntil,
             lastUsed: acc.lastUsed,
             notes: acc.notes || '',
@@ -541,10 +542,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const name = target.nickname || target.email;
     this.setOperating(true, t('msg.readingTasksFor', name));
     try {
+      const sourceErrors: string[] = [];
       const [tasks, assetSummary] = await Promise.all([
-        this.growthTasks.listTasks(target),
+        this.growthTasks.listTasks(target, sourceErrors),
         this.growthTasks.getGrowthAssetSummary(target)
       ]);
+      // 双源全挂（token 失效/网络异常/风控）时空列表必须带出真实原因
+      if (tasks.length === 0 && sourceErrors.length > 0) {
+        this.sendNotify('error', t('err.readTasksFailed', sourceErrors.join(' | ')));
+      }
       this.pushTasksToWebview(tasks, target.id, name, assetSummary);
     } catch (err: any) {
       this.sendNotify('error', t('err.readTasksFailed', err.message));
@@ -782,7 +788,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       } else if (r.already) {
         this.sendNotify('error', t('msg.claimAlready', name));
       } else {
-        this.sendNotify('error', t('err.claimNotMet', name));
+        this.sendNotify('error', t('err.claimNotMet', name) + (r.detail ? ` (${r.detail})` : ''));
       }
       const tasks = await this.growthTasks.listTasks(target);
       this.pushTasksToWebview(tasks, target.id, name);
@@ -1023,48 +1029,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * 本地导入：读取本机 CodeBuddy 当前已登录会话入池
+   *
+   * 宿主 accessToken 存于 secret://（宿主进程系统级加密），扩展进程无法直接读取；
+   * 因此流程为：storage.json 读 genie.userId 识别当前登录号 →
+   * 从本机 Cockpit Tools 账号池逐个解密、按内容 UID 匹配该号密文 → 入池。
    */
   public async handleImportLocal(): Promise<void> {
     this.setOperating(true, t('msg.readingLocalSession'));
     try {
-      const session = await vscode.authentication.getSession('CodeBuddy-auth', [], {
-        createIfNone: false
-      });
-
-      if (!session || !session.accessToken) {
+      const uid = readHostLoginUid();
+      if (!uid) {
         this.sendNotify('error', t('err.noLocalSession'));
         return;
       }
-
-      const uid = session.account.id;
-      const nickname = session.account.label || uid;
 
       if (this.store.get(uid)) {
         this.sendNotify('error', t('err.duplicateAccount'));
         return;
       }
 
-      const now = Date.now();
-      const account: CodeBuddyAccount = {
-        id: `local_${String(uid).replace(/-/g, '')}`,
-        uid: String(uid),
-        email: nickname,
-        nickname,
-        accessToken: session.accessToken,
-        refreshToken: '',
-        tokenType: 'Bearer',
-        expiresAt: 0,
-        domain: 'www.codebuddy.cn',
-        paymentType: 'free',
-        status: 'idle',
-        createdAt: now,
-        lastUsed: now,
-        notes: t('notes.localImport')
-      };
+      let account: CodeBuddyAccount | undefined;
+      try {
+        account = this.importer.findAccountByUid(uid);
+      } catch (err: any) {
+        this.sendNotify('error', t('err.localTokenLocked', uid, err.message));
+        return;
+      }
+
+      if (!account) {
+        this.sendNotify('error', t('err.localTokenLocked', uid, t('err.localNoVaultMatch')));
+        return;
+      }
 
       await this.store.upsert(account);
       this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
-      this.sendNotify('success', t('msg.localImported', nickname));
+      this.sendNotify('success', t('msg.localImported', account.nickname || account.email || uid));
     } catch (err: any) {
       this.sendNotify('error', t('err.localImportFailed', err.message));
     } finally {

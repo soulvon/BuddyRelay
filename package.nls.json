@@ -37,5 +37,6 @@
   "config.autoSwitch.cooldownMinutes": "Minimum interval between auto switches (minutes)",
   "config.growthTasks.autoAfterCheckin": "Run growth tasks (accept & claim) automatically after daily check-in",
   "config.update.autoCheck": "Silently check GitHub latest release on startup",
-  "config.update.autoInstall": "Auto download & install new versions without confirmation"
+  "config.update.autoInstall": "Auto download & install new versions without confirmation",
+  "config.mainJsPath": "Custom CodeBuddy main.js path for hot switching (leave empty for auto-detection; takes effect after reloading the window)"
 }

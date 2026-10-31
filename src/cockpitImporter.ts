@@ -207,6 +207,31 @@ export class CockpitImporter {
   }
 
   /**
+   * 在本机 Cockpit 账号池中查找指定 UID 的账号（含完整令牌）
+   * 注意：密文文件名是实例标识、与内容 uid 不保证一致，必须逐个解密后按内容匹配
+   */
+  public findAccountByUid(uid: string): CodeBuddyAccount | undefined {
+    if (!fs.existsSync(this.accountsDirPath)) {
+      return undefined;
+    }
+    const masterKey = this.readMasterKey();
+    const files = fs.readdirSync(this.accountsDirPath)
+      .filter(f => f.endsWith('.json') && !f.endsWith('.bak'));
+
+    for (const filename of files) {
+      try {
+        const account = this.decryptFile(path.join(this.accountsDirPath, filename), masterKey);
+        if (account.uid === uid) {
+          return account;
+        }
+      } catch (err) {
+        // 单个密文损坏不中断查找；该文件的错误会由"全量导入"入口逐条暴露
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * 一键从 Cockpit Tools 导入全量账号到 AccountStore
    */
   public async importToStore(store?: AccountStore): Promise<CockpitImportResult> {

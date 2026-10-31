@@ -147,7 +147,7 @@ export const PATCH_V5 = {
   VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
   // v5 特征码：v4 补丁无此标记，用于强制自愈升级
-  V5_MARKER: '/*__BYOK_V5__*/',
+  V5_MARKER: '/*__BYOK_V5_R2__*/',
 
   // 锚点 1: AM 构造函数注入全局会话实例
   AM_ANCHOR: 'AM=class{constructor(t,e,i){',
@@ -169,28 +169,30 @@ export const PATCH_V5 = {
   ANCHOR_RESTORE: 'async restoreSession(){try{await this.storageService.whenReady;',
   RESTORE_REPLACEMENT: 'async restoreSession(){this.startByokWatcher();try{await this.storageService.whenReady;',
 
-  // 注入的完整 WATCHER_METHODS 源码块 (v5: 每种切换结局均写回执 byok-switch-result.json)
+  // 注入的完整 WATCHER_METHODS 源码块 (v5 R2: 跨平台数据目录解析 / 非 Windows dir 软链 / 回执闭环)
   WATCHER_METHODS:
-    '/*__BYOK_V5__*/' +
+    '/*__BYOK_V5_R2__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
-    '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const f=pm.join(process.env.APPDATA||".","CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now();fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}catch(_){}}' +
+    '__byokDir(k){try{const pm=globalThis.__byokPath;if(!pm)return "";const h=process.env.HOME||process.env.USERPROFILE||"";const mac=process.platform==="darwin";const win=process.platform==="win32";if(k==="data"){if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_CONFIG_HOME||pm.join(h,".config");return process.env.APPDATA||pm.join(h,"AppData","Roaming")}if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_DATA_HOME||pm.join(h,".local","share");return process.env.LOCALAPPDATA||pm.join(h,"AppData","Local")}catch(e){return ""}}' +
+    '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const f=pm.join(this.__byokDir("data"),"CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now();fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}catch(_){}}' +
     '__ensureJunction(targetUid){' +
     'try{' +
-    'const la=process.env.LOCALAPPDATA;if(!la)return;' +
+    'const win=process.platform==="win32";' +
+    'const la=this.__byokDir("ext");if(!la)return;' +
     'const fm=globalThis.__byokFs,pm=globalThis.__byokPath;' +
     'if(!fm||!pm)return;' +
     'const b=pm.join(la,"CodeBuddyExtension","Data");' +
     'const m=pm.join(b,"69719899-bf05-4822-9e20-d4e7437a2edd","CodeBuddyIDE","69719899-bf05-4822-9e20-d4e7437a2edd");' +
     'const tp=pm.join(b,targetUid,"CodeBuddyIDE");' +
     'const td=pm.join(tp,targetUid);' +
-    'if(td.toLowerCase()===m.toLowerCase())return;' +
+    'if(win?td.toLowerCase()===m.toLowerCase():td===m)return;' +
     'if(!fm.existsSync(tp))fm.mkdirSync(tp,{recursive:true});' +
     'let isJ=false;' +
     'try{isJ=fm.lstatSync(td).isSymbolicLink()}catch(_){}' +
     'if(!isJ){' +
     'if(fm.existsSync(td)){try{fm.renameSync(td,td+".bak_"+Date.now())}catch(_){}}' +
-    'fm.symlinkSync(m,td,"junction");' +
-    'this.__byokLog("created junction: "+td+" -> "+m);' +
+    'fm.symlinkSync(m,td,win?"junction":"dir");' +
+    'this.__byokLog("created session link: "+td+" -> "+m);' +
     '}' +
     '}catch(e){this.__byokLog("junc err "+e.message)}' +
     '}' +
@@ -232,7 +234,7 @@ export const PATCH_V5 = {
     'const fm=await import("fs"),pm=await import("path");' +
     'const fs=fm.default||fm,path=pm.default||pm;' +
     'globalThis.__byokFs=fs;globalThis.__byokPath=path;' +
-    'const f=path.join(process.env.APPDATA||".","CodeBuddy CN","byok-switch.json");' +
+    'const f=path.join(this.__byokDir("data"),"CodeBuddy CN","byok-switch.json");' +
     'this.__byokLog("watcher on "+f);' +
     'setInterval(()=>{' +
     'fs.readFile(f,"utf8",(err,txt)=>{' +

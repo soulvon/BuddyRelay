@@ -145,9 +145,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 1.0.3', packageJson.version === '1.0.3');
-gate('G21 版本一致性: README 徽标版本对齐 1.0.3', readmeMd.includes('version-1.0.3'));
-gate('G21 版本一致性: README 安装说明版本对齐 1.0.3', readmeMd.includes('buddy-relay-1.0.3.vsix'));
+gate('G21 版本一致性: package.json 版本为 1.0.4', packageJson.version === '1.0.4');
+gate('G21 版本一致性: README 徽标版本对齐 1.0.4', readmeMd.includes('version-1.0.4'));
+gate('G21 版本一致性: README 安装说明版本对齐 1.0.4', readmeMd.includes('buddy-relay-1.0.4.vsix'));
 gate('G21 互推五件套: 同系列作品区含 Antigravity-Kite', readmeMd.includes('Antigravity-Kite'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──

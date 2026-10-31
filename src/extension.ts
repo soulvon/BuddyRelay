@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount } from './accountStore';
 import { CockpitImporter } from './cockpitImporter';
-import { CheckinService } from './checkinService';
+import { CheckinService, todayCN } from './checkinService';
 import { SeamlessSwitcher } from './seamlessSwitcher';
 import { AutoSwitcher } from './autoSwitcher';
 import { CheckinScheduler } from './checkinScheduler';
@@ -30,7 +30,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // 1. 初始化核心存储与调度服务
   const store = new AccountStore(context);
   context.subscriptions.push({ dispose: () => store.dispose() });
-  const switcher = new SeamlessSwitcher();
+  const switcher = new SeamlessSwitcher({
+    mainJsPath: vscode.workspace.getConfiguration('buddyRelay').get<string>('mainJsPath', '').trim() || undefined
+  });
   const oauthService = new OAuthService();
   const checkinService = new CheckinService();
   const importer = new CockpitImporter();
@@ -408,7 +410,7 @@ async function performDailyCheckinIfNeeded(
   checkinService: CheckinService
 ): Promise<void> {
   const accounts = store.getAll();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayCN();
   const needCheckin = accounts.filter(
     (acc) =>
       acc.status !== 'disabled' &&

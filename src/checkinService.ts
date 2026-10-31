@@ -4,6 +4,28 @@ import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore
 import { t } from './i18n';
 import { isCnAccount } from './domain';
 
+/**
+ * 北京时间 (UTC+8) 的今日日期 YYYY-MM-DD。
+ * 签到是国内 (codebuddy.cn) 活动，服务端按北京日期判定"今日"；
+ * 此前全链用 toISOString() (UTC 日期)，北京 0:00~8:00 期间会与昨日记录撞车，
+ * 导致定点签到被误判为"已签"跳过、UI 显示假"已签"。
+ */
+export function todayCN(): string {
+  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * "今日已签"唯一权威口径：布尔值必须配合 lastCheckinDate 是北京今日才可信。
+ * 防止 pool.json 中跨天残留的 todayCheckedIn=true 造成 UI 假"已签"；
+ * 缺 lastCheckinDate 的老数据按未签显示，点签到会走 queryStatus 自愈补写。
+ */
+export function isTodayCheckedIn(acc: {
+  todayCheckedIn?: boolean;
+  lastCheckinDate?: string;
+}): boolean {
+  return Boolean(acc.todayCheckedIn) && acc.lastCheckinDate === todayCN();
+}
+
 export interface DetailedQuotaResult {
   totalCredits: number;
   basePackage: QuotaPackageItem;
@@ -244,7 +266,7 @@ export class CheckinService {
     if (Array.isArray(rawData.checkin_dates) && rawData.checkin_dates.length > 0) {
       lastCheckinDate = rawData.checkin_dates[0];
     } else if (todayCheckedIn) {
-      lastCheckinDate = new Date().toISOString().slice(0, 10);
+      lastCheckinDate = todayCN();
     }
 
     return {
@@ -395,7 +417,7 @@ export class CheckinService {
             todayCheckedIn: true,
             checkinStreak: status.streakDays,
             ...quotaPatch,
-            lastCheckinDate: status.lastCheckinDate || new Date().toISOString().slice(0, 10),
+            lastCheckinDate: status.lastCheckinDate || todayCN(),
             lastCheckinTime: Date.now()
           });
         }
@@ -419,7 +441,7 @@ export class CheckinService {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays || status.streakDays + 1,
           ...quotaPatch,
-          lastCheckinDate: new Date().toISOString().slice(0, 10),
+          lastCheckinDate: todayCN(),
           lastCheckinTime: Date.now()
         });
       }
@@ -440,7 +462,7 @@ export class CheckinService {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays,
           ...quotaPatch,
-          lastCheckinDate: new Date().toISOString().slice(0, 10),
+          lastCheckinDate: todayCN(),
           lastCheckinTime: Date.now()
         });
       }

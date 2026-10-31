@@ -186,8 +186,9 @@ export class GrowthTaskService {
 
   /**
    * 拉取成长任务列表（桌面源 + 小程序源合并，按 task_code 去重）
+   * @param errors 可选错误收集器：单源失败的真实原因（HTTP 状态/服务端 msg/网络异常）逐条穿透气，便于远程排查
    */
-  public async listTasks(account: CodeBuddyAccount): Promise<GrowthTask[]> {
+  public async listTasks(account: CodeBuddyAccount, errors?: string[]): Promise<GrowthTask[]> {
     const merged = new Map<string, GrowthTask>();
 
     const collect = async (source: 'desktop' | 'mp') => {
@@ -229,9 +230,11 @@ export class GrowthTaskService {
               merged.set(code, task);
             }
           }
+        } else {
+          errors?.push(`${source}: HTTP ${res.status} ${String(res.data?.msg || res.data?.code || '').trim()}`.trim());
         }
-      } catch (_) {
-        // 单源失败静默，另一源兜底
+      } catch (err: any) {
+        errors?.push(`${source}: ${err.message}`);
       }
     };
 
@@ -320,7 +323,7 @@ export class GrowthTaskService {
   public async claimTask(
     account: CodeBuddyAccount,
     taskCode: string
-  ): Promise<{ ok: boolean; credit: number; energy: number; already: boolean }> {
+  ): Promise<{ ok: boolean; credit: number; energy: number; already: boolean; detail?: string }> {
     const doClaim = async (webFallback: boolean) => {
       const headers = this.headers(
         account,
@@ -347,8 +350,11 @@ export class GrowthTaskService {
     const credit = this.asInt(data.credit);
     const energy = this.asInt(data.energy);
     const ok = res.status === 200 && res.data?.code === 0;
+    const detail = ok
+      ? undefined
+      : `HTTP ${res.status} ${String(res.data?.msg || res.data?.code || '').trim()}`.trim();
 
-    return { ok: ok || already, credit, energy, already };
+    return { ok: ok || already, credit, energy, already, detail };
   }
 
   /**
@@ -572,9 +578,11 @@ export class GrowthTaskService {
     };
 
     // 1. 首扫任务
-    let tasks = await this.listTasks(account);
+    const firstScanErrors: string[] = [];
+    let tasks = await this.listTasks(account, firstScanErrors);
     if (tasks.length === 0) {
       report.failures.push(t('task.noTaskList'));
+      report.failures.push(...firstScanErrors);
       return report;
     }
 
@@ -657,7 +665,13 @@ export class GrowthTaskService {
     } catch (_) {}
 
     // 10. 重新拉取最新任务状态
-    tasks = await this.listTasks(account);
+    const refetchErrors: string[] = [];
+    tasks = await this.listTasks(account, refetchErrors);
+    if (tasks.length === 0 && refetchErrors.length > 0) {
+      // 复检双源全挂时明确报错，绝不让领奖阶段静默归零
+      report.failures.push(t('task.noTaskList'));
+      report.failures.push(...refetchErrors);
+    }
 
     // 11. 逐个领取达标任务奖励
     let inProgress = 0;
@@ -678,7 +692,7 @@ export class GrowthTaskService {
             report.claimedCredits += r.credit;
             report.claimedEnergy += r.energy;
           } else if (!r.ok) {
-            report.failures.push(`${task.title}: ${t('err.claimFailedShort')}`);
+            report.failures.push(`${task.title}: ${r.detail || t('err.claimFailedShort')}`);
           }
         } catch (e: any) {
           report.failures.push(`${task.title}: ${e.message}`);
