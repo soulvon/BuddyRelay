@@ -39,9 +39,6 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": [
-    "Other"
-  ],
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -270,12 +267,14 @@
     "build": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_webview_injection.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "package": "vsce package",
     "guard": "node scripts/check_ui_guards.mjs",
-    "guard:i18n": "node scripts/check_i18n_keys.mjs"
+    "guard:i18n": "node scripts/check_i18n_keys.mjs",
+    "check:release": "node scripts/check_release_readiness.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.1",
+    "adm-zip": "^0.6.1",
     "typescript": "^5.3.3"
   },
   "icon": "resources/icon.png"
