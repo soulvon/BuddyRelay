@@ -1345,10 +1345,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (fs.existsSync(htmlPath)) {
       let content = fs.readFileSync(htmlPath, 'utf8');
       content = content.replace('{{CSS_URI}}', `${cssUri.toString()}?v=${Date.now()}`);
+      // CSP: 宿主会对未声明 CSP 的 webview 注入兜底严格策略 (script-src 仅放行固定 hash, inline 脚本全灭);
+      // 扩展自带 CSP 自我声明, 同时把 webview.cspSource 注入资源白名单
+      content = content.replaceAll('{{CSP_SOURCE}}', () => webview.cspSource);
       const dict = getLangDict();
-      // 字典内 </script> 转义, 防止注入串提前闭合脚本块
+      // 字典内 </script> 转义, 防止注入串提前闭合脚本块; 函数式替换杜绝 $ 特殊替换模式吞字符
       const dictJson = JSON.stringify(dict).replace(/<\//g, '<\\/');
-      content = content.replace('{{I18N_JSON}}', dictJson);
+      content = content.replaceAll('{{I18N_JSON}}', () => dictJson);
       content = content.replace(/\{\{i:([\w.]+)\}\}/g, (full, key: string) => {
         const v = dict[key];
         if (v === undefined) {

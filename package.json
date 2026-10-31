@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
   "description": "Seamless multi-account manager & hot account switcher for CodeBuddy / WorkBuddy AI IDEs. Switch without restart, keep all sessions, quota guard, auto check-in & tasks, usage audit.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "soulvon",
   "keywords": [
     "codebuddy",
@@ -264,10 +264,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
+    "vscode:prepublish": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_webview_injection.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
+    "build": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_webview_injection.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "package": "vsce package",
     "guard": "node scripts/check_ui_guards.mjs",
     "guard:i18n": "node scripts/check_i18n_keys.mjs"

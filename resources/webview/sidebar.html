@@ -2,6 +2,7 @@
 <html lang="{{i:__lang__}}">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{CSP_SOURCE}} data: blob:; script-src {{CSP_SOURCE}} 'unsafe-inline'; style-src {{CSP_SOURCE}} 'unsafe-inline'; font-src {{CSP_SOURCE}} data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BuddyRelay</title>
   <link rel="stylesheet" href="{{CSS_URI}}">
@@ -1564,7 +1565,7 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <script>
-    // ── i18n: 扩展侧注入当前语言字典 ({{I18N_JSON}} 由 sidebarProvider 替换) ──
+    // ── i18n: 扩展侧注入当前语言字典 (字典占位符由 sidebarProvider 替换, 注释里严禁再写该占位符字样) ──
     const __I18N__ = {{I18N_JSON}};
     function t(key) {
       var s = (__I18N__ && __I18N__[key] !== undefined) ? __I18N__[key] : key;
@@ -2941,6 +2942,7 @@
     });
 
     vscode.postMessage({ command: 'webviewReady' });
-  </script>
+  
+</script>
 </body>
 </html>
