@@ -1,5 +1,6 @@
 import { CodeBuddyAccount } from './accountStore';
 import { httpRequest } from './oauthService';
+import { t } from './i18n';
 
 /**
  * Buddy 成长中心任务模型（来源：/v2/activity/growth/tasks）
@@ -290,14 +291,14 @@ export class GrowthTaskService {
             } else if (r?.status === 'already_accepted') {
               alreadyAccepted++;
             } else {
-              failures.push(`${r?.task_code || '任务'}: ${r?.message || r?.status || '报名失败'}`);
+              failures.push(`${r?.task_code || t('task.defaultName')}: ${r?.message || r?.status || t('err.acceptFailedShort')}`);
             }
           }
         } else {
-          failures.push(`批量报名接口异常 (${res.status}): ${res.data?.msg || '未知错误'}`);
+          failures.push(t('err.acceptApiError', res.status, res.data?.msg || t('err.unknownError')));
         }
       } catch (err: any) {
-        failures.push(`网络异常: ${err.message}`);
+        failures.push(t('err.networkError', err.message));
       }
     };
 
@@ -434,7 +435,7 @@ export class GrowthTaskService {
             timeout: 15000
           });
           if (depRes.status === 200 && depRes.data?.code === 0) {
-            return { attempted: true, departed: true, location: loc.name || '咖啡馆' };
+            return { attempted: true, departed: true, location: loc.name || t('js.defaultLocation') };
           }
         }
       }
@@ -540,7 +541,7 @@ export class GrowthTaskService {
         });
         if (openRes.status === 200 && openRes.data?.code === 0) {
           const results = openRes.data?.data?.results || [];
-          const firstName = results[0]?.template?.name || results[0]?.instance?.soul_desc || '新Buddy';
+          const firstName = results[0]?.template?.name || results[0]?.instance?.soul_desc || t('act.newBuddy');
           return { opened: 1, name: firstName };
         }
       }
@@ -573,7 +574,7 @@ export class GrowthTaskService {
     // 1. 首扫任务
     let tasks = await this.listTasks(account);
     if (tasks.length === 0) {
-      report.failures.push('未拉取到任务列表（网络或登录态异常）');
+      report.failures.push(t('task.noTaskList'));
       return report;
     }
 
@@ -662,11 +663,11 @@ export class GrowthTaskService {
     let inProgress = 0;
     for (const task of tasks) {
       if (task.manualOnly) {
-        report.skipped.push(`${task.title}（需微信扫码关注）`);
+        report.skipped.push(task.title + t('task.wechatOnly'));
         continue;
       }
       if (task.locked) {
-        report.skipped.push(`${task.title}（未解锁）`);
+        report.skipped.push(task.title + t('task.lockedSuffix'));
         continue;
       }
       if (this.isClaimable(task)) {
@@ -677,7 +678,7 @@ export class GrowthTaskService {
             report.claimedCredits += r.credit;
             report.claimedEnergy += r.energy;
           } else if (!r.ok) {
-            report.failures.push(`${task.title}: 领取失败`);
+            report.failures.push(`${task.title}: ${t('err.claimFailedShort')}`);
           }
         } catch (e: any) {
           report.failures.push(`${task.title}: ${e.message}`);

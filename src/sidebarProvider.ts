@@ -10,6 +10,9 @@ import { GrowthTaskService, GrowthTask } from './growthTaskService';
 import { getOtherLockedUids } from './accountLock';
 import { checkForUpdates, getCurrentVersion } from './updater';
 import { UsageTracker } from './usageTracker';
+import { t, getLangDict } from './i18n';
+import { detectHostEdition } from './host';
+import { isCnAccount } from './domain';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -135,7 +138,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         case 'taskStop':
           this._abortTaskBatch = true;
-          this.sendNotify('error', '已请求中止任务批处理');
+          this.sendNotify('error', t('msg.stopRequested'));
           break;
 
         case 'togglePrivacyMode':
@@ -176,7 +179,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         case 'clearUsage':
           this.usageTracker?.clearRecords();
-          this.sendNotify('success', '今日算力流水记录已清空');
+          this.sendNotify('success', t('msg.usageCleared'));
           this.postStateToWebview();
           break;
       }
@@ -227,7 +230,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       autoSwitchNotify: cfg.get<boolean>('autoSwitch.notifyOnSwitch', true),
       privacyModeDefault: cfg.get<boolean>('privacyModeDefault', false),
       updateAutoCheck: cfg.get<boolean>('update.autoCheck', true),
-      updateAutoInstall: cfg.get<boolean>('update.autoInstall', false)
+      updateAutoInstall: cfg.get<boolean>('update.autoInstall', false),
+      locale: cfg.get<string>('locale', 'auto')
     };
 
     this._view.webview.postMessage({
@@ -236,7 +240,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         accounts: accounts.map((acc) => {
           const actRemain = typeof acc.totalCredits === 'number' ? acc.totalCredits : 0;
           const basePkg: QuotaPackageItem = acc.basePackage || {
-            title: '基础体验包',
+            title: t('pkg.base'),
             count: 1,
             remain: 0,
             total: 500,
@@ -244,7 +248,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           };
 
           const actPkg: QuotaPackageItem = acc.activityPackage || {
-            title: '活动赠送包',
+            title: t('pkg.activity'),
             count: 30,
             remain: actRemain,
             total: 3000,
@@ -286,6 +290,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         privacyMode: this.store.getPrivacyMode(),
         lockedUids,
         version: getCurrentVersion(),
+        hostEdition: detectHostEdition(),
         allTags: this.store.getAllTags(),
         usageSummary: this.usageTracker?.getDailySummary(),
         recentRecords: this.usageTracker?.getRecentRecords(25) || []
@@ -299,23 +304,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleSwitchAccount(accountId: string): Promise<void> {
     const target = this.store.get(accountId);
     if (!target) {
-      this.sendNotify('error', '目标账号不存在或已被移除');
+      this.sendNotify('error', t('err.targetMissing'));
       return;
     }
 
-    this.setOperating(true, `正在热切至账号 ${target.nickname || target.email}...`);
+    this.setOperating(true, t('msg.switchingTo', target.nickname || target.email));
 
     try {
       const res = await this.switcher.switchAccount(target, this.store);
       if (res.success) {
         this.sendNotify('success',
-          `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email}`
+          t('msg.switched', target.nickname || target.email)
         );
       } else {
-        this.sendNotify('error', `切号异常: ${res.message}`);
+        this.sendNotify('error', t('err.switchAbnormal', res.message));
       }
     } catch (err: any) {
-      this.sendNotify('error', `切号失败: ${err.message}`);
+      this.sendNotify('error', t('err.switchFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -330,20 +335,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    this.setOperating(true, `正在为 ${target.nickname || target.email} 签到...`);
+    this.setOperating(true, t('msg.checkingInFor', target.nickname || target.email));
     try {
       const res = await this.checkinService.checkinAccount(target, this.store);
       if (res.success) {
-        this.sendNotify('success', 
+        this.sendNotify('success',
           `[${target.nickname || target.email}] ${res.message}`
         );
       } else {
-        this.sendNotify('error', 
-          `[${target.nickname || target.email}] 签到失败: ${res.error || res.message}`
+        this.sendNotify('error',
+          `[${target.nickname || target.email}] ${t('err.checkinFailed', res.error || res.message)}`
         );
       }
     } catch (err: any) {
-      this.sendNotify('error', `签到异常: ${err.message}`);
+      this.sendNotify('error', t('err.checkinError', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -355,18 +360,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleBatchCheckin(): Promise<void> {
     const accounts = this.store.getAll();
     if (accounts.length === 0) {
-      this.sendNotify('success', '号池为空，暂无需要签到的账号');
+      this.sendNotify('success', t('msg.poolEmpty'));
       return;
     }
 
-    this.setOperating(true, `正在执行一键全员签到 (共 ${accounts.length} 个账号)...`);
+    this.setOperating(true, t('msg.batchCheckinRunning', accounts.length));
     try {
       const report = await this.checkinService.batchCheckin(accounts, this.store);
-      this.sendNotify('success', 
-        `BuddyRelay: 签到完成！新领积分: ${report.totalCreditsAwarded}点 | 成功: ${report.successCount} | 今日已签: ${report.alreadyCheckedInCount} | 失败: ${report.failedCount}`
+      this.sendNotify('success',
+        t('msg.batchCheckinDone', report.totalCreditsAwarded, report.successCount, report.alreadyCheckedInCount, report.failedCount)
       );
     } catch (err: any) {
-      this.sendNotify('error', `批量签到异常: ${err.message}`);
+      this.sendNotify('error', t('err.batchCheckinError', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -376,19 +381,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * 4. 从 Cockpit 导入账号
    */
   public async handleImportCockpit(): Promise<void> {
-    this.setOperating(true, '正在扫描并解密 Cockpit Tools 账号池...');
+    this.setOperating(true, t('msg.scanningCockpit'));
     try {
       const res = await this.importer.importToStore(this.store);
       if (res.success) {
-        this.sendNotify('success', 
-          `BuddyRelay: 成功从 Cockpit 导入 ${res.decryptedCount} 个可用账号`
+        this.sendNotify('success',
+          t('msg.cockpitImported', res.decryptedCount)
         );
         this.checkinService.batchSyncStatus(this.store.getAll(), this.store).catch(() => {});
       } else {
-        this.sendNotify('error', `从 Cockpit 导入完成: 导入 ${res.decryptedCount}/${res.totalFound} 个账号`);
+        this.sendNotify('error', t('msg.cockpitPartial', res.decryptedCount, res.totalFound));
       }
     } catch (err: any) {
-      this.sendNotify('error', `导入 Cockpit 异常: ${err.message}`);
+      this.sendNotify('error', t('err.cockpitImportError', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -398,21 +403,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * 5. 官方 OAuth 登录添加账号
    */
   public async handleAddAccountOAuth(): Promise<void> {
-    this.setOperating(true, '正在请求 CodeBuddy 官方登录授权...');
+    this.setOperating(true, t('msg.requestingOAuth'));
     try {
       const account = await this.oauthService.loginAndSave(this.store, {
         onAuthUrl: (url) => {
           // 唤起系统默认浏览器打开官方授权页
           vscode.env.openExternal(vscode.Uri.parse(url));
-          this.setOperating(true, '已打开授权页，请在浏览器中扫码或确认登录...');
+          this.setOperating(true, t('msg.oauthPageOpened'));
         }
       });
-      this.sendNotify('success', 
-        `BuddyRelay: 账号 [${account.nickname || account.email}] 授权成功并加入号池！`
+      this.sendNotify('success',
+        t('msg.oauthSuccess', account.nickname || account.email)
       );
       this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
     } catch (err: any) {
-      this.sendNotify('error', `OAuth 授权登录失败: ${err.message}`);
+      this.sendNotify('error', t('err.oauthFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -428,30 +433,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     if (!confirmed) {
+      const confirmBtn = t('ui.confirmRemoveBtn');
       const confirm = await vscode.window.showWarningMessage(
-        `确定要从号池中移除账号 [${target.nickname || target.email}] 吗？`,
+        t('ui.confirmRemove', target.nickname || target.email),
         { modal: true },
-        '确定移除'
+        confirmBtn
       );
-      if (confirm !== '确定移除') {
+      if (confirm !== confirmBtn) {
         return;
       }
     }
 
     await this.store.delete(accountId);
-    this.sendNotify('success', `已移除账号 [${target.nickname || target.email}]`);
+    this.sendNotify('success', t('msg.accountRemoved', target.nickname || target.email));
   }
 
   /**
    * 7. 刷新状态与额度
    */
   public async handleRefreshStatus(): Promise<void> {
-    this.setOperating(true, '正在刷新号池状态与实时配额...');
+    this.setOperating(true, t('msg.refreshing'));
     try {
       await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
-      this.sendNotify('success', 'BuddyRelay: 全量账号额度与签到状态刷新完毕');
+      this.sendNotify('success', t('msg.refreshDone'));
     } catch (err: any) {
-      this.sendNotify('error', `刷新状态失败: ${err.message}`);
+      this.sendNotify('error', t('err.refreshFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -529,11 +535,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       target = this.store.getActive() || this.store.getAll()[0];
     }
     if (!target) {
-      this.sendNotify('error', '号池为空，无法读取成长任务');
+      this.sendNotify('error', t('msg.poolEmpty'));
       return;
     }
     const name = target.nickname || target.email;
-    this.setOperating(true, `正在读取 [${name}] 的成长任务与资产...`);
+    this.setOperating(true, t('msg.readingTasksFor', name));
     try {
       const [tasks, assetSummary] = await Promise.all([
         this.growthTasks.listTasks(target),
@@ -541,7 +547,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ]);
       this.pushTasksToWebview(tasks, target.id, name, assetSummary);
     } catch (err: any) {
-      this.sendNotify('error', `读取任务失败: ${err.message}`);
+      this.sendNotify('error', t('err.readTasksFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -600,12 +606,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     }
 
+    // 成长任务为国内版 (codebuddy.cn) 专属, 国际账号明确跳过并提示, 不静默
+    const cnTargets = targets.filter(acc => isCnAccount(acc.domain));
+    if (cnTargets.length < targets.length) {
+      this.sendNotify('warn', t('intl.cnOnlyDetail'));
+    }
+    targets = cnTargets;
+
     if (targets.length === 0) {
-      this.sendNotify('error', '没有可执行的账号');
+      this.sendNotify('error', t('err.noAccountsToRun'));
       return;
     }
 
-    this.setOperating(true, `正在批量执行成长任务（共 ${targets.length} 个账号）...`);
+    this.setOperating(true, t('msg.batchTaskRunning', targets.length));
     let totalClaimed = 0;
     let totalCredits = 0;
     let totalEnergy = 0;
@@ -616,17 +629,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     let wasStopped = false;
     const details: Array<{ accountName: string; status: 'ok' | 'fail' | 'skipped' | 'stopped'; message: string }> = [];
 
-    this.sendTaskProgress(`开始批量执行，共 ${targets.length} 个账号...`, 'doing', 0, 0, targets.length);
+    this.sendTaskProgress(t('prog.batchStart', targets.length), 'doing', 0, 0, targets.length);
 
     try {
       for (let i = 0; i < targets.length; i++) {
         if (this._abortTaskBatch) {
           wasStopped = true;
-          this.sendTaskProgress('用户已中止后续批处理', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          this.sendTaskProgress(t('prog.aborted'), 'fail', Math.round((i / targets.length) * 100), i, targets.length);
           details.push({
             accountName: targets[i].nickname || targets[i].email,
             status: 'stopped',
-            message: '用户主动中止'
+            message: t('prog.stoppedByUser')
           });
           break;
         }
@@ -634,7 +647,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const acc = targets[i];
         const name = acc.nickname || acc.email;
         const currentPct = Math.round((i / targets.length) * 100);
-        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 执行中...`, 'doing', currentPct, i + 1, targets.length);
+        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${t('prog.executing')}`, 'doing', currentPct, i + 1, targets.length);
 
         try {
           const report = await this.growthTasks.runAutoComplete(acc);
@@ -651,38 +664,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             f => f.includes('11140') || f.toLowerCase().includes('request illegal')
           );
           if (restricted) {
-            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 账号受限，已跳过`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
-            details.push({ accountName: name, status: 'fail', message: '账号受限 (11140)' });
+            this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${t('prog.accountRestricted')}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+            details.push({ accountName: name, status: 'fail', message: t('err.restrictedDetail') });
             continue;
           }
 
           const parts: string[] = [];
           if (report.buddyAdopted) {
-            parts.push('领养Buddy(+300分)');
+            parts.push(t('act.buddyAdopted'));
           }
           if (report.accepted > 0) {
-            parts.push(`新报${report.accepted}项`);
+            parts.push(t('act.acceptedN', report.accepted));
           }
           if (report.claimed > 0) {
-            parts.push(`领取${report.claimed}项(+${report.claimedCredits}分)`);
+            parts.push(t('act.claimedN', report.claimed, report.claimedCredits));
           }
           if (report.travelClaimed) {
-            parts.push('领旅行礼物');
+            parts.push(t('act.travelGift'));
           }
           if (report.travelDeparted) {
-            parts.push(`派去${report.travelLocation || '旅行打工'}`);
+            parts.push(t('act.travelDeparted', report.travelLocation || t('act.travelDefault')));
           }
           if (report.streakRedeemedCredits > 0) {
-            parts.push(`连登兑换(+${report.streakRedeemedCredits}分)`);
+            parts.push(t('act.streakRedeemed', report.streakRedeemedCredits));
           }
           if (report.madeUpDays > 0) {
-            parts.push(`补登${report.madeUpDays}天`);
+            parts.push(t('act.madeUpDays', report.madeUpDays));
           }
           if (report.buddyBoxesOpened > 0) {
-            parts.push(`开出「${report.newBuddyName || '新Buddy'}」`);
+            parts.push(t('act.boxOpened', report.newBuddyName || t('act.newBuddy')));
           }
           if (report.lotteryDraws > 0) {
-            parts.push(`抽奖${report.lotteryDraws}次`);
+            parts.push(t('act.lotteryN', report.lotteryDraws));
           }
 
           if (parts.length > 0) {
@@ -690,18 +703,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${detailMsg}`, 'ok', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
             details.push({ accountName: name, status: 'ok', message: detailMsg });
           } else if (report.failures.length > 0) {
-            const failMsg = `执行异常: ${report.failures.join('; ')}`;
+            const failMsg = t('err.taskExecuteAbnormal', report.failures.join('; '));
             this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${failMsg}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
             details.push({ accountName: name, status: 'fail', message: failMsg });
           } else {
-            const infoMsg = `无可领奖任务（${report.inProgressTasks}项进行中需在客户端操作达成，${report.skipped.length}项限微信扫码）`;
+            const infoMsg = t('msg.noClaimable', report.inProgressTasks, report.skipped.length);
             this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${infoMsg}`, 'doing', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
             details.push({ accountName: name, status: 'skipped', message: infoMsg });
           }
         } catch (err: any) {
           processedAccounts++;
           totalFailures++;
-          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 失败 (${err.message})`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${t('prog.failWithReason', err.message)}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
           details.push({ accountName: name, status: 'fail', message: err.message });
         }
 
@@ -713,7 +726,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       const durationSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
       this.sendTaskProgress(
-        wasStopped ? '批处理已中止' : '所有账号执行完毕！',
+        wasStopped ? t('prog.batchStopped') : t('prog.batchFinished'),
         wasStopped ? 'fail' : 'ok',
         100,
         targets.length,
@@ -738,7 +751,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       this.sendNotify(
         totalClaimed > 0 || totalAccepted > 0 ? 'success' : 'error',
-        `批量任务完成：共处理 ${processedAccounts}/${targets.length} 个账号，新领 ${totalClaimed} 项 (+${totalCredits}分)`
+        t('msg.batchTaskDone', processedAccounts, targets.length, totalClaimed, totalCredits)
       );
 
       // 刷新展示的目标账号任务列表（所见即所操作）
@@ -758,23 +771,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleTaskClaim(taskCode: string, accountId?: string): Promise<void> {
     const target = accountId ? this.store.get(accountId) : this.store.getActive();
     if (!target) {
-      this.sendNotify('error', '未找到目标账号，无法领取奖励');
+      this.sendNotify('error', t('err.noClaimTarget'));
       return;
     }
     const name = target.nickname || target.email;
     try {
       const r = await this.growthTasks.claimTask(target, taskCode);
       if (r.ok && !r.already) {
-        this.sendNotify('success', `[${name}] 领取成功 +${r.credit}分+${r.energy}能`);
+        this.sendNotify('success', t('msg.claimOk', name, r.credit, r.energy));
       } else if (r.already) {
-        this.sendNotify('error', `[${name}] 该任务奖励此前已领取`);
+        this.sendNotify('error', t('msg.claimAlready', name));
       } else {
-        this.sendNotify('error', `[${name}] 领取失败（任务进度未达标）`);
+        this.sendNotify('error', t('err.claimNotMet', name));
       }
       const tasks = await this.growthTasks.listTasks(target);
       this.pushTasksToWebview(tasks, target.id, name);
     } catch (err: any) {
-      this.sendNotify('error', `领取失败: ${err.message}`);
+      this.sendNotify('error', t('err.claimFailed', err.message));
     }
   }
 
@@ -800,29 +813,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     }
 
+    // 成长任务为国内版 (codebuddy.cn) 专属, 国际账号明确跳过并提示, 不静默
+    const cnTargets = targets.filter(acc => isCnAccount(acc.domain));
+    if (cnTargets.length < targets.length) {
+      this.sendNotify('warn', t('intl.cnOnlyDetail'));
+    }
+    targets = cnTargets;
+
     if (targets.length === 0) {
-      this.sendNotify('error', '没有可执行的账号');
+      this.sendNotify('error', t('err.noAccountsToRun'));
       return;
     }
 
-    this.setOperating(true, `正在批量报名任务（共 ${targets.length} 个账号）...`);
+    this.setOperating(true, t('msg.batchAcceptRunning', targets.length));
     let totalAccepted = 0;
     let totalFailures = 0;
     let processedAccounts = 0;
     let wasStopped = false;
     const details: Array<{ accountName: string; status: 'ok' | 'fail' | 'skipped' | 'stopped'; message: string }> = [];
 
-    this.sendTaskProgress(`开始批量报名，共 ${targets.length} 个账号...`, 'doing', 0, 0, targets.length);
+    this.sendTaskProgress(t('prog.acceptStart', targets.length), 'doing', 0, 0, targets.length);
 
     try {
       for (let i = 0; i < targets.length; i++) {
         if (this._abortTaskBatch) {
           wasStopped = true;
-          this.sendTaskProgress('用户已中止批量报名', 'fail', Math.round((i / targets.length) * 100), i, targets.length);
+          this.sendTaskProgress(t('prog.acceptAborted'), 'fail', Math.round((i / targets.length) * 100), i, targets.length);
           details.push({
             accountName: targets[i].nickname || targets[i].email,
             status: 'stopped',
-            message: '用户主动中止'
+            message: t('prog.stoppedByUser')
           });
           break;
         }
@@ -830,7 +850,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const acc = targets[i];
         const name = acc.nickname || acc.email;
         const currentPct = Math.round((i / targets.length) * 100);
-        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 报名中...`, 'doing', currentPct, i + 1, targets.length);
+        this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${t('prog.accepting')}`, 'doing', currentPct, i + 1, targets.length);
 
         try {
           const tasks = await this.growthTasks.listTasks(acc);
@@ -841,21 +861,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
           if (res.failed > 0) {
             const failMsg = res.accepted > 0
-              ? `报名 ${res.accepted} 项，失败 ${res.failed} 项 (${res.failures.join('; ')})`
-              : `报名失败: ${res.failures.join('; ')}`;
+              ? t('msg.acceptPartial', res.accepted, res.failed, res.failures.join('; '))
+              : t('err.acceptFailed', res.failures.join('; '));
             this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${failMsg}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
             details.push({ accountName: name, status: 'fail', message: failMsg });
           } else {
             const okMsg = res.accepted > 0
-              ? `已报名 ${res.accepted} 项任务`
-              : (res.alreadyAccepted > 0 ? '无可报名任务（均已报名）' : '当前无可报名任务');
+              ? t('msg.acceptedN', res.accepted)
+              : (res.alreadyAccepted > 0 ? t('msg.nothingToAccept') : t('msg.noTasksToAccept'));
             this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${okMsg}`, res.accepted > 0 ? 'ok' : 'doing', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
             details.push({ accountName: name, status: 'ok', message: okMsg });
           }
         } catch (err: any) {
           processedAccounts++;
           totalFailures++;
-          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: 报名异常 (${err.message})`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
+          this.sendTaskProgress(`[${i + 1}/${targets.length}] ${name}: ${t('prog.acceptError', err.message)}`, 'fail', Math.round(((i + 1) / targets.length) * 100), i + 1, targets.length);
           details.push({ accountName: name, status: 'fail', message: err.message });
         }
 
@@ -866,7 +886,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       const durationSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
       this.sendTaskProgress(
-        wasStopped ? '批量报名已中止' : '所有账号报名处理完毕！',
+        wasStopped ? t('prog.acceptStopped') : t('prog.acceptFinished'),
         wasStopped ? 'fail' : 'ok',
         100,
         targets.length,
@@ -890,7 +910,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       this.sendNotify(
         totalAccepted > 0 ? 'success' : (totalFailures > 0 ? 'error' : 'success'),
-        `批量报名完成：共报名 ${totalAccepted} 项任务${totalFailures > 0 ? `，失败 ${totalFailures} 项` : ''}`
+        t('msg.batchAcceptDone', totalAccepted) + (totalFailures > 0 ? t('msg.batchAcceptDoneFail', totalFailures) : '')
       );
 
       // 刷新展示的目标账号任务列表
@@ -1005,14 +1025,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * 本地导入：读取本机 CodeBuddy 当前已登录会话入池
    */
   public async handleImportLocal(): Promise<void> {
-    this.setOperating(true, '正在读取本机已登录会话...');
+    this.setOperating(true, t('msg.readingLocalSession'));
     try {
       const session = await vscode.authentication.getSession('CodeBuddy-auth', [], {
         createIfNone: false
       });
 
       if (!session || !session.accessToken) {
-        this.sendNotify('error', '未检测到本机登录会话，请先用 OAuth 授权登录');
+        this.sendNotify('error', t('err.noLocalSession'));
         return;
       }
 
@@ -1020,7 +1040,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const nickname = session.account.label || uid;
 
       if (this.store.get(uid)) {
-        this.sendNotify('error', '该账号已在号池中，无需重复导入');
+        this.sendNotify('error', t('err.duplicateAccount'));
         return;
       }
 
@@ -1039,14 +1059,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         status: 'idle',
         createdAt: now,
         lastUsed: now,
-        notes: '从本机已登录会话导入（无 refreshToken）'
+        notes: t('notes.localImport')
       };
 
       await this.store.upsert(account);
       this.checkinService.syncAccountStatus(account, this.store).catch(() => {});
-      this.sendNotify('success', `已导入本机登录账号 [${nickname}]`);
+      this.sendNotify('success', t('msg.localImported', nickname));
     } catch (err: any) {
-      this.sendNotify('error', `本地导入失败：${err.message}`);
+      this.sendNotify('error', t('err.localImportFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -1059,7 +1079,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const acc = await this.store.toggleStatus(accountId);
     if (acc) {
       const isDis = acc.status === 'disabled';
-      this.sendNotify('success', `账号 [${acc.nickname || acc.email}] 已${isDis ? '禁用' : '启用'}`);
+      this.sendNotify('success', isDis ? t('msg.accountDisabled', acc.nickname || acc.email) : t('msg.accountEnabled', acc.nickname || acc.email));
       this.postStateToWebview();
     }
   }
@@ -1070,16 +1090,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleImportAccountsFile(): Promise<void> {
     const uris = await vscode.window.showOpenDialog({
       canSelectMany: false,
-      filters: { 'JSON 账号文件 (*.json)': ['json'], '所有文件 (*.*)': ['*'] },
-      openLabel: '导入账号数据'
+      filters: { [t('fileFilter.jsonAccounts')]: ['json'], [t('fileFilter.allFiles')]: ['*'] },
+      openLabel: t('fileFilter.openLabel')
     });
     if (uris && uris[0]) {
-      this.setOperating(true, '正在读取账号文件...');
+      this.setOperating(true, t('msg.readingFile'));
       try {
         const text = await fs.promises.readFile(uris[0].fsPath, 'utf8');
         await this.handleImportJson(text);
       } catch (err: any) {
-        this.sendNotify('error', `读取文件失败: ${err.message}`);
+        this.sendNotify('error', t('err.readFileFailed', err.message));
       } finally {
         this.setOperating(false);
       }
@@ -1110,10 +1130,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if ('privacyModeDefault' in settings) await cfg.update('privacyModeDefault', Boolean(settings.privacyModeDefault), vscode.ConfigurationTarget.Global);
       if ('updateAutoCheck' in settings) await cfg.update('update.autoCheck', Boolean(settings.updateAutoCheck), vscode.ConfigurationTarget.Global);
       if ('updateAutoInstall' in settings) await cfg.update('update.autoInstall', Boolean(settings.updateAutoInstall), vscode.ConfigurationTarget.Global);
-      this.sendNotify('success', 'BuddyRelay: 规则设置已更新并实时生效');
+      if ('locale' in settings) await cfg.update('locale', String(settings.locale || 'auto'), vscode.ConfigurationTarget.Global);
+      this.sendNotify('success', t('msg.settingsSaved'));
       this.postStateToWebview();
     } catch (e: any) {
-      this.sendNotify('error', `保存设置失败: ${e.message}`);
+      this.sendNotify('error', t('err.saveSettingsFailed', e.message));
     }
   }
 
@@ -1123,11 +1144,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleImportJson(text: string): Promise<void> {
     const raw = text.trim();
     if (!raw) {
-      this.sendNotify('error', '导入失败：内容为空');
+      this.sendNotify('error', t('err.importEmpty'));
       return;
     }
 
-    this.setOperating(true, '正在智能匹配解析账号数据...');
+    this.setOperating(true, t('msg.parsingImport'));
 
     try {
       let items: any[] = [];
@@ -1162,7 +1183,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
 
       if (items.length === 0) {
-        this.sendNotify('error', '导入失败：未识别出有效的账号或 Token 数据');
+        this.sendNotify('error', t('err.importUnrecognized'));
         return;
       }
 
@@ -1205,15 +1226,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       if (freshCount > 0 || updatedCount > 0) {
         const parts: string[] = [];
-        if (freshCount > 0) parts.push(`新增 ${freshCount} 个`);
-        if (updatedCount > 0) parts.push(`更新 ${updatedCount} 个 (Token已覆盖更新)`);
-        if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个无效数据`);
-        this.sendNotify('success', `智能导入完成：${parts.join('，')}`);
+        if (freshCount > 0) parts.push(t('import.added', freshCount));
+        if (updatedCount > 0) parts.push(t('import.updated', updatedCount));
+        if (skippedCount > 0) parts.push(t('import.skipped', skippedCount));
+        this.sendNotify('success', t('msg.importDone', parts.join('，')));
       } else {
-        this.sendNotify('error', `导入失败：跳过 ${skippedCount} 项无效数据（缺少有效 Token）`);
+        this.sendNotify('error', t('err.importAllInvalid', skippedCount));
       }
     } catch (err: any) {
-      this.sendNotify('error', `智能导入失败：${err.message}`);
+      this.sendNotify('error', t('err.importError', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -1225,7 +1246,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleExportAccounts(mode: 'full' | 'masked' = 'full'): Promise<void> {
     const list = this.store.getAll();
     if (list.length === 0) {
-      this.sendNotify('error', '导出失败：号池为空');
+      this.sendNotify('error', t('err.exportEmpty'));
       return;
     }
 
@@ -1254,16 +1275,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const uri = await vscode.window.showSaveDialog({
       filters: { 'JSON Files': ['json'] },
       defaultUri: vscode.Uri.file(defaultFileName),
-      title: isMasked ? '导出脱敏号池数据' : '导出号池完整凭证备份'
+      title: isMasked ? t('saveTitle.masked') : t('saveTitle.full')
     });
 
     if (!uri) return;
 
     try {
       fs.writeFileSync(uri.fsPath, JSON.stringify(exportData, null, 2), 'utf8');
-      this.sendNotify('success', `号池已成功导出 (${isMasked ? '脱敏模式' : '完整备份'}): ${path.basename(uri.fsPath)}`);
+      this.sendNotify('success', t('msg.exported', isMasked ? t('exportMode.masked') : t('exportMode.full'), path.basename(uri.fsPath)));
     } catch (e: any) {
-      this.sendNotify('error', `导出文件写入失败: ${e.message}`);
+      this.sendNotify('error', t('err.exportWriteFailed', e.message));
     }
   }
 
@@ -1273,21 +1294,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public async handleReauthAccount(accountId: string): Promise<void> {
     const target = this.store.get(accountId);
     if (!target) {
-      this.sendNotify('error', '账号不存在');
+      this.sendNotify('error', t('err.accountMissing'));
       return;
     }
 
-    this.setOperating(true, `正在为 [${target.nickname || target.email}] 调起浏览器重新登录授权...`);
+    this.setOperating(true, t('msg.reauthRunning', target.nickname || target.email));
     try {
       const refreshed = await this.oauthService.loginAndSave(this.store, {
         onAuthUrl: (url) => {
           vscode.env.openExternal(vscode.Uri.parse(url));
-          this.sendNotify('success', '已调起浏览器授权页，请在浏览器中扫码或登录...');
+          this.sendNotify('success', t('msg.reauthPageOpened'));
         }
       });
-      this.sendNotify('success', `账号 [${refreshed.nickname || refreshed.email}] 原地重新授权成功，凭证已刷新！`);
+      this.sendNotify('success', t('msg.reauthDone', refreshed.nickname || refreshed.email));
     } catch (err: any) {
-      this.sendNotify('error', `重新授权失败: ${err.message}`);
+      this.sendNotify('error', t('err.reauthFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -1298,7 +1319,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   public async handleUpdateNotes(accountId: string, notes: string): Promise<void> {
     await this.store.updateNotes(accountId, notes);
-    this.sendNotify('success', '账号备注已保存');
+    this.sendNotify('success', t('msg.notesSaved'));
     this.postStateToWebview();
   }
 
@@ -1307,15 +1328,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   public async handleUpdateTags(accountId: string, tags: string[]): Promise<void> {
     await this.store.updateTags(accountId, tags);
-    this.sendNotify('success', '业务标签已更新');
+    this.sendNotify('success', t('msg.tagsSaved'));
     this.postStateToWebview();
   }
 
   /**
    * 核心 Webview HTML 结构模板
    * 1:1 深度复刻 Kite 经典卡片 (.grid-card) 质感 + Cockpit 配额进度条 + 隐私脱敏
+   * i18n: 静态文案 {{i:key}} 占位符按当前语言替换; 动态文案经 __I18N__ 字典注入
    */
-      private getHtmlForWebview(webview: vscode.Webview): string {
+  private getHtmlForWebview(webview: vscode.Webview): string {
     const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'resources', 'webview', 'main.css')
     );
@@ -1323,8 +1345,30 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (fs.existsSync(htmlPath)) {
       let content = fs.readFileSync(htmlPath, 'utf8');
       content = content.replace('{{CSS_URI}}', `${cssUri.toString()}?v=${Date.now()}`);
+      const dict = getLangDict();
+      // 字典内 </script> 转义, 防止注入串提前闭合脚本块
+      const dictJson = JSON.stringify(dict).replace(/<\//g, '<\\/');
+      content = content.replace('{{I18N_JSON}}', dictJson);
+      content = content.replace(/\{\{i:([\w.]+)\}\}/g, (full, key: string) => {
+        const v = dict[key];
+        if (v === undefined) {
+          console.warn(`[BuddyRelay][i18n] missing webview key: ${key}`);
+          return full;
+        }
+        return v;
+      });
       return content;
     }
-    return `<!DOCTYPE html><html><body><h3>未找到侧栏资源: ${htmlPath}</h3></body></html>`;
+    return `<!DOCTYPE html><html><body><h3>${t('err.htmlMissing')}: ${htmlPath}</h3></body></html>`;
+  }
+
+  /**
+   * 语言切换后整页重载侧栏 (重新注入当前语言的字典与静态文案)
+   */
+  public reloadWebview(): void {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.html = this.getHtmlForWebview(this._view.webview);
   }
 }

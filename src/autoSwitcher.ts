@@ -5,6 +5,7 @@ import { OAuthService, httpRequest } from './oauthService';
 import { getOtherLockedUids } from './accountLock';
 import { API_ENDPOINTS } from './constants';
 import { UsageTracker } from './usageTracker';
+import { t } from './i18n';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
@@ -75,7 +76,7 @@ export class AutoSwitcher extends EventEmitter {
     const now = Date.now();
     if (now < this.breakerTrippedUntil) {
       const remainSec = Math.ceil((this.breakerTrippedUntil - now) / 1000);
-      throw new Error(`[AutoSwitcher] 自动切号频率熔断保护中，防止打爆号池 (剩余冷却 ${remainSec} 秒)`);
+      throw new Error(`[AutoSwitcher] ${t('act.breakerTripped')} (剩余冷却 ${remainSec} 秒)`);
     }
 
     this.switchTimestamps = this.switchTimestamps.filter(t => now - t <= 60_000);
@@ -85,9 +86,9 @@ export class AutoSwitcher extends EventEmitter {
         this.usageTracker.recordAction({
           type: 'warn',
           accountId: 'system',
-          accountName: '调度中枢',
-          title: '切号频率熔断触发',
-          detail: `60秒内连续切号已达 ${this.switchTimestamps.length} 次，暂停自动切换 2 分钟以防号池连坐`
+          accountName: t('act.scheduler'),
+          title: t('act.breakerTripped'),
+          detail: t('act.breakerDetail', this.switchTimestamps.length)
         });
       }
       this.emit('circuit_breaker', { trippedUntil: this.breakerTrippedUntil, count: this.switchTimestamps.length });
@@ -114,11 +115,11 @@ export class AutoSwitcher extends EventEmitter {
 
       if (res.status === 401 || (res.data && res.data.code === 401)) {
         await this.store.updateStatus(account.id, 'expired');
-        return { valid: false, reason: '401 Unauthorized (已标记失效)' };
+        return { valid: false, reason: t('err.probeUnauthorized') };
       }
       if (res.status === 429 || (res.data && res.data.code === 429)) {
         await this.store.markRateLimited(account.id, this.defaultCooldownMs);
-        return { valid: false, reason: '429 Rate Limited (已进入冷却)' };
+        return { valid: false, reason: t('err.probeRateLimited') };
       }
       if (res.status === 200 && res.data && res.data.code === 0) {
         return { valid: true };
@@ -206,10 +207,10 @@ export class AutoSwitcher extends EventEmitter {
    */
   public async handleQuotaExhausted(
     currentUid: string,
-    reasonMessage: string = '会话额度已见底'
+    reasonMessage: string = t('err.quotaExhausted')
   ): Promise<SwitchResult> {
     if (this.isRotating) {
-      throw new Error('[AutoSwitcher] 调度器正在切号中，请勿重复并发调用');
+      throw new Error(t('err.concurrentSwitch'));
     }
 
     // 1. 频率熔断检测
@@ -225,7 +226,7 @@ export class AutoSwitcher extends EventEmitter {
       // 2. 候选探针预检（跳过坏号）
       const next = await this.findAndVerifyNextAccount(currentUid);
       if (!next) {
-        throw new Error('[AutoSwitcher] 号池告急：无健康且可用备用账号（其余账号可能已失效或在冷却中）');
+        throw new Error(t('err.noHealthyBackup'));
       }
 
       // 3. 执行底层热切
@@ -236,8 +237,8 @@ export class AutoSwitcher extends EventEmitter {
           type: 'switch',
           accountId: next.id,
           accountName: next.nickname || next.email,
-          title: '自动切号 (额度见底)',
-          detail: `原账号 ${current?.nickname || currentUid} 额度见底，已平滑热切至 ${next.nickname || next.email}`
+          title: t('act.autoSwitchQuota'),
+          detail: t('act.autoSwitchQuotaDetail', current?.nickname || currentUid, next.nickname || next.email)
         });
       }
 
@@ -261,10 +262,10 @@ export class AutoSwitcher extends EventEmitter {
   public async handleRateLimit429(
     currentUid: string,
     cooldownMs?: number,
-    reasonMessage: string = '触发上游 429 Too Many Requests'
+    reasonMessage: string = t('err.upstream429')
   ): Promise<SwitchResult> {
     if (this.isRotating) {
-      throw new Error('[AutoSwitcher] 调度器正在切号中，请勿重复并发调用');
+      throw new Error(t('err.concurrentSwitch'));
     }
 
     // 1. 频率熔断检测
@@ -278,7 +279,7 @@ export class AutoSwitcher extends EventEmitter {
       // 2. 候选探针预检
       const next = await this.findAndVerifyNextAccount(currentUid);
       if (!next) {
-        throw new Error(`[AutoSwitcher] 当前账号触发 429，且号池无其它就绪账号可供轮换 (冷却 ${cooldown / 1000}秒)`);
+        throw new Error(t('err.noBackupOn429', cooldown / 1000));
       }
 
       // 3. 执行底层热切
@@ -290,8 +291,8 @@ export class AutoSwitcher extends EventEmitter {
           type: 'switch',
           accountId: next.id,
           accountName: next.nickname || next.email,
-          title: '自动切号 (429 限流轮换)',
-          detail: `原账号 ${current?.nickname || currentUid} 触发 429，已切换至 ${next.nickname || next.email}`
+          title: t('act.autoSwitch429'),
+          detail: t('act.autoSwitch429Detail', current?.nickname || currentUid, next.nickname || next.email)
         });
       }
 

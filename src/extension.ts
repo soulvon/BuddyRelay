@@ -11,6 +11,8 @@ import { SidebarProvider } from './sidebarProvider';
 import { checkForUpdates } from './updater';
 import { initAccountLock, acquireLock, releaseLock, startHeartbeat, stopHeartbeat } from './accountLock';
 import { UsageTracker } from './usageTracker';
+import { t, initI18n, watchLocaleConfig, onLangChange } from './i18n';
+import { detectHostEdition } from './host';
 
 let checkinTimer: NodeJS.Timeout | null = null;
 let quotaRefreshTimer: NodeJS.Timeout | null = null;
@@ -21,6 +23,9 @@ let usageTrackerInstance: UsageTracker | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[BuddyRelay] 正在启动会话保护与交互体系...');
+
+  // 0. 国际化初始化 (buddyRelay.locale 配置优先, auto 时跟随 IDE 显示语言)
+  initI18n();
 
   // 1. 初始化核心存储与调度服务
   const store = new AccountStore(context);
@@ -36,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const checkinScheduler = new CheckinScheduler(store, checkinService);
 
   // 1.5 跨窗口账号锁：初始化并为当前活跃账号持锁 (心跳自动续期，退出释放)
-  const windowName = `窗口 ${vscode.env.sessionId.slice(0, 8).toUpperCase()}`;
+  const windowName = t('common.window', vscode.env.sessionId.slice(0, 8).toUpperCase());
   initAccountLock(`${vscode.env.sessionId}:${process.pid}`, windowName);
   let lastLockedUid: string | null = store.getActive()?.uid || null;
   if (lastLockedUid) {
@@ -85,8 +90,15 @@ export async function activate(context: vscode.ExtensionContext) {
         }
       }
     ),
-    statusBarManager
+    statusBarManager,
+    watchLocaleConfig()
   );
+
+  // 语言切换联动：状态栏立即重渲染，侧栏整页重载（字典与静态文案随 HTML 重注入）
+  onLangChange(() => {
+    statusBarManager?.update();
+    sidebarProvider.reloadWebview();
+  });
 
   // 3. 自愈检查 main.js Patch v4
   try {
@@ -109,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (importRes.success) {
           sidebarProvider.sendNotify(
             'success',
-            `BuddyRelay: 自动初始化成功导入 ${importRes.decryptedCount} 个 Cockpit 账号`
+            t('msg.autoImported', importRes.decryptedCount)
           );
           checkinService.batchSyncStatus(store.getAll(), store).catch(() => {});
         }
@@ -152,26 +164,26 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       if (!target) {
-        vscode.window.showErrorMessage('未找到指定的 CodeBuddy 账号');
+        vscode.window.showErrorMessage(t('err.accountNotFound'));
         return;
       }
 
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `BuddyRelay: 正在无缝热切至 ${target.nickname || target.email}...`,
+          title: t('msg.switchingTo', target.nickname || target.email),
           cancellable: false
         },
         async (progress) => {
-          progress.report({ message: '检查 Patch v4 与会话物理穿透...' });
+          progress.report({ message: t('msg.progressPatch') });
           const res = await switcher.switchAccount(target!, store);
           if (res.success) {
             sidebarProvider.sendNotify(
               'success',
-              `BuddyRelay: 已平滑切换至账号 ${target!.nickname || target!.email}`
+              t('msg.switched', target!.nickname || target!.email)
             );
           } else {
-            sidebarProvider.sendNotify('error', `BuddyRelay: 热切失败 - ${res.message}`);
+            sidebarProvider.sendNotify('error', t('msg.switchFailed', res.message));
           }
         }
       );
@@ -253,13 +265,13 @@ export async function activate(context: vscode.ExtensionContext) {
     if (notifyEnabled) {
       const reasonText =
         ev.reason === 'rate_limited_429'
-          ? '触发 429 速率限制'
+          ? t('msg.rotate429')
           : ev.reason === 'quota_exhausted'
-          ? '额度见底'
-          : '调度轮换';
+          ? t('msg.rotateQuota')
+          : t('msg.rotateSchedule');
       sidebarProvider.sendNotify(
         'success',
-        `BuddyRelay: ${reasonText}，已自动无感切换至 ${ev.targetAccount.nickname || ev.targetAccount.email}`
+        t('msg.autoRotated', reasonText, ev.targetAccount.nickname || ev.targetAccount.email)
       );
     }
     statusBarManager?.update();
@@ -289,16 +301,16 @@ function setupScheduledTasks(
   checkinScheduler.onScheduleSummary((success, total, awarded) => {
     sidebarProvider.sendNotify(
       'success',
-      `BuddyRelay: 定时自动签到完成 ${success}/${total}，共新领 ${awarded} 点算力`
+      t('msg.scheduledCheckinDone', success, total, awarded)
     );
     if (awarded > 0 && usageTracker) {
       usageTracker.recordAction({
         type: 'reward',
         accountId: 'batch',
-        accountName: '全员账号',
+        accountName: t('act.scheduler'),
         deltaCredits: awarded,
-        title: '每日定时自动签到',
-        detail: `定点签到完成 ${success}/${total} 个账号，新领 ${awarded} 点算力`
+        title: t('act.scheduledCheckin'),
+        detail: t('act.scheduledCheckinDetail', success, total, awarded)
       });
     }
     statusBarManager?.update();
@@ -366,7 +378,7 @@ function setupScheduledTasks(
         await checkinService.syncAccountStatus(active, store);
         const refreshed = store.get(active.id);
         if (refreshed && refreshed.totalCredits !== undefined && usageTracker) {
-          usageTracker.recordSnapshot(refreshed, refreshed.totalCredits, '后台巡检对账');
+          usageTracker.recordSnapshot(refreshed, refreshed.totalCredits, t('ut.snapshotSource'));
         }
       }
       statusBarManager?.update();

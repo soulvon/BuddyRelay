@@ -4,6 +4,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { t } from './i18n';
 
 interface GitHubRelease {
   tag_name: string;
@@ -38,9 +39,9 @@ export function getCurrentVersion(): string {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
     );
-    return packageJson.version || "0.5.10";
+    return packageJson.version || "1.0.0";
   } catch (_) {
-    return "0.5.10";
+    return "1.0.0";
   }
 }
 
@@ -74,7 +75,7 @@ function fetchGitHubApi(url: string, token: string = ''): Promise<any> {
     req.on('error', reject);
     req.setTimeout(12000, () => {
       req.destroy();
-      reject(new Error('请求 GitHub API 超时'));
+      reject(new Error(t('upd.githubTimeout')));
     });
   });
 }
@@ -87,7 +88,7 @@ function downloadFile(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (maxRedirects <= 0) {
-      reject(new Error('重定向次数过多'));
+      reject(new Error(t('upd.tooManyRedirects')));
       return;
     }
 
@@ -114,7 +115,7 @@ function downloadFile(
       }
 
       if (res.statusCode !== 200) {
-        reject(new Error(`下载失败 HTTP ${res.statusCode}`));
+        reject(new Error(t('upd.downloadFailed', res.statusCode ?? 0)));
         return;
       }
 
@@ -135,7 +136,7 @@ function downloadFile(
     req.on('error', reject);
     req.setTimeout(60000, () => {
       req.destroy();
-      reject(new Error('下载超时'));
+      reject(new Error(t('upd.downloadTimeout')));
     });
   });
 }
@@ -200,16 +201,16 @@ export function formatChangelogSummary(rawBody: string, maxItems: number = 5): s
  */
 export async function showFullChangelog(version: string, body: string, releaseUrl: string): Promise<void> {
   const content = [
-    `# BuddyRelay v${version} 更新说明`,
+    t('upd.changelogTitle', version),
     '',
-    `> 官方发布页面: ${releaseUrl}`,
-    '',
-    '---',
-    '',
-    body ? body.trim() : '（本次发布未附带详细说明）',
+    t('upd.changelogOfficial', releaseUrl),
     '',
     '---',
-    '*提示：可在命令面板运行「BuddyRelay: 检查新版本更新」或在设置面板点击「检查更新」安装最新版。*'
+    '',
+    body ? body.trim() : t('upd.noReleaseNotes'),
+    '',
+    '---',
+    t('upd.changelogTip')
   ].join('\n');
 
   try {
@@ -219,7 +220,7 @@ export async function showFullChangelog(version: string, body: string, releaseUr
     });
     await vscode.window.showTextDocument(doc, { preview: true });
   } catch (err: any) {
-    vscode.window.showErrorMessage(`打开更新日志失败: ${err.message}`);
+    vscode.window.showErrorMessage(t('upd.openChangelogFailed', err.message));
   }
 }
 
@@ -233,7 +234,7 @@ export async function downloadOnly(downloadUrl: string, version: string): Promis
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `正在下载 BuddyRelay v${version} 安装包...`,
+      title: t('upd.downloading', version),
       cancellable: false
     },
     async () => {
@@ -241,12 +242,13 @@ export async function downloadOnly(downloadUrl: string, version: string): Promis
     }
   );
 
+  const openFolderLabel = t('upd.openFolder');
   const choice = await vscode.window.showInformationMessage(
-    `BuddyRelay v${version} 安装包下载完成: ${vsixPath}`,
-    '打开所在文件夹'
+    t('upd.downloaded', version, vsixPath),
+    openFolderLabel
   );
 
-  if (choice === '打开所在文件夹') {
+  if (choice === openFolderLabel) {
     vscode.env.openExternal(vscode.Uri.file(tempDir));
   }
 }
@@ -269,7 +271,7 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
 
     if (compareVersions(latestVersion, currentVersion) <= 0) {
       if (!silent) {
-        vscode.window.showInformationMessage(`BuddyRelay 已是最新版本 (v${currentVersion})`);
+        vscode.window.showInformationMessage(t('upd.upToDate', currentVersion));
       }
       return false;
     }
@@ -277,7 +279,7 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
     const vsixAsset = release.assets?.find(a => a.name.endsWith('.vsix'));
     if (!vsixAsset) {
       if (!silent) {
-        vscode.window.showWarningMessage(`发现新版本 v${latestVersion}，但未找到 .vsix 安装包`);
+        vscode.window.showWarningMessage(t('upd.noVsix', latestVersion));
       }
       return false;
     }
@@ -290,41 +292,47 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
 
     // 格式化更新日志摘要，直观告诉用户更新了什么
     const summary = formatChangelogSummary(release.body);
-    const changelogBlock = summary ? `\n\n更新内容：\n${summary}` : '';
-    const message = `BuddyRelay 发现新版本 v${latestVersion} (当前: v${currentVersion})${changelogBlock}`;
+    const changelogBlock = summary ? '\n\n' + t('upd.whatsNew', summary) : '';
+    const message = t('upd.newVersionFound', latestVersion, currentVersion) + changelogBlock;
+
+    const installLabel = t('upd.installNow');
+    const laterLabel = t('common.later');
+    const viewLogLabel = t('upd.viewFullLog');
+    const downloadLabel = t('upd.downloadOnly');
+    const openReleaseLabel = t('upd.openRelease');
 
     const actions = config.autoInstall
-      ? ['立即更新', '稍后']
-      : ['立即更新', '查看完整日志', '仅下载安装包', '打开发布页', '稍后'];
+      ? [installLabel, laterLabel]
+      : [installLabel, viewLogLabel, downloadLabel, openReleaseLabel, laterLabel];
 
     const choice = await vscode.window.showInformationMessage(message, ...actions);
 
-    if (choice === '立即更新') {
+    if (choice === installLabel) {
       await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
-    } else if (choice === '仅下载安装包') {
+    } else if (choice === downloadLabel) {
       await downloadOnly(vsixAsset.browser_download_url, latestVersion);
-    } else if (choice === '查看完整日志') {
+    } else if (choice === viewLogLabel) {
       await showFullChangelog(latestVersion, release.body, release.html_url);
       // 日志打开后提示是否进一步更新
       const nextChoice = await vscode.window.showInformationMessage(
-        `已打开 v${latestVersion} 完整更新说明，是否现在更新？`,
-        '立即更新',
-        '仅下载安装包',
-        '稍后'
+        t('upd.fullLogOpened', latestVersion),
+        installLabel,
+        downloadLabel,
+        laterLabel
       );
-      if (nextChoice === '立即更新') {
+      if (nextChoice === installLabel) {
         await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
-      } else if (nextChoice === '仅下载安装包') {
+      } else if (nextChoice === downloadLabel) {
         await downloadOnly(vsixAsset.browser_download_url, latestVersion);
       }
-    } else if (choice === '打开发布页') {
+    } else if (choice === openReleaseLabel) {
       vscode.env.openExternal(vscode.Uri.parse(release.html_url));
     }
 
     return true;
   } catch (err: any) {
     if (!silent) {
-      vscode.window.showErrorMessage(`检查更新失败: ${err.message}`);
+      vscode.window.showErrorMessage(t('upd.checkFailed', err.message));
     }
     return false;
   }
@@ -341,7 +349,7 @@ async function downloadAndInstall(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `正在下载 BuddyRelay v${version}...`,
+      title: t('upd.downloadingSilent', version),
       cancellable: false
     },
     async () => {
@@ -352,7 +360,7 @@ async function downloadAndInstall(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: '正在安装更新...',
+      title: t('upd.installing'),
       cancellable: false
     },
     async () => {
@@ -364,16 +372,17 @@ async function downloadAndInstall(
   );
 
   const promptMsg = isSilentAuto
-    ? `BuddyRelay 已自动更新至 v${version}，重新加载窗口后生效`
-    : `BuddyRelay v${version} 更新已安装，重新加载窗口后生效`;
+    ? t('upd.autoInstalled', version)
+    : t('upd.installed', version);
 
+  const reloadLabel = t('upd.reloadNow');
   const reload = await vscode.window.showInformationMessage(
     promptMsg,
-    '立即重载',
-    '稍后'
+    reloadLabel,
+    t('common.later')
   );
 
-  if (reload === '立即重载') {
+  if (reload === reloadLabel) {
     vscode.commands.executeCommand('workbench.action.reloadWindow');
   }
 

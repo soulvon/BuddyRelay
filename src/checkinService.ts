@@ -1,6 +1,8 @@
 import { API_ENDPOINTS } from './constants';
 import { httpRequest } from './oauthService';
 import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore';
+import { t } from './i18n';
+import { isCnAccount } from './domain';
 
 export interface DetailedQuotaResult {
   totalCredits: number;
@@ -147,14 +149,14 @@ export class CheckinService {
         return {
           totalCredits,
           basePackage: {
-            title: '基础体验包',
+            title: t('pkg.base'),
             count: bCount,
             remain: Math.round(bRemain * 100) / 100,
             total: Math.round(finalBTotal * 100) / 100,
             percent: Math.round(bPercent * 10) / 10
           },
           activityPackage: {
-            title: '活动赠送包',
+            title: t('pkg.activity'),
             count: aCount,
             remain: Math.round(aRemain * 100) / 100,
             total: Math.round(aTotal * 100) / 100,
@@ -171,7 +173,7 @@ export class CheckinService {
 
   public async queryStatus(account: CodeBuddyAccount): Promise<CheckinStatusResult> {
     if (!account.accessToken) {
-      throw new Error(`[CheckinService] 账号缺少 accessToken: ${account.email}`);
+      throw new Error(t('err.ciNoToken', account.email));
     }
 
     const headers: Record<string, string> = {
@@ -224,12 +226,12 @@ export class CheckinService {
           rawData = res.data.data;
         }
       } catch (err: any) {
-        throw new Error(`[CheckinService] 查询签到状态全部失败: ${err.message}`);
+        throw new Error(t('err.statusQueryFailed', err.message));
       }
     }
 
     if (!rawData) {
-      throw new Error('[CheckinService] 无法获取签到状态数据');
+      throw new Error(t('err.statusUnavailable'));
     }
 
     const todayCheckedIn = Boolean(rawData.today_checked_in ?? rawData.todayCheckedIn);
@@ -253,7 +255,7 @@ export class CheckinService {
       todayCredit,
       totalCredits,
       lastCheckinDate,
-      themeName: rawData.theme_name || 'Buddy加油站',
+      themeName: rawData.theme_name || t('ci.activityName'),
       raw: rawData
     };
   }
@@ -274,8 +276,8 @@ export class CheckinService {
     };
 
     if (!account.accessToken) {
-      resBase.error = '账号缺少 accessToken';
-      resBase.message = '签到失败: 缺少凭据';
+      resBase.error = t('err.ciNoToken', account.email);
+      resBase.message = t('err.checkinNoCred');
       return resBase;
     }
 
@@ -309,7 +311,7 @@ export class CheckinService {
         resBase.success = true;
         resBase.creditAwarded = credit;
         resBase.streakDays = streak;
-        resBase.message = `签到成功，获得 ${credit} 算力点 (连续 ${streak} 天)`;
+        resBase.message = t('ci.checkinOk', credit, streak);
         resBase.raw = d;
         return resBase;
       }
@@ -324,16 +326,16 @@ export class CheckinService {
       ) {
         resBase.success = true;
         resBase.alreadyCheckedIn = true;
-        resBase.message = `今日已签到 (${errMsg})`;
+        resBase.message = t('ci.alreadyChecked', errMsg);
         return resBase;
       }
 
       resBase.error = errMsg;
-      resBase.message = `签到失败: ${errMsg}`;
+      resBase.message = t('ci.checkinFailed', errMsg);
       return resBase;
     } catch (err: any) {
       resBase.error = err.message;
-      resBase.message = `签到异常: ${err.message}`;
+      resBase.message = t('ci.checkinError', err.message);
       return resBase;
     }
   }
@@ -345,6 +347,24 @@ export class CheckinService {
     account: CodeBuddyAccount,
     store?: AccountStore
   ): Promise<CheckinExecutionResult> {
+    const resBase: CheckinExecutionResult = {
+      accountId: account.id,
+      email: account.email,
+      uid: account.uid,
+      success: false,
+      alreadyCheckedIn: false,
+      creditAwarded: 0,
+      streakDays: account.checkinStreak || 0,
+      message: ''
+    };
+
+    // 国际账号无签到活动, 明确拒绝而非打到国内接口吃 401
+    if (!isCnAccount(account.domain)) {
+      resBase.error = t('intl.cnOnlyTitle');
+      resBase.message = t('intl.cnOnlyDetail');
+      return resBase;
+    }
+
     try {
       // 1. 先查状态
       const status = await this.queryStatus(account);
@@ -358,7 +378,7 @@ export class CheckinService {
           alreadyCheckedIn: true,
           creditAwarded: 0,
           streakDays: status.streakDays,
-          message: `今日已完成签到 (连续 ${status.streakDays} 天)`
+          message: t('ci.syncAlreadyChecked', status.streakDays)
         };
 
         if (store) {
@@ -468,6 +488,10 @@ export class CheckinService {
       if (acc.status === 'disabled' || acc.status === 'expired') {
         continue;
       }
+      // 状态/配额接口挂在国内域名, 国际账号无从查询, 直接跳过
+      if (!isCnAccount(acc.domain)) {
+        continue;
+      }
       try {
         await this.syncAccountStatus(acc, store);
         synced++;
@@ -495,7 +519,28 @@ export class CheckinService {
       results: []
     };
 
-    for (const acc of accounts) {
+    // 签到活动挂在国内域名 (codebuddy.cn), 国际账号明确跳过并留痕, 不静默吞掉
+    const cnAccounts = accounts.filter(acc => isCnAccount(acc.domain));
+    const intlSkipped = accounts.length - cnAccounts.length;
+    if (intlSkipped > 0) {
+      for (const acc of accounts) {
+        if (!isCnAccount(acc.domain)) {
+          report.failedCount++;
+          report.results.push({
+            accountId: acc.id,
+            email: acc.email,
+            uid: acc.uid,
+            success: false,
+            alreadyCheckedIn: false,
+            creditAwarded: 0,
+            streakDays: acc.checkinStreak || 0,
+            message: t('intl.skipIntl')
+          });
+        }
+      }
+    }
+
+    for (const acc of cnAccounts) {
       if (acc.status === 'disabled' || acc.status === 'expired') {
         report.failedCount++;
         report.results.push({
@@ -506,7 +551,7 @@ export class CheckinService {
           alreadyCheckedIn: false,
           creditAwarded: 0,
           streakDays: acc.checkinStreak || 0,
-          message: `跳过不可用账号 (状态: ${acc.status})`
+          message: t('ci.skipUnavailable', acc.status)
         });
         continue;
       }

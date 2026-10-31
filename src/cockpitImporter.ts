@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { PATHS } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { t } from './i18n';
 
 export interface CockpitEnvelope {
   version: number;
@@ -54,13 +55,13 @@ export class CockpitImporter {
    */
   public readMasterKey(): Buffer {
     if (!fs.existsSync(this.keyFilePath)) {
-      throw new Error(`[CockpitImporter] 密钥文件不存在: ${this.keyFilePath}`);
+      throw new Error(t('err.ckKeyMissing', this.keyFilePath));
     }
 
     const keyRaw = fs.readFileSync(this.keyFilePath, 'utf8').trim();
     const keyBuf = Buffer.from(keyRaw, 'base64');
     if (keyBuf.length !== 32) {
-      throw new Error(`[CockpitImporter] 密钥长度异常 (期望 32 字节，实际 ${keyBuf.length} 字节)`);
+      throw new Error(t('err.ckKeyLength', keyBuf.length));
     }
     return keyBuf;
   }
@@ -86,9 +87,9 @@ export class CockpitImporter {
     let message = '';
 
     if (!hasKey) {
-      message = `未找到 Cockpit 存储密钥: ${this.keyFilePath}`;
+      message = t('ck.verifyNoKey', this.keyFilePath);
     } else if (!hasAccountsDir || accountFilesCount === 0) {
-      message = `未找到 Cockpit 账号文件目录或无有效文件: ${this.accountsDirPath}`;
+      message = t('ck.verifyNoAccounts', this.accountsDirPath);
     } else {
       try {
         const key = this.readMasterKey();
@@ -97,10 +98,10 @@ export class CockpitImporter {
           // 探针测试第一份文件解密
           this.decryptFile(path.join(this.accountsDirPath, files[0]), key);
           verified = true;
-          message = `实测验证成功: 发现 ${files.length} 个账号文件且首项成功通过 AES-256-GCM 解密`;
+          message = t('ck.verifyOk', files.length);
         }
       } catch (err: any) {
-        message = `解密实测失败: ${err.message}`;
+        message = t('ck.verifyFailed', err.message);
       }
     }
 
@@ -118,14 +119,14 @@ export class CockpitImporter {
    */
   public decryptEnvelope(envelope: CockpitEnvelope, masterKey: Buffer): CodeBuddyAccount {
     if (envelope.algorithm !== 'AES-256-GCM') {
-      throw new Error(`[CockpitImporter] 不支持的加密算法: ${envelope.algorithm}`);
+      throw new Error(t('err.ckAlgoUnsupported', envelope.algorithm));
     }
 
     const nonce = Buffer.from(envelope.nonce, 'base64');
     const rawCipher = Buffer.from(envelope.ciphertext, 'base64');
 
     if (rawCipher.length < 16) {
-      throw new Error('[CockpitImporter] 密文数据过短，缺少 GCM AuthTag');
+      throw new Error(t('err.ckCipherShort'));
     }
 
     // 后 16 字节为 GCM AuthTag，前面为实际密文
@@ -220,7 +221,7 @@ export class CockpitImporter {
     if (!fs.existsSync(this.accountsDirPath)) {
       result.errors.push({
         file: this.accountsDirPath,
-        error: 'Cockpit 账号目录不存在'
+        error: t('ck.dirMissing')
       });
       return result;
     }
@@ -231,7 +232,7 @@ export class CockpitImporter {
     } catch (err: any) {
       result.errors.push({
         file: this.keyFilePath,
-        error: `读取主密钥失败: ${err.message}`
+        error: t('ck.keyReadFailed', err.message)
       });
       return result;
     }

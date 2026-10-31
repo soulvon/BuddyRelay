@@ -82,7 +82,11 @@ function resolveCandidateMainJsPaths(): string[] {
       path.join(localApp, 'Programs', 'CodeBuddy CN', 'resources', 'app', 'out', 'main.js'),
       'C:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
       'D:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
-      'D:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js'
+      'D:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js',
+      // 国际版 CodeBuddy (codebuddy.ai) 安装目录不含 CN 后缀
+      path.join(localApp, 'Programs', 'CodeBuddy', 'resources', 'app', 'out', 'main.js'),
+      'C:\\Program Files\\CodeBuddy\\resources\\app\\out\\main.js',
+      'D:\\Program Files\\CodeBuddy\\resources\\app\\out\\main.js'
     );
   } else if (isMac) {
     list.push(
@@ -96,7 +100,10 @@ function resolveCandidateMainJsPaths(): string[] {
       '/usr/share/codebuddy-cn/resources/app/out/main.js',
       '/opt/codebuddy-cn/resources/app/out/main.js',
       '/usr/share/workbuddy/resources/app/out/main.js',
-      '/opt/workbuddy/resources/app/out/main.js'
+      '/opt/workbuddy/resources/app/out/main.js',
+      // 国际版 CodeBuddy
+      '/usr/share/codebuddy/resources/app/out/main.js',
+      '/opt/codebuddy/resources/app/out/main.js'
     );
   }
   return list;

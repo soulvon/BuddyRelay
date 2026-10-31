@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
   "description": "Seamless multi-account manager & hot account switcher for CodeBuddy / WorkBuddy AI IDEs. Switch without restart, keep all sessions, quota guard, auto check-in & tasks, usage audit.",
-  "version": "0.5.10",
+  "version": "1.0.0",
   "publisher": "soulvon",
   "keywords": [
     "codebuddy",
@@ -68,49 +68,49 @@
     "commands": [
       {
         "command": "buddy-relay.showAccountQuickPick",
-        "title": "快速切号菜单",
+        "title": "%command.quickPick.title%",
         "category": "BuddyRelay",
         "icon": "$(account)"
       },
       {
         "command": "buddy-relay.switchAccount",
-        "title": "切换账号",
+        "title": "%command.switchAccount.title%",
         "category": "BuddyRelay",
         "icon": "$(arrow-swap)"
       },
       {
         "command": "buddy-relay.checkin",
-        "title": "一键全员签到",
+        "title": "%command.checkin.title%",
         "category": "BuddyRelay",
         "icon": "$(check)"
       },
       {
         "command": "buddy-relay.addAccountOAuth",
-        "title": "添加账号(OAuth)",
+        "title": "%command.addAccountOAuth.title%",
         "category": "BuddyRelay",
         "icon": "$(add)"
       },
       {
         "command": "buddy-relay.importCockpit",
-        "title": "从Cockpit导入",
+        "title": "%command.importCockpit.title%",
         "category": "BuddyRelay",
         "icon": "$(cloud-download)"
       },
       {
         "command": "buddy-relay.refreshStatus",
-        "title": "刷新状态与配额",
+        "title": "%command.refreshStatus.title%",
         "category": "BuddyRelay",
         "icon": "$(refresh)"
       },
       {
         "command": "buddy-relay.deleteAccount",
-        "title": "删除账号",
+        "title": "%command.deleteAccount.title%",
         "category": "BuddyRelay",
         "icon": "$(trash)"
       },
       {
         "command": "buddy-relay.checkUpdate",
-        "title": "检查新版本更新",
+        "title": "%command.checkUpdate.title%",
         "category": "BuddyRelay",
         "icon": "$(cloud-download)"
       }
@@ -141,72 +141,87 @@
     },
     "configuration": {
       "type": "object",
-      "title": "BuddyRelay 配置",
+      "title": "%config.title%",
       "properties": {
+        "buddyRelay.locale": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "zh",
+            "en"
+          ],
+          "enumDescriptions": [
+            "%config.locale.auto%",
+            "%config.locale.zh%",
+            "%config.locale.en%"
+          ],
+          "default": "auto",
+          "description": "%config.locale%"
+        },
         "buddyRelay.autoCheckin": {
           "type": "boolean",
           "default": true,
-          "description": "是否开启定时自动签到与领算力积分"
+          "description": "%config.autoCheckin%"
         },
         "buddyRelay.refreshIntervalMinutes": {
           "type": "number",
           "default": 15,
-          "description": "账号状态与额度自动刷新间隔 (分钟)"
+          "description": "%config.refreshIntervalMinutes%"
         },
         "buddyRelay.cockpitEndpoint": {
           "type": "string",
           "default": "",
-          "description": "Cockpit 外部环境配置导入源地址"
+          "description": "%config.cockpitEndpoint%"
         },
         "buddyRelay.autoCheckin.dailyTime": {
           "type": "string",
           "default": "00:10",
-          "description": "每日自动签到时间（HH:mm，24 小时制）"
+          "description": "%config.autoCheckin.dailyTime%"
         },
         "buddyRelay.autoCheckin.randomJitterMinutes": {
           "type": "number",
           "default": 30,
-          "description": "签到随机延迟窗口（分钟），错开整点更像真人操作"
+          "description": "%config.autoCheckin.randomJitterMinutes%"
         },
         "buddyRelay.autoCheckin.perAccountDelaySeconds": {
           "type": "number",
           "default": 15,
-          "description": "多账号逐个签到之间的随机间隔上限（秒）"
+          "description": "%config.autoCheckin.perAccountDelaySeconds%"
         },
         "buddyRelay.autoCheckin.startupMakeup": {
           "type": "boolean",
           "default": true,
-          "description": "启动时自动检查并补签今日未签到账号 (漏签守护)"
+          "description": "%config.autoCheckin.startupMakeup%"
         },
         "buddyRelay.growthTasks.autoUseMakeupCard": {
           "type": "boolean",
           "default": true,
-          "description": "成长任务断签时是否自动使用补签卡"
+          "description": "%config.growthTasks.autoUseMakeupCard%"
         },
         "buddyRelay.autoSwitch.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "启用额度见底自动无感切换"
+          "description": "%config.autoSwitch.enabled%"
         },
         "buddyRelay.autoSwitch.on429": {
           "type": "boolean",
           "default": true,
-          "description": "账号遭遇 429 速率限制时自动切换备用账号"
+          "description": "%config.autoSwitch.on429%"
         },
         "buddyRelay.autoSwitch.notifyOnSwitch": {
           "type": "boolean",
           "default": true,
-          "description": "自动切换账号触发时是否弹出 Toast 通知提醒"
+          "description": "%config.autoSwitch.notifyOnSwitch%"
         },
         "buddyRelay.privacyModeDefault": {
           "type": "boolean",
           "default": false,
-          "description": "编辑器启动时是否默认开启隐私脱敏模式 (隐藏昵称/UID)"
+          "description": "%config.privacyModeDefault%"
         },
         "buddyRelay.autoSwitch.quotaThresholdPercent": {
           "type": "number",
           "default": 10,
-          "description": "当前账号剩余算力占比 ≤ 该百分比时自动切换到备用账号"
+          "description": "%config.autoSwitch.quotaThresholdPercent%"
         },
         "buddyRelay.autoSwitch.strategy": {
           "type": "string",
@@ -217,44 +232,45 @@
             "health_priority"
           ],
           "enumDescriptions": [
-            "优先剩余算力最多的账号",
-            "最近最少使用优先",
-            "按号池顺序轮换",
-            "优先连续签到天数多的账号"
+            "%config.autoSwitch.strategy.highest_quota%",
+            "%config.autoSwitch.strategy.lru%",
+            "%config.autoSwitch.strategy.round_robin%",
+            "%config.autoSwitch.strategy.health_priority%"
           ],
           "default": "highest_quota",
-          "description": "自动切换时的候选账号挑选策略"
+          "description": "%config.autoSwitch.strategy%"
         },
         "buddyRelay.autoSwitch.cooldownMinutes": {
           "type": "number",
           "default": 5,
-          "description": "两次自动切换之间的最小间隔（分钟），防止反复横跳"
+          "description": "%config.autoSwitch.cooldownMinutes%"
         },
         "buddyRelay.growthTasks.autoAfterCheckin": {
           "type": "boolean",
           "default": true,
-          "description": "每日自动签到完成后自动跑一轮成长任务（报名+领奖）"
+          "description": "%config.growthTasks.autoAfterCheckin%"
         },
         "buddyRelay.update.autoCheck": {
           "type": "boolean",
           "default": true,
-          "description": "启动时自动在后台静默检查 GitHub 最新发布版本"
+          "description": "%config.update.autoCheck%"
         },
         "buddyRelay.update.autoInstall": {
           "type": "boolean",
           "default": false,
-          "description": "发现新版本时是否自动静默下载安装"
+          "description": "%config.update.autoInstall%"
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
+    "vscode:prepublish": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "compile": "tsc -p ./ && node -e \"const fs=require('fs'); fs.cpSync('out', 'dist', {recursive:true});\"",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
+    "build": "npm run compile && node scripts/check_i18n_keys.mjs && node scripts/check_ui_guards.mjs && node scripts/check_button_gates.mjs && node scripts/check_icon_gates.mjs && node scripts/test_growth_flow.mjs && node scripts/test_multiwindow_sync.mjs && node scripts/verify_card_actions_e2e.mjs && node scripts/test_v040_features.mjs",
     "package": "vsce package",
-    "guard": "node scripts/check_ui_guards.mjs"
+    "guard": "node scripts/check_ui_guards.mjs",
+    "guard:i18n": "node scripts/check_i18n_keys.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

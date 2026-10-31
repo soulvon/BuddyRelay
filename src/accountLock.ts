@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PATHS } from './constants';
+import { t } from './i18n';
 
 /**
  * 跨窗口账号锁 (Kite 同款机理)
@@ -177,7 +178,7 @@ export function getOtherLockedMap(): Record<string, { windowName: string; pid: n
     if (entry.pid === process.pid) continue;
     if (isPidAlive(entry.pid)) {
       result[uid] = {
-        windowName: entry.windowName || `窗口 ${entry.windowId || entry.pid}`,
+        windowName: entry.windowName || t('common.window', entry.windowId || entry.pid),
         pid: entry.pid
       };
     }

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount, maskName, maskUid } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
+import { t } from './i18n';
+import { detectHostEdition } from './host';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -57,25 +59,25 @@ export class StatusBarManager implements vscode.Disposable {
     const isPrivacy = this.store.getPrivacyMode();
 
     if (!active) {
-      this.statusBarItem.text = '$(credit-card) Buddy: 未登录';
-      const emptyMd = new vscode.MarkdownString('**BuddyRelay** · 当前未登录\n\n点击立即添加或切换账号');
+      this.statusBarItem.text = `$(credit-card) Buddy: ${t('status.notLoggedIn')}`;
+      const emptyMd = new vscode.MarkdownString(t('status.tooltipNone'));
       emptyMd.supportThemeIcons = true;
       this.statusBarItem.tooltip = emptyMd;
       this.statusBarItem.backgroundColor = undefined;
       return;
     }
 
-    const rawName = active.nickname || active.email || '未命名账号';
+    const rawName = active.nickname || active.email || t('status.unnamedAccount');
     const name = isPrivacy ? maskName(rawName) : rawName;
     const creditsText =
       typeof active.totalCredits === 'number'
-        ? `${fmtNum(active.totalCredits)}点`
+        ? t('status.creditsUnit', fmtNum(active.totalCredits))
         : active.paymentType === 'free'
-        ? '免费版'
-        : '就绪';
+        ? t('status.freePlan')
+        : t('status.ready');
 
     if (active.status === 'rate_limited') {
-      this.statusBarItem.text = `$(warning) Buddy: ${name} (429冷却)`;
+      this.statusBarItem.text = `$(warning) Buddy: ${name} (${t('status.rateLimited')})`;
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
       this.statusBarItem.text = `$(credit-card) Buddy: ${name} (${creditsText})`;
@@ -86,13 +88,13 @@ export class StatusBarManager implements vscode.Disposable {
     md.isTrusted = true;
     md.supportThemeIcons = true;
 
-    md.appendMarkdown(`**BuddyRelay** · 当前会话${isPrivacy ? ' (隐私模式开启)' : ''}\n\n`);
-    md.appendMarkdown(`当前账号：**${name}**\n\n`);
-    md.appendMarkdown(`用户 UID：\`${isPrivacy ? maskUid(active.uid) : active.uid}\`\n\n`);
-    md.appendMarkdown(`剩余算力：**${typeof active.totalCredits === 'number' ? `${fmtNum(active.totalCredits)} 点` : '就绪'}**\n\n`);
-    md.appendMarkdown(`今日签到：${active.todayCheckedIn ? '已完成' : '未签到'} (连续 ${active.checkinStreak || 0} 天)\n\n`);
+    md.appendMarkdown(t('status.tooltipHeader', isPrivacy ? t('status.privacyOn') : ''));
+    md.appendMarkdown(t('status.tooltipAccount', name));
+    md.appendMarkdown(t('status.tooltipUid', isPrivacy ? maskUid(active.uid) : active.uid));
+    md.appendMarkdown(t('status.tooltipCredits', typeof active.totalCredits === 'number' ? t('status.creditsReady', fmtNum(active.totalCredits)) : t('status.ready')));
+    md.appendMarkdown(t('status.tooltipCheckin', active.todayCheckedIn ? t('status.checked') : t('status.unchecked'), active.checkinStreak || 0));
     md.appendMarkdown('---\n\n');
-    md.appendMarkdown('$(arrow-swap) 点击快速切换账号');
+    md.appendMarkdown(`$(arrow-swap) ${t('status.tooltipClick')}`);
 
     this.statusBarItem.tooltip = md;
   }
@@ -103,6 +105,7 @@ export class StatusBarManager implements vscode.Disposable {
   public async showQuickPick(): Promise<void> {
     const accounts = this.store.getAll();
     const isPrivacy = this.store.getPrivacyMode();
+    const isCnHost = detectHostEdition() === 'cn';
 
     const items: AccountQuickPickItem[] = [];
 
@@ -122,24 +125,22 @@ export class StatusBarManager implements vscode.Disposable {
 
         const statusLabel =
           acc.status === 'active'
-            ? '当前活跃'
+            ? t('qp.statusActive')
             : acc.status === 'rate_limited'
-            ? '429冷却'
+            ? t('status.rateLimited')
             : acc.status === 'idle'
-            ? '就绪'
+            ? t('status.ready')
             : acc.status;
 
         const creditsStr =
           typeof acc.totalCredits === 'number'
-            ? `${fmtNum(acc.totalCredits)} 算力点`
-            : acc.paymentType || '免费';
+            ? t('qp.creditsUnit', fmtNum(acc.totalCredits))
+            : acc.paymentType || t('qp.free');
 
         items.push({
           label: `${icon} ${labelName}`,
           description: `[${statusLabel}] ${creditsStr}`,
-          detail: `UID: ${displayUid} | 连续签到: ${acc.checkinStreak || 0}天 | ${
-            acc.todayCheckedIn ? '今日已签' : '今日未签'
-          }`,
+          detail: t('qp.detailStreak', displayUid, acc.checkinStreak || 0, acc.todayCheckedIn ? t('qp.checkedToday') : t('qp.notCheckedToday')),
           actionType: 'account',
           account: acc
         });
@@ -148,54 +149,57 @@ export class StatusBarManager implements vscode.Disposable {
 
     // 分隔线与快捷操作
     items.push({
-      label: '快捷操作',
+      label: t('qp.quickActions'),
       kind: vscode.QuickPickItemKind.Separator,
       actionType: 'action'
     });
 
     items.push({
-      label: isPrivacy ? '$(eye-closed) 退出隐私模式' : '$(eye) 开启隐私模式 (脱敏)',
-      description: isPrivacy ? '恢复显示完整账号名与 UID' : '隐藏账号名与 UID，便于截图或演示',
-      detail: '全局同步生效（侧栏卡片、状态栏、下拉菜单实时打码）',
+      label: isPrivacy ? `$(eye-closed) ${t('qp.privacyExit')}` : `$(eye) ${t('qp.privacyEnter')}`,
+      description: isPrivacy ? t('qp.privacyExitDesc') : t('qp.privacyEnterDesc'),
+      detail: t('qp.privacyDetail'),
       actionType: 'action',
       actionId: 'togglePrivacy'
     });
 
     items.push({
-      label: '$(add) 添加账号 (OAuth 授权登录)',
-      description: '发起官方授权流程',
-      detail: '打开 CodeBuddy 官方网页或扫码登录，自动同步至本地号池',
+      label: `$(add) ${t('qp.addOAuth')}`,
+      description: t('qp.addOAuthDesc'),
+      detail: t('qp.addOAuthDetail'),
       actionType: 'action',
       actionId: 'addOAuth'
     });
 
     items.push({
-      label: '$(cloud-download) 从 Cockpit 导入账号',
-      description: '本地 AES-256-GCM 安全导入',
-      detail: '读取 %USERPROFILE%\\.antigravity_cockpit 密文账号池并解密',
+      label: `$(cloud-download) ${t('qp.importCockpit')}`,
+      description: t('qp.importCockpitDesc'),
+      detail: t('qp.importCockpitDetail'),
       actionType: 'action',
       actionId: 'importCockpit'
     });
 
-    items.push({
-      label: '$(check-all) 一键全员签到',
-      description: 'Buddy加油站批量领算力',
-      detail: '自动同步全量账号状态并领取今日签到算力积分',
-      actionType: 'action',
-      actionId: 'batchCheckin'
-    });
+    // 签到为国内版 (codebuddy.cn) 专属活动, 国际宿主下不出现
+    if (isCnHost) {
+      items.push({
+        label: `$(check-all) ${t('qp.batchCheckin')}`,
+        description: t('qp.batchCheckinDesc'),
+        detail: t('qp.batchCheckinDetail'),
+        actionType: 'action',
+        actionId: 'batchCheckin'
+      });
+    }
 
     items.push({
-      label: '$(refresh) 刷新状态与配额',
-      description: '重新载入号池与云端配额',
-      detail: '更新账号列表与加油站积分状态',
+      label: `$(refresh) ${t('qp.refresh')}`,
+      description: t('qp.refreshDesc'),
+      detail: t('qp.refreshDetail'),
       actionType: 'action',
       actionId: 'refresh'
     });
 
     const selected = await vscode.window.showQuickPick(items, {
-      title: 'BuddyRelay 快速切换与会话调度',
-      placeHolder: '选择要无感热切的目标账号，或执行全局快捷操作',
+      title: t('qp.title'),
+      placeHolder: t('qp.placeholder'),
       matchOnDescription: true,
       matchOnDetail: true
     });
@@ -210,9 +214,7 @@ export class StatusBarManager implements vscode.Disposable {
       switch (selected.actionId) {
         case 'togglePrivacy':
           await this.store.setPrivacyMode(!isPrivacy);
-          vscode.window.showInformationMessage(
-            `BuddyRelay: 隐私模式已${!isPrivacy ? '开启 (全局脱敏已生效)' : '关闭'}`
-          );
+          vscode.window.showInformationMessage(!isPrivacy ? t('qp.privacyEnabled') : t('qp.privacyDisabled'));
           break;
         case 'addOAuth':
           await vscode.commands.executeCommand('buddy-relay.addAccountOAuth');
@@ -237,19 +239,17 @@ export class StatusBarManager implements vscode.Disposable {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `BuddyRelay: 正在无缝热切至 ${target.nickname || target.email}...`,
+        title: t('msg.switchingTo', target.nickname || target.email),
         cancellable: false
       },
       async (progress) => {
-        progress.report({ message: '检查 Patch v4 与会话物理穿透...' });
+        progress.report({ message: t('msg.progressPatch') });
         const res = await this.switcher.switchAccount(target, this.store);
         if (res.success) {
           this.update();
-          vscode.window.showInformationMessage(
-            `BuddyRelay: 已平滑切换至账号 ${target.nickname || target.email}`
-          );
+          vscode.window.showInformationMessage(t('msg.switched', target.nickname || target.email));
         } else {
-          vscode.window.showErrorMessage(`BuddyRelay: 热切失败 - ${res.message}`);
+          vscode.window.showErrorMessage(t('msg.switchFailed', res.message));
         }
       }
     );

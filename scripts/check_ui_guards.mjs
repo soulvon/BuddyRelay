@@ -82,11 +82,13 @@ gate(
   'taskList 容器缺骨架屏占位'
 );
 
-// ── G7: 文案口径 — 已删除的冗余文本不得回流 ──
+// ── G7: 文案口径 — 已删除的冗余文本不得回流 (i18n 后活动来源走 zh 字典) ──
+const zhDictPath = path.join(ROOT, 'src', 'i18n', 'zh.ts');
+const zhDict = fs.existsSync(zhDictPath) ? fs.readFileSync(zhDictPath, 'utf8') : '';
 gate('G7 文案: 无「每日自动发放」', !html.includes('每日自动发放'));
 gate('G7 文案: 无「Buddy加油站活动签到获得」', !html.includes('Buddy加油站活动签到获得'));
 gate('G7 文案: 无「账号 UID」标签', !html.includes('>账号 UID<'));
-gate('G7 文案: 活动来源为「WorkBuddy加油站活动」', html.includes('WorkBuddy加油站活动'));
+gate('G7 文案: 活动来源为「WorkBuddy加油站活动」(js.actReset 字典项)', zhDict.includes("'js.actReset': 'WorkBuddy加油站活动'") && html.includes("t('js.actReset')"));
 
 // ── G8: 总量积分中性色 ──
 gate('G8 配色: 总量积分为 is-neutral 灰黑', html.includes('grid-quota-val is-neutral'));
@@ -118,9 +120,9 @@ gate('G15 账号联动: viewingAccountId 状态存在', html.includes('let viewi
 gate('G15 账号联动: 单选切号自动请求任务', html.includes("vscode.postMessage({ command: 'taskList', accountId: id })"));
 gate('G15 账号联动: 任务推流携带目标账号', html.includes("viewingAccountId = msg.data.accountId"));
 
-// ── G16: 诚实透明执行结果面板 ──
-gate('G16 诚实执行: 无收益明确提示任务进行中', html.includes('暂无新可领收益 (任务进行中)'));
-gate('G16 诚实执行: 失败任务异常标题与红图标', html.includes('任务执行遇到异常'));
+// ── G16: 诚实透明执行结果面板 (i18n 后标题走 js.noGainTitle / js.failTitle) ──
+gate('G16 诚实执行: 无收益明确提示任务进行中', html.includes("t('js.noGainTitle')") && zhDict.includes("'js.noGainTitle': '暂无新可领收益 (任务进行中)'"));
+gate('G16 诚实执行: 失败任务异常标题与红图标', html.includes("t('js.failTitle')") && zhDict.includes("'js.failTitle': '任务执行遇到异常'"));
 
 // ── G17: 网页内确认模态框（替代系统原生窗口） ──
 gate('G17 确认模态框: #confirmOverlay DOM 存在', html.includes('id="confirmOverlay"'));
@@ -143,9 +145,10 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 0.5.10', packageJson.version === '0.5.10');
-gate('G21 版本一致性: README 徽标版本对齐 0.5.10', readmeMd.includes('version-0.5.10'));
-gate('G21 版本一致性: README 安装说明版本对齐 0.5.10', readmeMd.includes('buddy-relay-0.5.10.vsix'));
+gate('G21 版本一致性: package.json 版本为 1.0.0', packageJson.version === '1.0.0');
+gate('G21 版本一致性: README 徽标版本对齐 1.0.0', readmeMd.includes('version-1.0.0'));
+gate('G21 版本一致性: README 安装说明版本对齐 1.0.0', readmeMd.includes('buddy-relay-1.0.0.vsix'));
+gate('G21 互推五件套: 同系列作品区含 Antigravity-Kite', readmeMd.includes('Antigravity-Kite'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
 const accountStoreTs = fs.readFileSync(path.join(ROOT, 'src', 'accountStore.ts'), 'utf8');
@@ -183,7 +186,7 @@ gate(
 // ── G25: 账号启用/禁用门控 ──
 gate('G25 账号启停: 卡片提供 onToggleStatus 按钮', html.includes("onToggleStatus('") && html.includes("window.onToggleStatus = function"));
 gate('G25 账号启停: 启停控件为开关形态 (status-switch 开/关双色与滑块)', html.includes('status-switch ${isDisabled') && html.includes('.status-switch.is-on') && html.includes('.status-switch.is-off') && html.includes('status-switch-thumb'));
-gate('G25 账号启停: 开关位于底栏最右端 (删除按钮之后)', html.indexOf('${statusToggleBtn}') > html.indexOf('从号池移除'));
+gate('G25 账号启停: 开关位于底栏最右端 (删除按钮之后)', html.indexOf('${statusToggleBtn}') > html.indexOf("t('js.removeTitle')"));
 gate('G25 账号启停: 开关启用态为低饱和灰调绿 (color-mix 降饱和)', html.includes('color-mix(in srgb, var(--gh-green, #3fb950) 45%, #8b9a90)'));
 gate('G25 账号启停: 禁用账号样式与标签存在', html.includes("grid-disabled-tag") && html.includes("is-disabled"));
 gate('G25 账号启停: accountStore 提供 toggleStatus 方法', accountStoreTs.includes('toggleStatus('));
@@ -300,7 +303,7 @@ gate('G39 流水引擎: usageTracker.ts 存在且支持 Delta 快照差值对账
 gate('G39 流水引擎: usageTracker 提供今日经营总账 (getDailySummary) 与流水查询', usageTrackerTs.includes('getDailySummary(') && usageTrackerTs.includes('getRecentRecords('));
 
 // ── G40: 侧栏【统计】抽屉面板与状态推流 门控 ──
-gate('G40 流水面板: sidebar.html 包含统计折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"') && html.includes('<span>统计</span>'));
+gate('G40 流水面板: sidebar.html 包含统计折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"') && html.includes("{{i:ui.stats}}"));
 gate('G40 流水面板: sidebar.html 包含新增与消耗双色汇总徽标', html.includes('id="usageAwardedBadge"') && html.includes('id="usageConsumedBadge"'));
 gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', sidebarProviderTs.includes('usageSummary:') && sidebarProviderTs.includes('recentRecords:'));
 
@@ -320,9 +323,9 @@ gate('G42 包体瘦身: .vscodeignore 排除本地临时产物 tmp/ 严禁混入
 const mainCss = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'main.css'), 'utf8');
 gate('G43 算力口径: 汇总分母包含基础体验包容量 (basePackage.total)', /a\.basePackage && a\.basePackage\.total/.test(html));
 gate('G43 算力口径: 汇总排除已禁用账号 (status !== disabled)', html.includes("currentAccounts.filter(a => a.status !== 'disabled')"));
-gate('G43 算力口径: 百分比带「剩」前缀明示剩余率语义', html.includes("'剩 ' + creditPct"));
+gate('G43 算力口径: 百分比带「剩」前缀明示剩余率语义', html.includes("t('js.pctRemaining', creditPct)") && zhDict.includes("'js.pctRemaining': '剩 {0}%'"));
 gate('G43 算力口径: 汇总条具备风险色阶变体 (is-warn/is-danger)', mainCss.includes('.summary-bar-fill.is-warn') && mainCss.includes('.summary-bar-fill.is-danger'));
-gate('G43 流水徽标: 具备新增与消耗语义文案', html.includes("'新增 +' + fmtNum") && html.includes("'消耗 '"));
+gate('G43 流水徽标: 具备新增与消耗语义文案', html.includes("t('js.gainedBadge', fmtNum") && html.includes("t('js.consumedBadge'"));
 gate('G43 标点统一: 数值语境禁用全角括号混排 (杜绝双字体拼贴)', !html.includes('个（') && !html.includes('（≥') && !html.includes('（≤'));
 gate('G43 模态框滚动: 全局 modal-box 三段式 flex (header固定/body内滚/footer常驻)', /\.modal-box \{[^}]*display: flex/.test(mainCss) && /\.modal-body \{[^}]*min-height: 0/.test(mainCss) && /\.modal-body \{[^}]*overflow-y: auto/.test(mainCss) && /\.modal-footer \{/.test(mainCss));
 gate('G43 模态框滚动: 设置框操作区独立于滚动区 (modal-footer 在 body 外、overlay 内)', html.includes('<div class="modal-footer">') && html.indexOf('btnSettingsSave') > html.indexOf('class="modal-footer"') && html.indexOf('btnSettingsSave') < html.indexOf('全局 Toast 容器'));

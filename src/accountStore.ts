@@ -4,6 +4,7 @@ import * as os from 'os';
 import { EventEmitter } from 'events';
 import type * as vscode from 'vscode';
 import { PATHS } from './constants';
+import { t } from './i18n';
 
 /**
  * CodeBuddy 账号数据模型
@@ -80,7 +81,7 @@ const ACTIVE_ACCOUNT_KEY = 'buddyrelay.accounts.active'; // 旧 globalState 迁�
  * 账号名称脱敏
  */
 export function maskName(name: string, privacyMode: boolean = true): string {
-  if (!name) return '未知';
+  if (!name) return t('common.unknown');
   if (!privacyMode) return name;
   if (/^1\d{10}$/.test(name)) return name.slice(0, 3) + '****' + name.slice(7);
   if (name.includes('@')) {
@@ -458,7 +459,7 @@ export class AccountStore extends EventEmitter {
   public async setActive(idOrUid: string): Promise<CodeBuddyAccount> {
     const acc = this.get(idOrUid);
     if (!acc) {
-      throw new Error(`[AccountStore] 目标账号不存在: ${idOrUid}`);
+      throw new Error(`[AccountStore] ${t('err.targetMissing')}: ${idOrUid}`);
     }
 
     for (const a of this.accounts.values()) {

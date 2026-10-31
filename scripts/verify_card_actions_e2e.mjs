@@ -195,9 +195,9 @@ async function runAudit() {
   const handlerCode = matchHandler ? matchHandler[0] : '';
 
   check('分发逻辑: res.success 时必须发送 success 级别', handlerCode.includes("this.sendNotify('success',"));
-  check('分发逻辑: res.success 时严禁再发送 error 级别', !handlerCode.includes("this.sendNotify('error',\n          `BuddyRelay: 已切换至"));
+  check('分发逻辑: res.success 时严禁再发送 error 级别', !handlerCode.includes("this.sendNotify('error',\n          t('msg.switched'"));
   check('分发逻辑: 纯净单重前缀，杜绝"已切换至 XXX，已切换至 XXX"重复拼接', !handlerCode.includes("，${res.message}"));
-  check('分发逻辑: 只有 catch 异常或 !res.success 才发 error', handlerCode.includes("this.sendNotify('error', `切号异常: ${res.message}`)"));
+  check('分发逻辑: 只有 catch 异常或 !res.success 才发 error', handlerCode.includes("this.sendNotify('error', t('err.switchAbnormal', res.message))"));
 
   console.log('');
 

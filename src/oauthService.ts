@@ -3,6 +3,7 @@ import * as http from 'http';
 import { URL } from 'url';
 import { API_ENDPOINTS, DEFAULT_HEADERS } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { t } from './i18n';
 
 export interface OAuthStateResult {
   state: string;
@@ -99,7 +100,7 @@ export function httpRequest<T = any>(
 
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error(`[OAuthService] 请求超时 (${options.timeout || 15000}ms): ${targetUrl}`));
+      reject(new Error(t('err.oauthTimeout', options.timeout || 15000, targetUrl)));
     });
 
     req.on('error', err => {
@@ -143,7 +144,7 @@ export class OAuthService {
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data?.state) {
-      throw new Error(`[OAuthService] 请求 auth/state 失败: ${JSON.stringify(res.data)}`);
+      throw new Error(t('err.oauthStateFailed', JSON.stringify(res.data)));
     }
 
     return {
@@ -170,7 +171,7 @@ export class OAuthService {
 
     while (Date.now() - startTime < timeout) {
       if (options?.abortSignal?.aborted) {
-        throw new Error('[OAuthService] 轮询已手动中止');
+        throw new Error(t('err.oauthPollAborted'));
       }
 
       try {
@@ -206,11 +207,13 @@ export class OAuthService {
         if (res.data && res.data.code === 11217) {
           // 继续轮询
         } else if (res.data && res.data.code !== 0) {
-          // 其他明确错误
-          throw new Error(`[OAuthService] 授权返回异常: [${res.data.code}] ${res.data.msg}`);
+          // 其他明确错误 (结构化错误码标记, 严禁依赖错误文本做控制流——i18n 会改文本)
+          const e: any = new Error(t('err.oauthAbnormal', res.data.code, res.data.msg));
+          e.code = 'OAUTH_AUTH_ABNORMAL';
+          throw e;
         }
       } catch (err: any) {
-        if (err.message && err.message.includes('授权返回异常')) {
+        if (err && err.code === 'OAUTH_AUTH_ABNORMAL') {
           throw err;
         }
         // 网络抖动时等待重试
@@ -219,7 +222,7 @@ export class OAuthService {
       await new Promise(r => setTimeout(r, interval));
     }
 
-    throw new Error(`[OAuthService] 登录等待超时 (${timeout / 1000}秒未完成登录)`);
+    throw new Error(t('err.oauthLoginTimeout', timeout / 1000));
   }
 
   /**
@@ -240,13 +243,13 @@ export class OAuthService {
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data) {
-      throw new Error(`[OAuthService] 获取用户信息失败: ${JSON.stringify(res.data)}`);
+      throw new Error(t('err.oauthProfileFailed', JSON.stringify(res.data)));
     }
 
     const p = res.data.data;
     return {
       uid: p.uid || p.oneidAccountId || '',
-      nickname: p.nickname || p.phoneNumber || 'CodeBuddy用户',
+      nickname: p.nickname || p.phoneNumber || t('oauth.defaultNickname'),
       phoneNumber: p.phoneNumber,
       email: p.phoneNumber || p.nickname || p.uid,
       accountType: p.type || p.accountType || 'personal',
@@ -278,7 +281,7 @@ export class OAuthService {
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data) {
-      throw new Error(`[OAuthService] 刷新 Token 失败: ${JSON.stringify(res.data)}`);
+      throw new Error(t('err.oauthRefreshFailed', JSON.stringify(res.data)));
     }
 
     const d = res.data.data;

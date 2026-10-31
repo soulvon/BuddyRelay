@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{i:__lang__}}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -921,10 +921,10 @@
             <svg class="list-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
             </svg>
-            <h3>我的账号</h3>
+            <h3>{{i:ui.myAccounts}}</h3>
             <div style="flex:1"></div>
-            <span class="grid-count" id="gridCount">0 个</span>
-            <button class="add-account-btn" id="btnAddOAuth">添加账号</button>
+            <span class="grid-count" id="gridCount">0</span>
+            <button class="add-account-btn" id="btnAddOAuth">{{i:ui.addAccount}}</button>
           </summary>
           <div class="list-body">
             <!-- 汇总统计（Kite 原版 summaryCard 结构） -->
@@ -935,7 +935,7 @@
                     <svg class="summary-stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
                     </svg>
-                    <span class="summary-stat-label">今日签到</span>
+                    <span class="summary-stat-label">{{i:ui.dailyCheckin}}</span>
                     <span class="summary-stat-pct" id="summaryDailyPct">0%</span>
                   </div>
                   <div class="summary-bar"><div class="summary-bar-fill" id="summaryDailyBar" style="width:0%"></div></div>
@@ -944,13 +944,13 @@
                     <span class="summary-stat-max" id="summaryDailyMax">/ 0</span>
                   </div>
                 </div>
-                <div class="summary-stat" id="summaryWeeklyStat" title="已启用账号的剩余算力 ÷ 总容量（基础体验包 + 活动赠送包），≤10% 红色告警、≤30% 橙色预警">
+                <div class="summary-stat" id="summaryWeeklyStat" title="{{i:ui.summaryWeeklyTitle}}">
                   <div class="summary-stat-head">
                     <svg class="summary-stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                     </svg>
-                    <span class="summary-stat-label">算力</span>
-                    <span class="summary-stat-pct" id="summaryWeeklyPct">剩 0%</span>
+                    <span class="summary-stat-label">{{i:ui.credits}}</span>
+                    <span class="summary-stat-pct" id="summaryWeeklyPct">{{i:js.pctRemainingInitial}}</span>
                   </div>
                   <div class="summary-bar"><div class="summary-bar-fill" id="summaryWeeklyBar" style="width:0%"></div></div>
                   <div class="summary-stat-footer">
@@ -967,30 +967,30 @@
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
                       <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                     </svg>
-                    <span>统计</span>
+                    <span>{{i:ui.stats}}</span>
                   </div>
                   <div style="flex:1"></div>
-                  <div id="usageSummaryBadge" class="usage-summary-badges" title="今日算力流水总账：新增=签到与任务到账，消耗=会话与补全净耗">
-                    <span id="usageAwardedBadge" class="usage-badge-pill is-plus">新增 +0</span>
-                    <span id="usageConsumedBadge" class="usage-badge-pill is-minus">消耗 -0</span>
+                  <div id="usageSummaryBadge" class="usage-summary-badges" title="{{i:ui.usageSummaryTitle}}">
+                    <span id="usageAwardedBadge" class="usage-badge-pill is-plus">{{i:js.gainedBadgePlain}}</span>
+                    <span id="usageConsumedBadge" class="usage-badge-pill is-minus">{{i:js.consumedBadgePlain}}</span>
                   </div>
-                  <button class="icon-btn" id="btnClearUsage" title="清空历史流水" style="margin-left:4px;" onclick="event.stopPropagation();">
+                  <button class="icon-btn" id="btnClearUsage" title="{{i:ui.clearUsageTitle}}" style="margin-left:4px;" onclick="event.stopPropagation();">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg>
                   </button>
                 </summary>
                 <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
                   <!-- 号池大盘状态统计 -->
                   <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
-                    <div class="summary-status-row"><span class="summary-status-label">活跃 / 禁用</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">满额度账号</span><span class="summary-status-val ok" id="summaryHighQuota">0 个 (≥ 80%)</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">低额度账号</span><span class="summary-status-val warn" id="summaryLowQuota">0 个 (≤ 30%)</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">最近刷新</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.activeDisabled}}</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.highQuotaAccounts}}</span><span class="summary-status-val ok" id="summaryHighQuota">0</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.lowQuotaAccounts}}</span><span class="summary-status-val warn" id="summaryLowQuota">0</span></div>
+                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.lastRefresh}}</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
                   </div>
 
                   <!-- 今日流水记录列表 -->
-                  <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">今日流水记录</div>
+                  <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">{{i:ui.usageRecords}}</div>
                   <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;padding-right:2px;">
-                    <div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>
+                    <div class="empty-state" style="padding:10px;font-size:11px;">{{i:ui.usageEmpty}}</div>
                   </div>
                 </div>
               </details>
@@ -1004,14 +1004,14 @@
         <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M10.8 4a6.8 6.8 0 1 0 4.25 12.12l3.42 3.42a1.2 1.2 0 0 0 1.7-1.7l-3.42-3.42A6.8 6.8 0 0 0 10.8 4Zm0 2.4a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8Z"/>
         </svg>
-        <input type="text" class="search-input" id="searchInput" placeholder="搜索账号..." autocomplete="off">
-        <button class="search-clear" id="searchClear" hidden title="清除">×</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="{{i:ui.searchPlaceholder}}" autocomplete="off">
+        <button class="search-clear" id="searchClear" hidden title="{{i:ui.clearSearchTitle}}">×</button>
       </div>
 
       <!-- 工具栏：过滤 + 隐私 + 刷新 + 导入 + 签到（Kite 原版 toolbar-bar 结构） -->
       <div class="toolbar-bar" id="toolbarBar">
         <div class="filter-wrap" id="filterWrap">
-          <button class="filter-trigger" id="filterTrigger" title="按状态筛选">
+          <button class="filter-trigger" id="filterTrigger" title="{{i:ui.filterByStatus}}">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
             </svg>
@@ -1020,12 +1020,12 @@
           </button>
           <div class="filter-dropdown" id="filterDropdown" hidden>
             <div class="filter-section">
-              <div class="filter-section-title">按状态筛选</div>
+              <div class="filter-section-title">{{i:ui.filterByStatus}}</div>
               <div class="filter-options" id="filterOptions"></div>
             </div>
           </div>
         </div>
-        <button class="toolbar-icon-btn" id="privacyModeBtn" title="隐私模式：隐藏账号名称">
+        <button class="toolbar-icon-btn" id="privacyModeBtn" title="{{i:ui.privacyTitleOff}}">
           <svg class="privacy-eye" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
             <circle cx="12" cy="12" r="3"/>
@@ -1037,7 +1037,7 @@
             <line x1="1" y1="1" x2="23" y2="23"/>
           </svg>
         </button>
-        <button class="toolbar-icon-btn" id="refreshAllBtn" title="刷新全部配额">
+        <button class="toolbar-icon-btn" id="refreshAllBtn" title="{{i:ui.refreshAllTitle}}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
             <path d="M21 3v5h-5"/>
@@ -1045,19 +1045,19 @@
             <path d="M8 16H3v5"/>
           </svg>
         </button>
-        <button class="toolbar-icon-btn" id="btnExportPool" title="备份导出号池数据">
+        <button class="toolbar-icon-btn" id="btnExportPool" title="{{i:ui.exportPoolTitle}}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
         </button>
         <div style="flex:1"></div>
-        <button class="btn-outline" id="btnGrowthTasks" title="Buddy 成长任务：报名、完成与领奖">
+        <button class="btn-outline" id="btnGrowthTasks" title="{{i:ui.growthTasksTitle}}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-          成长任务</button>
-        <button class="btn-outline" id="btnBatchCheckin" title="一键为所有账号签到">
+          {{i:ui.growthTasksBtn}}</button>
+        <button class="btn-outline" id="btnBatchCheckin" title="{{i:ui.batchCheckinTitle}}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M20 6 9 17l-5-5"/></svg>
-          一键全员签到</button>
-        <button class="toolbar-icon-btn" id="btnSettings" title="规则与调度设置">
+          {{i:ui.batchCheckinBtn}}</button>
+        <button class="toolbar-icon-btn" id="btnSettings" title="{{i:ui.settingsBtnTitle}}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -1067,7 +1067,7 @@
 
       <!-- 标签管理栏（Kite 原版 tag-bar 结构） -->
       <div class="tag-bar" id="tagBar">
-        <span class="tag-bar-label">标签:</span>
+        <span class="tag-bar-label">{{i:ui.tagLabel}}</span>
         <div class="tag-list" id="tagList"></div>
       </div>
 
@@ -1076,8 +1076,8 @@
 
       <!-- 空态 -->
       <div id="emptyState" class="empty-state" hidden>
-        <p style="margin-bottom: 8px;">还没有账号</p>
-        <button class="add-account-btn" style="flex:none;display:inline-flex;" onclick="openAddModal()">添加账号</button>
+        <p style="margin-bottom: 8px;">{{i:ui.emptyNoAccounts}}</p>
+        <button class="add-account-btn" style="flex:none;display:inline-flex;" onclick="openAddModal()">{{i:ui.addAccount}}</button>
       </div>
 
     </div>
@@ -1086,56 +1086,53 @@
   <div id="addAccountOverlay" class="modal-overlay" hidden>
     <div class="modal-box" style="width:min(480px,94vw);max-height:88vh">
       <div class="modal-header">
-        <h3>添加账号</h3>
-        <button class="modal-close" id="addAccountClose" title="关闭">×</button>
+        <h3>{{i:ui.addAccount}}</h3>
+        <button class="modal-close" id="addAccountClose" title="{{i:common.close}}">×</button>
       </div>
       <div class="modal-body">
         <div class="add-tabs">
-          <button class="add-tab active" data-tab="oauth">OAuth 授权</button>
-          <button class="add-tab" data-tab="cockpit">Cockpit 导入</button>
-          <button class="add-tab" data-tab="local">本地导入</button>
-          <button class="add-tab" data-tab="json">JSON 导入</button>
+          <button class="add-tab active" data-tab="oauth">{{i:ui.tabOauth}}</button>
+          <button class="add-tab" data-tab="cockpit">{{i:ui.tabCockpit}}</button>
+          <button class="add-tab" data-tab="local">{{i:ui.tabLocal}}</button>
+          <button class="add-tab" data-tab="json">{{i:ui.tabJson}}</button>
         </div>
 
         <!-- OAuth 授权 -->
         <div id="addTabOauth" class="add-area">
-          <p class="footnote">打开 CodeBuddy 官方授权页，扫码或确认登录后自动保存到号池，并自动拉取昵称与实时算力配额。</p>
-          <button class="primary" id="btnStartOAuth" style="margin-top:10px">开始 OAuth 授权</button>
+          <p class="footnote">{{i:ui.oauthFootnote}}</p>
+          <button class="primary" id="btnStartOAuth" style="margin-top:10px">{{i:ui.startOAuth}}</button>
         </div>
 
         <!-- Cockpit 导入 -->
         <div id="addTabCockpit" class="add-area" hidden>
-          <p class="footnote">自动读取本机 Cockpit Tools 账号池（%USERPROFILE%\.antigravity_cockpit），AES-256-GCM 解密后导入，已登录的账号无需重新扫码。按 UID 去重，已存在的账号自动跳过。</p>
-          <button class="primary" id="btnStartCockpitImport" style="margin-top:10px">一键导入 Cockpit 账号</button>
+          <p class="footnote">{{i:ui.cockpitFootnote}}</p>
+          <button class="primary" id="btnStartCockpitImport" style="margin-top:10px">{{i:ui.startCockpitImport}}</button>
         </div>
 
         <!-- 本地导入（Kite「已登录账户」同款） -->
         <div id="addTabLocal" class="add-area" hidden>
-          <p class="footnote">读取本机 CodeBuddy 当前已登录的会话并加入号池，无需重复扫码。注意：该方式拿不到 refreshToken，令牌过期后需重新导入或改用 OAuth 授权。按 UID 去重，已存在的账号自动跳过。</p>
-          <button class="primary" id="btnImportLocal" style="margin-top:10px">导入当前登录账号</button>
+          <p class="footnote">{{i:ui.localFootnote}}</p>
+          <button class="primary" id="btnImportLocal" style="margin-top:10px">{{i:ui.importLocalBtn}}</button>
         </div>
 
         <!-- 智能匹配批量导入 -->
         <div id="addTabJson" class="add-area" hidden>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <label class="batch-mode-label" style="margin:0;">智能匹配导入 (JSON / JWT / 分隔符)</label>
+            <label class="batch-mode-label" style="margin:0;">{{i:ui.smartImportLabel}}</label>
             <button class="btn-outline" id="btnImportAccountsFile" type="button" style="padding:2px 10px;height:24px;font-size:11px;">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
-              从文件选择导入 (.json)
+              {{i:ui.fromFileBtn}}
             </button>
           </div>
-          <textarea id="importJsonText" class="batch-textarea" rows="8" placeholder='支持以下格式智能识别与覆盖更新：&#10;1. 完整账号 JSON 数组或单个对象&#10;2. 纯 JWT 令牌 (eyJ...) 自动解析 UID 与过期时间&#10;3. uid----accessToken 分隔符格式&#10;4. 已存在的账号将自动覆盖更新 Token 与配额'></textarea>
+          <textarea id="importJsonText" class="batch-textarea" rows="8" placeholder='{{i:ui.jsonPlaceholder}}'></textarea>
           <details class="batch-example">
-            <summary>智能识别与更新特性（点击展开）</summary>
+            <summary>{{i:ui.smartFeaturesSummary}}</summary>
             <div class="batch-example-content">
-              <div class="batch-example-label">智能特性说明</div>
-              <pre class="batch-example-code">- 兼容 access_token / refresh_token 下划线与驼峰命名
-- 支持直接粘贴单个或批量 JWT 令牌，自动解析 sub (UID) 与 nickname
-- 已存在的账号自动覆盖刷新 Token，无需删除旧号重录
-- 点击右上角「从文件选择导入」可直接载入大体积 .json 账号文件</pre>
+              <div class="batch-example-label">{{i:ui.smartFeaturesLabel}}</div>
+              <pre class="batch-example-code">{{i:ui.smartFeaturesCode}}</pre>
             </div>
           </details>
-          <button class="primary" id="btnImportJson" style="margin-top:10px">一键智能导入</button>
+          <button class="primary" id="btnImportJson" style="margin-top:10px">{{i:ui.smartImportBtn}}</button>
         </div>
       </div>
     </div>
@@ -1147,11 +1144,11 @@
       <!-- 头部：标题 + 刷新图标 + 关闭 -->
       <div class="modal-header task-header">
         <div class="task-header-left">
-          <h3>成长任务</h3>
-          <span class="grid-health-badge grid-health-ok" id="taskHeaderBadge" style="font-size:10px;">0 项</span>
+          <h3>{{i:ui.taskHeader}}</h3>
+          <span class="grid-health-badge grid-health-ok" id="taskHeaderBadge" style="font-size:10px;">0</span>
         </div>
         <div class="task-header-right">
-          <button class="toolbar-icon-btn" id="btnTaskRefresh" title="刷新任务列表">
+          <button class="toolbar-icon-btn" id="btnTaskRefresh" title="{{i:ui.taskRefreshTitle}}">
             <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
               <path d="M21 3v5h-5"/>
@@ -1159,7 +1156,7 @@
               <path d="M8 16H3v5"/>
             </svg>
           </button>
-          <button class="modal-close" id="taskModalClose" title="关闭">×</button>
+          <button class="modal-close" id="taskModalClose" title="{{i:common.close}}">×</button>
         </div>
       </div>
 
@@ -1167,25 +1164,25 @@
       <div class="task-view-body">
         <!-- Kite 式折叠多账号选择器 -->
         <div class="task-account-bar" id="taskAccountBar">
-          <div class="task-account-trigger" id="taskAccountTrigger" title="点击展开/收起账号选择">
+          <div class="task-account-trigger" id="taskAccountTrigger" title="{{i:ui.taskTriggerTitle}}">
             <div class="task-account-trigger-info">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.75;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <span style="font-size:11px;color:var(--muted);">执行目标:</span>
-              <span id="taskAccountSummary" style="font-size:11px;font-weight:600;color:var(--vscode-foreground);">已选 1 个账号</span>
+              <span style="font-size:11px;color:var(--muted);">{{i:ui.taskExecTarget}}</span>
+              <span id="taskAccountSummary" style="font-size:11px;font-weight:600;color:var(--vscode-foreground);">{{i:js.taskSelectedInit}}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <span class="batch-count" id="taskSelCount">已选 1</span>
+              <span class="batch-count" id="taskSelCount">{{i:js.selectedInit}}</span>
               <span class="task-drawer-arrow" id="taskDrawerArrow">▾</span>
             </div>
           </div>
           <div class="task-account-drawer" id="taskAccountDrawer" hidden>
             <div class="task-drawer-tools">
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--muted);">
-                <input type="checkbox" id="taskSelAll"> <span>全选</span>
+                <input type="checkbox" id="taskSelAll"> <span>{{i:ui.selectAll}}</span>
               </label>
               <div style="flex:1"></div>
-              <button class="task-drawer-btn" id="taskSelActiveOnly" type="button">仅当前</button>
-              <button class="task-drawer-btn" id="taskSelInvert" type="button">反选</button>
+              <button class="task-drawer-btn" id="taskSelActiveOnly" type="button">{{i:ui.activeOnly}}</button>
+              <button class="task-drawer-btn" id="taskSelInvert" type="button">{{i:ui.invert}}</button>
             </div>
             <div id="taskAcctList" class="task-acct-list"></div>
           </div>
@@ -1196,26 +1193,26 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-              <span id="assetTravelText" style="font-weight:500;color:var(--vscode-foreground);">Buddy 正在「咖啡馆」打工 (预计带回 9 积分)</span>
+              <span id="assetTravelText" style="font-weight:500;color:var(--vscode-foreground);">{{i:ui.assetTravelInit}}</span>
             </div>
-            <span id="assetTravelBadge" class="grid-health-badge grid-health-warn" style="font-size:10px;">打工中</span>
+            <span id="assetTravelBadge" class="grid-health-badge grid-health-warn" style="font-size:10px;">{{i:ui.assetTravelBadge}}</span>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding-top:4px;border-top:1px dashed var(--card-border);font-size:10px;color:var(--muted);">
             <div style="display:flex;align-items:center;gap:4px;">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              <span id="assetStreakText">连签 3 天 (离 7d 礼包差 4 天)</span>
+              <span id="assetStreakText">{{i:ui.assetStreakInit}}</span>
             </div>
             <div style="display:flex;align-items:center;gap:4px;">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              <span id="assetEnergyText">能量: 3 点</span>
+              <span id="assetEnergyText">{{i:ui.assetEnergyInit}}</span>
             </div>
           </div>
         </div>
 
         <!-- 任务总数与可领取统计 -->
         <div class="summary-status-grid" style="margin:2px 0 0;">
-          <div class="summary-status-row"><span class="summary-status-label">任务总数</span><span class="summary-status-val" id="taskCount">0</span></div>
-          <div class="summary-status-row"><span class="summary-status-label">已完成 / 可领取</span><span class="summary-status-val ok" id="taskDoneStat">0 / 0</span></div>
+          <div class="summary-status-row"><span class="summary-status-label">{{i:ui.taskTotal}}</span><span class="summary-status-val" id="taskCount">0</span></div>
+          <div class="summary-status-row"><span class="summary-status-label">{{i:ui.taskDoneStat}}</span><span class="summary-status-val ok" id="taskDoneStat">0 / 0</span></div>
         </div>
 
         <!-- 骨架屏占位 -->
@@ -1228,21 +1225,21 @@
         <!-- 任务卡片列表 -->
         <div id="taskList" style="display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto;padding-right:2px;"></div>
         <div id="taskEmpty" class="empty-state" hidden>
-          <p>暂无任务数据，点击右上角刷新拉取</p>
+          <p>{{i:ui.taskEmptyHint}}</p>
         </div>
       </div>
 
       <!-- 底部固定操作栏 -->
       <div class="task-view-footer action-row">
         <div style="flex:1;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          <span id="taskFooterHint">勾选账号后一键执行</span>
+          <span id="taskFooterHint">{{i:ui.taskFooterHint}}</span>
         </div>
         <button class="btn-outline" id="btnTaskAcceptAll">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
-          全部报名</button>
+          {{i:ui.acceptAllBtn}}</button>
         <button class="primary" id="btnTaskRunAuto">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          一键完成</button>
+          {{i:ui.runAutoBtn}}</button>
       </div>
     </div>
   </div>
@@ -1253,11 +1250,11 @@
       <!-- 阶段一：进度进行中 -->
       <div id="taskProgressStage">
         <div class="modal-header">
-          <h3 id="taskBatchTitle">正在批量执行任务</h3>
+          <h3 id="taskBatchTitle">{{i:ui.batchRunningTitle}}</h3>
         </div>
         <div class="modal-body" style="padding-top:10px;">
           <div class="modal-progress-bar"><div class="modal-progress-fill" id="taskBatchProgressFill" style="width:0%"></div></div>
-          <div class="modal-progress-text" id="taskBatchProgressText">准备执行…</div>
+          <div class="modal-progress-text" id="taskBatchProgressText">{{i:ui.progressInit}}</div>
 
           <div id="taskProgressBox" style="margin-top:12px;padding:8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:rgba(0,0,0,0.03);max-height:160px;overflow-y:auto;">
             <div id="taskProgressLines" style="display:flex;flex-direction:column;gap:3px;font-size:11px;font-family:var(--font-mono);"></div>
@@ -1266,7 +1263,7 @@
           <div style="display:flex;justify-content:flex-end;margin-top:14px;">
             <button class="modal-cancel-btn" id="btnTaskStop" style="color:var(--gh-red,#ef4444);border-color:rgba(239,68,68,0.3);">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-              停止执行
+              {{i:ui.stopBtn}}
             </button>
           </div>
         </div>
@@ -1275,42 +1272,42 @@
       <!-- 阶段二：结果统计面板 -->
       <div id="taskResultStage" hidden>
         <div class="modal-header">
-          <h3 id="taskResultHeaderTitle">执行结果</h3>
-          <button class="modal-close" id="taskResultCloseX" title="关闭">×</button>
+          <h3 id="taskResultHeaderTitle">{{i:ui.resultTitle}}</h3>
+          <button class="modal-close" id="taskResultCloseX" title="{{i:common.close}}">×</button>
         </div>
         <div class="modal-body" style="padding-top:8px;">
           <div style="text-align:center;margin:8px 0 12px;">
             <div id="taskResultIcon" style="display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:rgba(16,185,129,0.12);color:var(--ac-emerald,#10b981);margin-bottom:8px;">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
             </div>
-            <div id="taskResultMainTitle" style="font-size:14px;font-weight:600;color:var(--vscode-foreground);">批量执行完成</div>
-            <div id="taskResultSubTitle" style="font-size:11px;color:var(--muted);margin-top:2px;">耗时 1 秒 · 共处理 1 个账号</div>
+            <div id="taskResultMainTitle" style="font-size:14px;font-weight:600;color:var(--vscode-foreground);">{{i:ui.resultDoneInit}}</div>
+            <div id="taskResultSubTitle" style="font-size:11px;color:var(--muted);margin-top:2px;">{{i:ui.resultSubInit}}</div>
           </div>
 
           <div class="task-summary-grid">
             <div class="task-summary-cell">
               <div class="task-summary-val" id="resClaimedCredits" style="color:var(--ac-emerald,#10b981);">+0</div>
-              <div class="task-summary-lbl">到账积分</div>
+              <div class="task-summary-lbl">{{i:ui.resCredits}}</div>
             </div>
             <div class="task-summary-cell">
               <div class="task-summary-val" id="resClaimedTasks" style="color:var(--ac-blue,#3b82f6);">0</div>
-              <div class="task-summary-lbl">已领任务</div>
+              <div class="task-summary-lbl">{{i:ui.resClaimed}}</div>
             </div>
             <div class="task-summary-cell">
               <div class="task-summary-val" id="resAcceptedTasks" style="color:var(--vscode-foreground);">0</div>
-              <div class="task-summary-lbl">新报任务</div>
+              <div class="task-summary-lbl">{{i:ui.resAccepted}}</div>
             </div>
             <div class="task-summary-cell">
               <div class="task-summary-val" id="resSkippedTasks" style="color:var(--muted);">0</div>
-              <div class="task-summary-lbl">跳过/人工</div>
+              <div class="task-summary-lbl">{{i:ui.resSkipped}}</div>
             </div>
           </div>
 
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">账号明细</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.accountDetails}}</div>
           <div id="taskResultDetails" style="max-height:120px;overflow-y:auto;border:1px solid var(--card-border);border-radius:var(--radius-sm);padding:6px;display:flex;flex-direction:column;gap:3px;font-size:11px;"></div>
 
           <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-            <button class="primary" id="btnTaskResultClose" style="min-width:100px;">完成</button>
+            <button class="primary" id="btnTaskResultClose" style="min-width:100px;">{{i:common.done}}</button>
           </div>
         </div>
       </div>
@@ -1321,14 +1318,14 @@
   <div id="confirmOverlay" class="modal-overlay" hidden>
     <div class="modal-box" style="width:min(340px,90vw);">
       <div class="modal-header">
-        <h3 id="confirmTitle">确认操作</h3>
-        <button class="modal-close" id="confirmClose" title="关闭">×</button>
+        <h3 id="confirmTitle">{{i:ui.confirmTitle}}</h3>
+        <button class="modal-close" id="confirmClose" title="{{i:common.close}}">×</button>
       </div>
       <div class="modal-body" style="padding:16px 14px 14px;">
         <div id="confirmMsg" style="font-size:12px;line-height:1.6;margin-bottom:16px;color:var(--vscode-foreground);"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button class="modal-cancel-btn" id="confirmCancel" style="padding:4px 14px;font-size:11px;">取消</button>
-          <button class="primary" id="confirmOk" style="min-width:70px;padding:4px 14px;font-size:11px;">确定</button>
+          <button class="modal-cancel-btn" id="confirmCancel" style="padding:4px 14px;font-size:11px;">{{i:common.cancel}}</button>
+          <button class="primary" id="confirmOk" style="min-width:70px;padding:4px 14px;font-size:11px;">{{i:common.ok}}</button>
         </div>
       </div>
     </div>
@@ -1338,19 +1335,19 @@
   <div id="exportModalOverlay" class="modal-overlay" hidden>
     <div class="modal-box" style="width:min(380px,92vw);">
       <div class="modal-header">
-        <h3>备份导出号池</h3>
-        <button class="modal-close" id="exportModalClose" title="关闭">×</button>
+        <h3>{{i:ui.exportModalTitle}}</h3>
+        <button class="modal-close" id="exportModalClose" title="{{i:common.close}}">×</button>
       </div>
       <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:11px;color:var(--muted);line-height:1.5;">请选择需要导出的数据格式与安全级别：</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5;">{{i:ui.exportPrompt}}</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div class="card auto-switch-card" id="btnExportFull" style="cursor:pointer;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);">
-            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">完整凭证备份 (.json)</div>
-            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">包含完整 AccessToken 与 RefreshToken，可直接用于换机恢复或批量导入。</div>
+            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">{{i:ui.exportFull}}</div>
+            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">{{i:ui.exportFullDesc}}</div>
           </div>
           <div class="card auto-switch-card" id="btnExportMasked" style="cursor:pointer;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);">
-            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">脱敏安全概览 (.json)</div>
-            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">剥离密钥令牌，隐藏手机号与UID中间位，适合对外公示或多环境对账。</div>
+            <div style="font-size:12px;font-weight:600;color:var(--vscode-foreground);margin-bottom:2px;">{{i:ui.exportMasked}}</div>
+            <div style="font-size:10.5px;color:var(--muted);line-height:1.4;">{{i:ui.exportMaskedDesc}}</div>
           </div>
         </div>
       </div>
@@ -1361,25 +1358,25 @@
   <div id="editMetaModalOverlay" class="modal-overlay" hidden>
     <div class="modal-box" style="width:min(400px,92vw);">
       <div class="modal-header">
-        <h3>编辑业务标签与备注</h3>
-        <button class="modal-close" id="editMetaClose" title="关闭">×</button>
+        <h3>{{i:ui.editMetaTitle}}</h3>
+        <button class="modal-close" id="editMetaClose" title="{{i:common.close}}">×</button>
       </div>
       <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
         <div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">目标账号</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.editMetaAccount}}</div>
           <div id="editMetaAccountName" style="font-size:12px;color:var(--vscode-foreground);font-weight:600;"></div>
         </div>
         <div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">自定义业务标签 (以空格分隔多个)</div>
-          <input type="text" id="editMetaTags" class="search-input" style="width:100%;box-sizing:border-box;height:28px;padding:4px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);" placeholder="例如: 主力 挂机 出海A">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.editMetaTagsLabel}}</div>
+          <input type="text" id="editMetaTags" class="search-input" style="width:100%;box-sizing:border-box;height:28px;padding:4px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);" placeholder="{{i:ui.editMetaTagsPlaceholder}}">
         </div>
         <div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">备注说明</div>
-          <textarea id="editMetaNotes" style="width:100%;box-sizing:border-box;height:60px;padding:6px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);color:var(--vscode-foreground);font-family:inherit;resize:none;" placeholder="添加备注，如到期日、绑卡信息或特殊用途..."></textarea>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.editMetaNotesLabel}}</div>
+          <textarea id="editMetaNotes" style="width:100%;box-sizing:border-box;height:60px;padding:6px 8px;font-size:11.5px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);color:var(--vscode-foreground);font-family:inherit;resize:none;" placeholder="{{i:ui.editMetaNotesPlaceholder}}"></textarea>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
-          <button class="modal-cancel-btn" id="editMetaCancel" style="padding:4px 14px;font-size:11px;">取消</button>
-          <button class="primary" id="editMetaSave" style="min-width:70px;padding:4px 14px;font-size:11px;">保存</button>
+          <button class="modal-cancel-btn" id="editMetaCancel" style="padding:4px 14px;font-size:11px;">{{i:common.cancel}}</button>
+          <button class="primary" id="editMetaSave" style="min-width:70px;padding:4px 14px;font-size:11px;">{{i:common.save}}</button>
         </div>
       </div>
     </div>
@@ -1389,8 +1386,8 @@
   <div id="settingsModalOverlay" class="modal-overlay" hidden>
     <div class="modal-box" style="width:min(450px,94vw);max-height:88vh;">
       <div class="modal-header">
-        <h3>规则与调度设置</h3>
-        <button class="modal-close" id="settingsModalClose" title="关闭">×</button>
+        <h3>{{i:ui.settingsTitle}}</h3>
+        <button class="modal-close" id="settingsModalClose" title="{{i:common.close}}">×</button>
       </div>
       <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:12px;">
         
@@ -1399,57 +1396,57 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">每日自动签到与任务</span>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">{{i:ui.setCheckinSection}}</span>
             </div>
-            <label class="as-switch" title="启用/禁用每日自动签到">
+            <label class="as-switch" title="{{i:ui.checkinSwitchTitle}}">
               <input type="checkbox" id="setCheckinEnabled">
               <span class="as-switch-track"><span class="as-switch-thumb"></span></span>
             </label>
           </div>
           <div class="v2-param-grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
             <div class="v2-param-cell">
-              <span class="v2-param-label">定点时间</span>
+              <span class="v2-param-label">{{i:ui.dailyTime}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <input type="text" class="v2-param-val" id="setDailyTime" style="width:50px;text-align:right;" placeholder="00:10">
               </div>
             </div>
             <div class="v2-param-cell">
-              <span class="v2-param-label">随机抖动</span>
+              <span class="v2-param-label">{{i:ui.jitter}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <input type="number" class="v2-param-val" id="setRandomJitter" min="0" max="180">
-                <span class="v2-param-unit">分</span>
+                <span class="v2-param-unit">{{i:ui.unitMin}}</span>
               </div>
             </div>
           </div>
           <div class="v2-param-grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
             <div class="v2-param-cell">
-              <span class="v2-param-label">账号签到间隔</span>
+              <span class="v2-param-label">{{i:ui.perAccountDelay}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <input type="number" class="v2-param-val" id="setPerAccountDelay" min="1" max="60">
-                <span class="v2-param-unit">秒</span>
+                <span class="v2-param-unit">{{i:ui.unitSec}}</span>
               </div>
             </div>
             <div class="v2-param-cell">
-              <span class="v2-param-label">后台配额巡检</span>
+              <span class="v2-param-label">{{i:ui.quotaAudit}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <input type="number" class="v2-param-val" id="setRefreshInterval" min="5" max="120">
-                <span class="v2-param-unit">分</span>
+                <span class="v2-param-unit">{{i:ui.unitMin}}</span>
               </div>
             </div>
           </div>
-          <div class="v2-hint" style="padding: 2px 0 0;">错开整点定点时间，并按拟人化随机间隔逐个签到，模拟真人操作。</div>
+          <div class="v2-hint" style="padding: 2px 0 0;">{{i:ui.humanizeHint}}</div>
           <div style="padding-top:6px;border-top:1px dashed var(--card-border);display:flex;flex-direction:column;gap:6px;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setGrowthAfterCheckin">
-              <span>签到完成后自动跑一轮成长任务（接单、出游打工与领奖）</span>
+              <span>{{i:ui.growthAfterCheckin}}</span>
             </label>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setStartupMakeup">
-              <span>启动编辑器时自动检查并补签今日漏签账号（漏签守护）</span>
+              <span>{{i:ui.startupMakeup}}</span>
             </label>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setAutoUseMakeupCard">
-              <span>若发生断签，在可用余额允许时自动使用补签卡续签</span>
+              <span>{{i:ui.autoUseMakeupCard}}</span>
             </label>
           </div>
         </div>
@@ -1459,16 +1456,16 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">额度守护与自动切号</span>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">{{i:ui.autoSwitchSection}}</span>
             </div>
-            <label class="as-switch" title="启用/禁用额度见底自动切号">
+            <label class="as-switch" title="{{i:ui.autoSwitchSwitchTitle}}">
               <input type="checkbox" id="setAutoSwitchEnabled">
               <span class="as-switch-track"><span class="as-switch-thumb"></span></span>
             </label>
           </div>
           <div class="v2-param-grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
             <div class="v2-param-cell">
-              <span class="v2-param-label">切换阈值</span>
+              <span class="v2-param-label">{{i:ui.switchThreshold}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <span class="v2-param-unit" style="margin-right:2px;">&le;</span>
                 <input type="number" class="v2-param-val" id="setQuotaThreshold" min="1" max="90">
@@ -1476,31 +1473,31 @@
               </div>
             </div>
             <div class="v2-param-cell">
-              <span class="v2-param-label">防抖冷却</span>
+              <span class="v2-param-label">{{i:ui.cooldown}}</span>
               <div style="display:flex;align-items:center;gap:4px;">
                 <input type="number" class="v2-param-val" id="setCooldownMinutes" min="1" max="60">
-                <span class="v2-param-unit">分</span>
+                <span class="v2-param-unit">{{i:ui.unitMin}}</span>
               </div>
             </div>
           </div>
           <div class="v2-opt-row" style="margin: 2px 0 0;">
-            <span class="v2-opt-label">候选策略</span>
+            <span class="v2-opt-label">{{i:ui.candidateStrategy}}</span>
             <select id="setAutoSwitchStrategy" class="v2-sel" style="flex:1;">
-              <option value="highest_quota">满额度优先 (推荐)</option>
-              <option value="lru">最近最少使用 (LRU)</option>
-              <option value="round_robin">按号池顺序轮换</option>
-              <option value="health_priority">优先高连签天数</option>
+              <option value="highest_quota">{{i:ui.strategyHighest}}</option>
+              <option value="lru">{{i:ui.strategyLru}}</option>
+              <option value="round_robin">{{i:ui.strategyRound}}</option>
+              <option value="health_priority">{{i:ui.strategyHealth}}</option>
             </select>
           </div>
-          <div class="v2-hint" style="padding: 2px 0 0;">当前账号算力耗尽或触发 429 速率限制时，自动无感切到备用账号。</div>
+          <div class="v2-hint" style="padding: 2px 0 0;">{{i:ui.autoSwitchHint}}</div>
           <div style="padding-top:6px;border-top:1px dashed var(--card-border);display:flex;flex-direction:column;gap:6px;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setAutoSwitchOn429">
-              <span>账号遭遇 429 速率限制时自动切换备用账号</span>
+              <span>{{i:ui.on429Label}}</span>
             </label>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setAutoSwitchNotify">
-              <span>自动切号触发时弹出 Toast 通知提示</span>
+              <span>{{i:ui.notifyLabel}}</span>
             </label>
           </div>
         </div>
@@ -1510,44 +1507,54 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">隐私保护与常规</span>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">{{i:ui.privacySection}}</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;padding: 2px 0;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setPrivacyModeDefault">
-              <span>启动编辑器时默认开启隐私脱敏模式（隐藏手机号、邮箱与 UID）</span>
+              <span>{{i:ui.privacyDefaultLabel}}</span>
             </label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span style="font-size:11px;color:var(--vscode-foreground);">{{i:ui.languageLabel}}</span>
+              <select id="setLocale" class="v2-sel" style="width:160px;">
+                <option value="auto">{{i:ui.languageAuto}}</option>
+                <option value="zh">{{i:ui.languageZh}}</option>
+                <option value="en">{{i:ui.languageEn}}</option>
+              </select>
+            </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px dashed var(--card-border);">
             <div style="display:flex;align-items:center;gap:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">自动更新检测</span>
+              <span style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">{{i:ui.updateSection}}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
               <span id="currentVersionTag" class="version-tag-pill">v0.5.2</span>
-              <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">检查更新</button>
+              <button class="btn-outline" id="btnManualCheckUpdate" type="button" style="font-size:10.5px;height:22px;padding:0 8px;line-height:20px;">{{i:ui.checkUpdateBtn}}</button>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;padding: 2px 0;">
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setUpdateAutoCheck">
-              <span>启动时自动在后台静默检查 GitHub 最新发布版本</span>
+              <span>{{i:ui.autoCheckLabel}}</span>
             </label>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:var(--vscode-foreground);">
               <input type="checkbox" id="setUpdateAutoInstall">
-              <span>发现新版本时免确认自动静默下载安装</span>
+              <span>{{i:ui.autoInstallLabel}}</span>
             </label>
           </div>
         </div>
 
+        <div class="v2-hint" id="cnOnlyHint" style="display:none;">{{i:ui.cnOnlyHint}}</div>
+
       </div>
 
       <div class="modal-footer">
-        <button class="btn-outline" id="btnSettingsReset" type="button" style="font-size:11px;height:30px;">恢复默认</button>
+        <button class="btn-outline" id="btnSettingsReset" type="button" style="font-size:11px;height:30px;">{{i:ui.resetBtn}}</button>
         <div style="display:flex;gap:8px;">
-          <button class="modal-cancel-btn" id="btnSettingsCancel" type="button" style="font-size:11px;height:30px;">取消</button>
-          <button class="primary" id="btnSettingsSave" type="button" style="font-size:11px;height:30px;min-width:80px;">保存设置</button>
+          <button class="modal-cancel-btn" id="btnSettingsCancel" type="button" style="font-size:11px;height:30px;">{{i:common.cancel}}</button>
+          <button class="primary" id="btnSettingsSave" type="button" style="font-size:11px;height:30px;min-width:80px;">{{i:ui.saveSettingsBtn}}</button>
         </div>
       </div>
     </div>
@@ -1557,6 +1564,15 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <script>
+    // ── i18n: 扩展侧注入当前语言字典 ({{I18N_JSON}} 由 sidebarProvider 替换) ──
+    const __I18N__ = {{I18N_JSON}};
+    function t(key) {
+      var s = (__I18N__ && __I18N__[key] !== undefined) ? __I18N__[key] : key;
+      for (var i = 1; i < arguments.length; i++) {
+        s = s.split('{' + (i - 1) + '}').join(String(arguments[i]));
+      }
+      return s;
+    }
     const vscode = acquireVsCodeApi();
     let currentAccounts = [];
     let currentLockedUids = [];
@@ -1598,7 +1614,7 @@
         : type === 'success'
           ? '<svg class="toast-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           : '<svg class="toast-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="5" x2="8" y2="9" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.6" fill="currentColor"/></svg>';
-      toast.innerHTML = iconHtml + '<span class="toast-msg">' + escHtml(msg) + '</span><button class="toast-close" aria-label="关闭">&times;</button>';
+      toast.innerHTML = iconHtml + '<span class="toast-msg">' + escHtml(msg) + '</span><button class="toast-close" aria-label="' + escHtml(t('common.close')) + '">&times;</button>';
       toast.querySelector('.toast-close').addEventListener('click', () => removeToast(toast));
       container.appendChild(toast);
       if (key) _toastByKey.set(key, toast);
@@ -1637,7 +1653,7 @@
     }
 
     // ── 通用确认对话框（替代系统原生窗口） ──
-    function showConfirm(message, title = '确认操作', okText = '确定', isDanger = false) {
+    function showConfirm(message, title = t('ui.confirmTitle'), okText = t('common.ok'), isDanger = false) {
       return new Promise(resolve => {
         const overlay = document.getElementById('confirmOverlay');
         const titleEl = document.getElementById('confirmTitle');
@@ -1726,6 +1742,7 @@
     const setPrivacyModeDefault = document.getElementById('setPrivacyModeDefault');
     const setUpdateAutoCheck = document.getElementById('setUpdateAutoCheck');
     const setUpdateAutoInstall = document.getElementById('setUpdateAutoInstall');
+    const setLocale = document.getElementById('setLocale');
 
     function openSettingsModal() {
       settingsModalOverlay.hidden = false;
@@ -1757,6 +1774,7 @@
       setPrivacyModeDefault.checked = cfg.privacyModeDefault === true;
       setUpdateAutoCheck.checked = cfg.updateAutoCheck !== false;
       setUpdateAutoInstall.checked = cfg.updateAutoInstall === true;
+      setLocale.value = cfg.locale || 'auto';
     }
 
     btnSettings.addEventListener('click', openSettingsModal);
@@ -1782,7 +1800,8 @@
         autoSwitchNotify: true,
         privacyModeDefault: false,
         updateAutoCheck: true,
-        updateAutoInstall: false
+        updateAutoInstall: false,
+        locale: 'auto'
       });
     });
 
@@ -1804,7 +1823,8 @@
         autoSwitchNotify: setAutoSwitchNotify.checked,
         privacyModeDefault: setPrivacyModeDefault.checked,
         updateAutoCheck: setUpdateAutoCheck.checked,
-        updateAutoInstall: setUpdateAutoInstall.checked
+        updateAutoInstall: setUpdateAutoInstall.checked,
+        locale: setLocale.value || 'auto'
       };
       currentSettings = s;
       vscode.postMessage({ command: 'saveSettings', settings: s });
@@ -1822,12 +1842,12 @@
     if (btnManualCheckUpdate) {
       btnManualCheckUpdate.addEventListener('click', () => {
         btnManualCheckUpdate.disabled = true;
-        btnManualCheckUpdate.textContent = '检查中...';
+        btnManualCheckUpdate.textContent = t('js.checkingLabel');
         vscode.postMessage({ command: 'checkUpdate' });
         setTimeout(() => {
           if (btnManualCheckUpdate) {
             btnManualCheckUpdate.disabled = false;
-            btnManualCheckUpdate.textContent = '检查更新';
+            btnManualCheckUpdate.textContent = t('ui.checkUpdateBtn');
           }
         }, 3000);
       });
@@ -1883,7 +1903,7 @@
     function updatePrivacyUi() {
       if (!privacyModeBtn) return;
       privacyModeBtn.classList.toggle('is-privacy', privacyMode);
-      privacyModeBtn.title = privacyMode ? '隐私模式：已开启，点击显示名称' : '隐私模式：隐藏账号名称';
+      privacyModeBtn.title = privacyMode ? t('ui.privacyTitleOn') : t('ui.privacyTitleOff');
       const eye = privacyModeBtn.querySelector('.privacy-eye');
       const eyeOff = privacyModeBtn.querySelector('.privacy-eye-off');
       if (eye) {
@@ -1965,8 +1985,8 @@
 
     function renderAcctChips() {
       if (!currentAccounts.length) {
-        taskAcctList.innerHTML = '<span style="font-size:11px;color:var(--muted);">号池为空</span>';
-        taskAccountSummary.textContent = '暂无可用账号';
+        taskAcctList.innerHTML = '<span style="font-size:11px;color:var(--muted);">' + t('js.poolEmpty') + '</span>';
+        taskAccountSummary.textContent = t('js.noAvailableAccounts');
         taskSelCount.textContent = '0';
         return;
       }
@@ -1975,36 +1995,36 @@
         const checked = selectedAccountIds.has(acc.id);
         const rawName = acc.nickname || acc.email;
         const name = privacyMode ? maskName(rawName) : rawName;
-        const suffix = acc.isActive ? '（当前）' : '';
+        const suffix = acc.isActive ? t('js.currentSuffix') : '';
         return '<label class="acct-chip ' + (checked ? 'is-selected' : '') + '" style="display:flex;align-items:center;justify-content:space-between;width:100%;border-radius:var(--radius-sm);padding:4px 8px;margin-bottom:2px;" title="' + escHtml(rawName) + '">' +
           '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input type="checkbox" data-acct="' + acc.id + '" ' + (checked ? 'checked' : '') + '>' +
             '<span style="font-size:11px;color:var(--vscode-foreground);">' + escHtml(name) + suffix + '</span>' +
           '</div>' +
-          '<span style="font-size:10px;color:var(--muted);">' + fmtNum(acc.totalCredits || 0) + '分</span>' +
+          '<span style="font-size:10px;color:var(--muted);">' + t('js.creditsShort', fmtNum(acc.totalCredits || 0)) + '</span>' +
         '</label>';
       }).join('');
 
-      taskSelCount.textContent = '已选 ' + selectedAccountIds.size;
+      taskSelCount.textContent = t('js.selectedN', selectedAccountIds.size);
       const allChecked = currentAccounts.length > 0 && currentAccounts.every(a => selectedAccountIds.has(a.id));
       taskSelAll.checked = allChecked;
 
       // 更新单行收起态文字与底部提示
       if (selectedAccountIds.size === 0) {
-        taskAccountSummary.textContent = '未选择账号 (点击勾选)';
-        taskFooterHint.textContent = '请先在上方勾选要执行的账号';
+        taskAccountSummary.textContent = t('js.selectNoneHint');
+        taskFooterHint.textContent = t('js.selectFirstHint');
       } else if (selectedAccountIds.size === currentAccounts.length) {
-        taskAccountSummary.textContent = '全部账号 (共 ' + currentAccounts.length + ' 个)';
-        taskFooterHint.textContent = '将对全部 ' + currentAccounts.length + ' 个账号执行任务';
+        taskAccountSummary.textContent = t('js.allAccountsN', currentAccounts.length);
+        taskFooterHint.textContent = t('js.willRunAll', currentAccounts.length);
       } else if (selectedAccountIds.size === 1) {
         const singleId = Array.from(selectedAccountIds)[0];
         const singleAcc = currentAccounts.find(a => a.id === singleId);
-        const sName = singleAcc ? (singleAcc.nickname || singleAcc.email) : '1个账号';
-        taskAccountSummary.textContent = (privacyMode ? maskName(sName) : sName) + (singleAcc && singleAcc.isActive ? ' (当前)' : '');
-        taskFooterHint.textContent = '将对账号 [' + (privacyMode ? maskName(sName) : sName) + '] 执行';
+        const sName = singleAcc ? (singleAcc.nickname || singleAcc.email) : t('js.oneAccount');
+        taskAccountSummary.textContent = (privacyMode ? maskName(sName) : sName) + (singleAcc && singleAcc.isActive ? t('js.currentSuffixShort') : '');
+        taskFooterHint.textContent = t('js.willRunOne', privacyMode ? maskName(sName) : sName);
       } else {
-        taskAccountSummary.textContent = '已选 ' + selectedAccountIds.size + ' 个账号 (共 ' + currentAccounts.length + ' 个)';
-        taskFooterHint.textContent = '将按序对已选 ' + selectedAccountIds.size + ' 个账号执行';
+        taskAccountSummary.textContent = t('js.selectedOf', selectedAccountIds.size, currentAccounts.length);
+        taskFooterHint.textContent = t('js.willRunN', selectedAccountIds.size);
       }
     }
 
@@ -2080,10 +2100,10 @@
       taskResultStage.hidden = true;
       taskBatchTitle.textContent = title;
       taskBatchProgressFill.style.width = '0%';
-      taskBatchProgressText.textContent = '正在初始化...';
+      taskBatchProgressText.textContent = t('js.initializing');
       taskProgressLines.innerHTML = '';
       btnTaskStop.disabled = false;
-      btnTaskStop.textContent = '停止执行';
+      btnTaskStop.textContent = t('ui.stopBtn');
     }
 
     function appendProgressLine(text, level) {
@@ -2127,28 +2147,28 @@
     // 一键完成与全部报名（唤起独立进度模态框）
     btnTaskRunAuto.addEventListener('click', () => {
       if (selectedAccountIds.size === 0) {
-        showToast('请先勾选要执行的账号', 'error', 2200);
+        showToast(t('js.selectFirstToast'), 'error', 2200);
         return;
       }
-      openProgressModal('正在批量执行成长任务');
-      appendProgressLine('开始批量执行，共 ' + selectedAccountIds.size + ' 个账号...', 'doing');
+      openProgressModal(t('js.runAutoTitle'));
+      appendProgressLine(t('js.batchStartLine', selectedAccountIds.size), 'doing');
       vscode.postMessage({ command: 'taskRunAuto', accountIds: Array.from(selectedAccountIds) });
     });
 
     btnTaskAcceptAll.addEventListener('click', () => {
       if (selectedAccountIds.size === 0) {
-        showToast('请先勾选要执行的账号', 'error', 2200);
+        showToast(t('js.selectFirstToast'), 'error', 2200);
         return;
       }
-      openProgressModal('正在批量报名成长任务');
-      appendProgressLine('开始批量报名，共 ' + selectedAccountIds.size + ' 个账号...', 'doing');
+      openProgressModal(t('js.acceptAutoTitle'));
+      appendProgressLine(t('js.batchAcceptStartLine', selectedAccountIds.size), 'doing');
       vscode.postMessage({ command: 'taskAcceptAll', accountIds: Array.from(selectedAccountIds) });
     });
 
     // 停止执行
     btnTaskStop.addEventListener('click', () => {
       btnTaskStop.disabled = true;
-      btnTaskStop.textContent = '中止中...';
+      btnTaskStop.textContent = t('js.stopping');
       vscode.postMessage({ command: 'taskStop' });
     });
 
@@ -2165,9 +2185,9 @@
     function renderTasks() {
       btnTaskRefresh.querySelector('.refresh-icon')?.classList.remove('is-spinning');
       taskCountEl.textContent = String(currentTasks.length);
-      taskHeaderBadge.textContent = currentTasks.length + ' 项';
-      const done = currentTasks.filter(t => t.claimed || t.acceptStatus === 'claimed').length;
-      const claimable = currentTasks.filter(t => isTaskClaimable(t)).length;
+      taskHeaderBadge.textContent = t('ui.taskBadgeN', currentTasks.length);
+      const done = currentTasks.filter(task => task.claimed || task.acceptStatus === 'claimed').length;
+      const claimable = currentTasks.filter(task => isTaskClaimable(task)).length;
       taskDoneStat.textContent = done + ' / ' + claimable;
 
       if (!currentTasks.length) {
@@ -2177,51 +2197,51 @@
       }
       taskEmpty.hidden = true;
 
-      taskListEl.innerHTML = currentTasks.map(t => {
-        const claimable = isTaskClaimable(t);
-        let statusLabel = '进行中';
+      taskListEl.innerHTML = currentTasks.map(task => {
+        const claimable = isTaskClaimable(task);
+        let statusLabel = t('js.taskStatusProgress');
         let statusClass = 'grid-health-badge grid-health-warn';
         let action = '';
 
-        if (t.claimed || t.acceptStatus === 'claimed') {
-          statusLabel = '已领取';
+        if (task.claimed || task.acceptStatus === 'claimed') {
+          statusLabel = t('js.taskStatusClaimed');
           statusClass = 'grid-health-badge grid-health-ok';
-        } else if (t.locked) {
-          statusLabel = '未解锁';
+        } else if (task.locked) {
+          statusLabel = t('js.taskStatusLocked');
           statusClass = 'grid-health-badge grid-health-warn';
-        } else if (t.manualOnly) {
-          statusLabel = '需人工';
+        } else if (task.manualOnly) {
+          statusLabel = t('js.taskStatusManual');
           statusClass = 'grid-health-badge grid-health-warn';
         } else if (claimable) {
-          statusLabel = '可领取';
+          statusLabel = t('js.taskStatusClaimable');
           statusClass = 'grid-health-badge grid-health-ok';
-          action = '<button class="grid-switch-btn" onclick="onTaskClaim(\'' + t.taskCode + '\')">领取</button>';
-        } else if (t.acceptStatus === 'not_accepted') {
-          statusLabel = '未报名';
-          action = '<button class="status-toggle-btn is-enabled" onclick="onTaskAccept(\'' + t.taskCode + '\')">报名</button>';
+          action = '<button class="grid-switch-btn" onclick="onTaskClaim(\'' + task.taskCode + '\')">' + t('js.claimBtn') + '</button>';
+        } else if (task.acceptStatus === 'not_accepted') {
+          statusLabel = t('js.taskStatusNotAccepted');
+          action = '<button class="status-toggle-btn is-enabled" onclick="onTaskAccept(\'' + task.taskCode + '\')">' + t('js.acceptBtn') + '</button>';
         }
 
         // 防御乱码字符
-        const safeTitle = (t.title || '').replace(/\uFFFD/g, '');
+        const safeTitle = (task.title || '').replace(/\uFFFD/g, '');
 
-        return '<div class="grid-card" data-code="' + t.taskCode + '">' +
+        return '<div class="grid-card" data-code="' + task.taskCode + '">' +
           '<div class="grid-card-head">' +
             '<div class="grid-card-email" title="' + escHtml(safeTitle) + '">' + escHtml(safeTitle) + '</div>' +
             '<span class="' + statusClass + '">' + statusLabel + '</span>' +
           '</div>' +
           '<div class="grid-quota-head" style="margin-top:2px;">' +
-            '<span style="font-family:var(--font-mono);font-size:10.5px;opacity:0.75;">' + escHtml(t.taskCode) + '</span>' +
-            '<span class="grid-quota-val ' + (t.current >= t.target && t.target > 0 ? 'is-ok' : '') + '">' + t.current + ' / ' + t.target + '</span>' +
+            '<span style="font-family:var(--font-mono);font-size:10.5px;opacity:0.75;">' + escHtml(task.taskCode) + '</span>' +
+            '<span class="grid-quota-val ' + (task.current >= task.target && task.target > 0 ? 'is-ok' : '') + '">' + task.current + ' / ' + task.target + '</span>' +
           '</div>' +
           (action ? '<div class="grid-card-actions">' + action + '</div>' : '') +
         '</div>';
       }).join('');
     }
 
-    function isTaskClaimable(t) {
-      if (t.locked || t.claimed || t.acceptStatus === 'claimed') return false;
-      if (t.target > 0 && t.current >= t.target) return true;
-      return t.target <= 0 && t.acceptStatus === 'completed';
+    function isTaskClaimable(task) {
+      if (task.locked || task.claimed || task.acceptStatus === 'claimed') return false;
+      if (task.target > 0 && task.current >= task.target) return true;
+      return task.target <= 0 && task.acceptStatus === 'completed';
     }
 
     window.onTaskClaim = function(code) {
@@ -2247,10 +2267,10 @@
 
     // ── 标签筛选（支持系统状态标签 + 用户自定义业务标签 Tags 动态提取） ──
     const SYSTEM_TAG_DEFS = [
-      { key: 'all',       label: '全部' },
-      { key: 'checked',   label: '已签' },
-      { key: 'unchecked', label: '未签' },
-      { key: 'low',       label: '低额度' }
+      { key: 'all',       label: t('js.tagAll') },
+      { key: 'checked',   label: t('js.tagChecked') },
+      { key: 'unchecked', label: t('js.tagUnchecked') },
+      { key: 'low',       label: t('js.tagLow') }
     ];
 
     function getEffectiveTagDefs() {
@@ -2365,7 +2385,7 @@
 
     // ── 脱敏 ──
     function maskName(name) {
-      if (!name) return '未知';
+      if (!name) return t('common.unknown');
       if (!privacyMode) return name;
       if (/^1\d{10}$/.test(name)) return name.slice(0, 3) + '****' + name.slice(7);
       if (name.includes('@')) {
@@ -2403,7 +2423,7 @@
       const total = currentAccounts.length;
       const checked = currentAccounts.filter(a => a.todayCheckedIn).length;
 
-      gridCount.textContent = total + ' 个';
+      gridCount.textContent = t('ui.accountCount', total);
 
       const checkinPct = total > 0 ? Math.round((checked / total) * 1000) / 10 : 0;
       summaryDailyPct.textContent = checkinPct + '%';
@@ -2420,7 +2440,7 @@
         return s + base + act;
       }, 0);
       const creditPct = totalCap > 0 ? Math.round((totalRemain / totalCap) * 1000) / 10 : 0;
-      summaryWeeklyPct.textContent = '剩 ' + creditPct + '%';
+      summaryWeeklyPct.textContent = t('js.pctRemaining', creditPct);
       summaryWeeklyBar.style.width = Math.min(100, creditPct) + '%';
       summaryWeeklyBar.className = 'summary-bar-fill ' + levelClass(creditPct, totalRemain);
       summaryWeeklyNum.textContent = fmtNum(totalRemain);
@@ -2432,8 +2452,8 @@
 
       const high = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent >= 80).length;
       const low = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent <= 30).length;
-      summaryHighQuota.textContent = high + ' 个 (≥ 80%)';
-      summaryLowQuota.textContent = low + ' 个 (≤ 30%)';
+      summaryHighQuota.textContent = t('ui.highQuotaVal', high);
+      summaryLowQuota.textContent = t('ui.lowQuotaVal', low);
 
       updateLastRefreshText();
     }
@@ -2441,9 +2461,9 @@
     function updateLastRefreshText() {
       if (!lastRefreshTs) { summaryLastRefresh.textContent = '--'; return; }
       const sec = Math.max(0, Math.round((Date.now() - lastRefreshTs) / 1000));
-      if (sec < 60) summaryLastRefresh.textContent = sec + ' 秒前';
-      else if (sec < 3600) summaryLastRefresh.textContent = Math.round(sec / 60) + ' 分钟前';
-      else summaryLastRefresh.textContent = Math.round(sec / 3600) + ' 小时前';
+      if (sec < 60) summaryLastRefresh.textContent = t('js.secAgo', sec);
+      else if (sec < 3600) summaryLastRefresh.textContent = t('js.minAgo', Math.round(sec / 60));
+      else summaryLastRefresh.textContent = t('js.hourAgo', Math.round(sec / 3600));
     }
 
     setInterval(updateLastRefreshText, 5000);
@@ -2475,7 +2495,7 @@
       emptyState.hidden = true;
 
       if (list.length === 0) {
-        accountGrid.innerHTML = '<div class="empty-state">当前筛选下没有账号</div>';
+        accountGrid.innerHTML = '<div class="empty-state">' + t('js.noMatchAccounts') + '</div>';
         return;
       }
 
@@ -2490,53 +2510,53 @@
         const totalVal = fmtNum(acc.totalCredits);
         const totalLevel = levelClass(acc.activityPackage ? acc.activityPackage.percent : 100, acc.totalCredits || 0);
 
-        const base = acc.basePackage || { title: '基础体验包', count: 1, remain: 0, total: 500, percent: 0 };
+        const base = acc.basePackage || { title: t('pkg.base'), count: 1, remain: 0, total: 500, percent: 0 };
         const baseLevel = levelClass(base.percent, base.remain);
 
-        const act = acc.activityPackage || { title: '活动赠送包', count: 30, remain: acc.totalCredits || 0, total: 3000, percent: 50 };
+        const act = acc.activityPackage || { title: t('pkg.activity'), count: 30, remain: acc.totalCredits || 0, total: 3000, percent: 50 };
         const actLevel = levelClass(act.percent, act.remain);
-        const actResetText = 'WorkBuddy加油站活动';
+        const actResetText = t('js.actReset');
 
         // 异常状态徽标：正常时一律不显示（避免冗余信息）
         const isDisabled = acc.status === 'disabled';
         const isLockedElsewhere = !isActive && Array.isArray(currentLockedUids) && currentLockedUids.includes(acc.uid);
         let healthBadge = '';
         if (isLockedElsewhere) {
-          healthBadge = '<span class="grid-health-badge grid-health-warn" title="该账号正被另一个项目窗口使用">他窗占用</span>';
+          healthBadge = '<span class="grid-health-badge grid-health-warn" title="' + escHtml(t('js.lockedElsewhereTitle')) + '">' + escHtml(t('js.lockedElsewhere')) + '</span>';
         } else if (acc.status === 'rate_limited') {
-          healthBadge = '<span class="grid-health-badge grid-health-warn">429 冷却</span>';
+          healthBadge = '<span class="grid-health-badge grid-health-warn">' + escHtml(t('js.cooling429')) + '</span>';
         } else if (acc.status === 'expired') {
-          healthBadge = '<span class="grid-health-badge grid-health-warn">已过期</span>';
+          healthBadge = '<span class="grid-health-badge grid-health-warn">' + escHtml(t('js.expired')) + '</span>';
         } else if (isDisabled) {
-          healthBadge = '<span class="grid-disabled-tag">已禁用</span>';
+          healthBadge = '<span class="grid-disabled-tag">' + escHtml(t('js.disabled')) + '</span>';
         }
 
         const tagsHtml = (acc.tags && acc.tags.length > 0)
-          ? `<div class="grid-card-tags">${acc.tags.map(t => `<span class="grid-card-tag" onclick="event.stopPropagation();onFilterByTag('${escHtml(t)}')">${escHtml(t)}</span>`).join('')}</div>`
+          ? `<div class="grid-card-tags">${acc.tags.map(tag => `<span class="grid-card-tag" onclick="event.stopPropagation();onFilterByTag('${escHtml(tag)}')">${escHtml(tag)}</span>`).join('')}</div>`
           : '';
 
         const cleanNotes = (acc.notes && !acc.notes.includes('额度见底标记') && !acc.notes.includes('探针预检失败'))
           ? acc.notes.trim()
           : '';
         const notesHtml = cleanNotes
-          ? `<div class="grid-card-notes" onclick="onEditMeta('${acc.id}')" title="点击编辑备注与业务标签">${escHtml(cleanNotes)}</div>`
+          ? `<div class="grid-card-notes" onclick="onEditMeta('${acc.id}')" title="${escHtml(t('js.notesEditTitle'))}">${escHtml(cleanNotes)}</div>`
           : '';
 
         const leftAction = acc.status === 'expired'
-          ? `<button class="grid-switch-btn" style="background:var(--gh-orange, #d97706)!important;" onclick="onReauth('${acc.id}')" title="Token已过期，点击调起浏览器重新登录授权">重新授权</button>`
+          ? `<button class="grid-switch-btn" style="background:var(--gh-orange, #d97706)!important;" onclick="onReauth('${acc.id}')" title="${escHtml(t('js.reauthTitle'))}">${escHtml(t('js.reauthBtn'))}</button>`
           : (isActive
-              ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> 使用中</span>'
-              : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${isDisabled ? '账号已禁用，无法切换' : '切换至该账号'}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`);
+              ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> ' + escHtml(t('js.inUse')) + '</span>'
+              : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${escHtml(isDisabled ? t('js.switchDisabledTitle') : t('js.switchTitle'))}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>' + escHtml(t('js.switching')) : escHtml(t('js.switchBtn'))}</button>`);
 
-        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${acc.todayCheckedIn ? '今日已完成签到' : (isDisabled ? '账号已禁用' : '执行每日签到领算力')}">${acc.todayCheckedIn ? '已签' : '签到'}</button>`;
+        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${escHtml(acc.todayCheckedIn ? t('js.checkinDoneTitle') : (isDisabled ? t('js.checkinDisabledTitle') : t('js.checkinDoTitle')))}">${acc.todayCheckedIn ? escHtml(t('js.checkedInShort')) : escHtml(t('js.checkinBtn'))}</button>`;
 
-        const statusToggleBtn = `<button class="status-switch ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${isDisabled ? '账号已禁用，点击启用' : '账号启用中，点击禁用'}" aria-label="${isDisabled ? '启用账号' : '禁用账号'}"><span class="status-switch-thumb"></span></button>`;
+        const statusToggleBtn = `<button class="status-switch ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${escHtml(isDisabled ? t('js.enableTitle') : t('js.disableTitle'))}" aria-label="${escHtml(isDisabled ? t('js.ariaEnable') : t('js.ariaDisable'))}"><span class="status-switch-thumb"></span></button>`;
 
         return `
           <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${acc.id}">
             <div class="grid-card-head">
-              <div class="grid-card-email" title="${rawName}">${displayName}</div>
-              ${isActive ? '<span class="grid-active-tag">当前</span>' : (isDisabled ? '<span class="grid-disabled-tag">已禁用</span>' : '')}
+              <div class="grid-card-email" title="${escHtml(rawName)}">${displayName}</div>
+              ${isActive ? '<span class="grid-active-tag">' + escHtml(t('js.currentSuffix').trim()) + '</span>' : (isDisabled ? '<span class="grid-disabled-tag">' + escHtml(t('js.disabled')) + '</span>' : '')}
             </div>
 
             <div class="grid-card-meta">
@@ -2549,14 +2569,14 @@
             <div class="grid-card-quotas">
               <div class="grid-quota-item" style="margin-bottom: 2px;">
                 <div class="grid-quota-head" style="align-items: center;">
-                  <span style="font-weight: 500; font-size: 11px;">总量积分</span>
-                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal}<span class="grid-quota-unit">点</span></span>
+                  <span style="font-weight: 500; font-size: 11px;">${escHtml(t('js.totalCredits'))}</span>
+                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal}<span class="grid-quota-unit">${escHtml(t('js.unitPoint'))}</span></span>
                 </div>
               </div>
 
               <div class="grid-quota-item">
                 <div class="grid-quota-head">
-                  <span>${base.title}</span>
+                  <span>${escHtml(base.title)}</span>
                   <span class="grid-quota-val ${baseLevel}" data-field="base">${fmtNum(base.remain)} / ${fmtNum(base.total)}</span>
                 </div>
                 <div class="quota-bar"><div class="quota-bar-fill ${baseLevel}" data-field="baseBar" style="width:${base.percent}%"></div></div>
@@ -2565,16 +2585,16 @@
 
               <div class="grid-quota-item">
                 <div class="grid-quota-head">
-                  <span>${act.title}</span>
+                  <span>${escHtml(act.title)}</span>
                   <span class="grid-quota-val ${actLevel}" data-field="act">${fmtNum(act.remain)} / ${fmtNum(act.total)}</span>
                 </div>
                 <div class="quota-bar"><div class="quota-bar-fill ${actLevel}" data-field="actBar" style="width:${act.percent}%"></div></div>
-                <div class="grid-quota-reset" data-field="actReset">${actResetText}</div>
+                <div class="grid-quota-reset" data-field="actReset">${escHtml(actResetText)}</div>
               </div>
             </div>
 
             <div class="grid-card-extra">
-              <div class="grid-extra-row"><span>连续签到</span><span class="grid-extra-val" data-field="streak">${acc.checkinStreak || 0} 天</span></div>
+              <div class="grid-extra-row"><span>${escHtml(t('js.streakLabel'))}</span><span class="grid-extra-val" data-field="streak">${t('js.streakDaysUnit', acc.checkinStreak || 0)}</span></div>
               <div class="grid-extra-row"><span class="grid-extra-val" data-field="uid">${displayUid}</span></div>
             </div>
 
@@ -2582,13 +2602,13 @@
               ${leftAction}
               <div class="grid-actions-right">
                 ${checkinBtn}
-                <button class="icon-btn" onclick="onEditMeta('${acc.id}')" title="设置业务标签与备注">
+                <button class="icon-btn" onclick="onEditMeta('${acc.id}')" title="${escHtml(t('js.editMetaBtnTitle'))}">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button class="icon-btn" onclick="onRefresh('${acc.id}')" title="刷新该账号配额">
+                <button class="icon-btn" onclick="onRefresh('${acc.id}')" title="${escHtml(t('js.refreshOneTitle'))}">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                 </button>
-                <button class="icon-btn" onclick="onDelete('${acc.id}')" title="从号池移除">
+                <button class="icon-btn" onclick="onDelete('${acc.id}')" title="${escHtml(t('js.removeTitle'))}">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
                 ${statusToggleBtn}
@@ -2623,9 +2643,9 @@
 
     window.onDelete = async function(id) {
       const acc = currentAccounts.find(a => a.id === id);
-      const rawName = acc ? (acc.nickname || acc.email) : '该账号';
+      const rawName = acc ? (acc.nickname || acc.email) : t('js.thisAccount');
       const name = privacyMode ? maskName(rawName) : rawName;
-      const ok = await showConfirm(`确定要从号池中移除账号 [${name}] 吗？`, '移除账号', '确定移除', true);
+      const ok = await showConfirm(t('js.removeConfirm', name), t('js.removeConfirmTitle'), t('js.removeConfirmBtn'), true);
       if (ok) {
         vscode.postMessage({ command: 'deleteAccount', accountId: id, confirmed: true });
       }
@@ -2653,12 +2673,12 @@
       const awardedBadge = document.getElementById('usageAwardedBadge');
       const consumedBadge = document.getElementById('usageConsumedBadge');
       if (summary) {
-        if (awardedBadge) awardedBadge.textContent = '新增 +' + fmtNum(summary.totalAwarded || 0);
-        if (consumedBadge) consumedBadge.textContent = '消耗 ' + (summary.totalConsumed ? '-' + fmtNum(summary.totalConsumed) : '0');
+        if (awardedBadge) awardedBadge.textContent = t('js.gainedBadge', fmtNum(summary.totalAwarded || 0));
+        if (consumedBadge) consumedBadge.textContent = t('js.consumedBadge', summary.totalConsumed ? '-' + fmtNum(summary.totalConsumed) : '0');
       }
       if (!container) return;
       if (!Array.isArray(records) || records.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding:10px;font-size:11px;">今日尚无算力消耗或调度流水</div>';
+        container.innerHTML = '<div class="empty-state" style="padding:10px;font-size:11px;">' + escHtml(t('ui.usageEmpty')) + '</div>';
         return;
       }
       container.innerHTML = records.map(r => {
@@ -2754,7 +2774,7 @@
     const btnClearUsage = document.getElementById('btnClearUsage');
     if (btnClearUsage) {
       btnClearUsage.addEventListener('click', async () => {
-        const ok = await showConfirm('确定要清空今日的算力流水记录吗？', '清空对账流水', '确定清空', true);
+        const ok = await showConfirm(t('js.clearUsageConfirm'), t('js.clearUsageTitle'), t('js.clearUsageBtn'), true);
         if (ok) {
           vscode.postMessage({ command: 'clearUsage' });
         }
@@ -2782,9 +2802,18 @@
           if (vEl) vEl.textContent = 'v' + msg.data.version;
         }
 
+        // 国际版宿主：隐藏国内专属入口（签到/成长任务），设置面板展示说明
+        const isCnHost = msg.data.hostEdition !== 'intl';
+        const btnBatchCheckinEl = document.getElementById('btnBatchCheckin');
+        if (btnBatchCheckinEl) btnBatchCheckinEl.hidden = !isCnHost;
+        const btnGrowthTasksEl = document.getElementById('btnGrowthTasks');
+        if (btnGrowthTasksEl) btnGrowthTasksEl.hidden = !isCnHost;
+        const cnOnlyHintEl = document.getElementById('cnOnlyHint');
+        if (cnOnlyHintEl) cnOnlyHintEl.style.display = isCnHost ? 'none' : 'block';
+
         // 长任务进度 → 常驻 loading toast；结束 → 自动消失
         if (isOperating) {
-          showToast(operationMessage || '正在执行操作...', 'loading', 0, 'op');
+          showToast(operationMessage || t('js.operatingFallback'), 'loading', 0, 'op');
         } else {
           removeToastByKey('op');
           if (switchingId) {
@@ -2819,29 +2848,29 @@
         taskProgressStage.hidden = true;
         taskResultStage.hidden = false;
         if (s.stopped) {
-          taskResultMainTitle.textContent = '任务批处理已中止';
+          taskResultMainTitle.textContent = t('js.stoppedTitle');
           taskResultIcon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
           taskResultIcon.style.color = 'var(--gh-red, #ef4444)';
           taskResultIcon.style.background = 'rgba(239, 68, 68, 0.12)';
-          taskResultSubTitle.textContent = '耗时 ' + (s.durationSec || 1) + ' 秒 · 用户主动中止';
+          taskResultSubTitle.textContent = t('js.stoppedSub', s.durationSec || 1);
         } else if (s.totalFailures > 0) {
-          taskResultMainTitle.textContent = '任务执行遇到异常';
+          taskResultMainTitle.textContent = t('js.failTitle');
           taskResultIcon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
           taskResultIcon.style.color = 'var(--gh-red, #ef4444)';
           taskResultIcon.style.background = 'rgba(239, 68, 68, 0.12)';
-          taskResultSubTitle.textContent = '耗时 ' + (s.durationSec || 1) + ' 秒 · ' + s.totalFailures + ' 项任务失败，请见明细';
+          taskResultSubTitle.textContent = t('js.failSub', s.durationSec || 1, s.totalFailures);
         } else if ((s.totalCredits || 0) === 0 && (s.totalClaimed || 0) === 0 && (s.totalAccepted || 0) === 0) {
-          taskResultMainTitle.textContent = '暂无新可领收益 (任务进行中)';
+          taskResultMainTitle.textContent = t('js.noGainTitle');
           taskResultIcon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
           taskResultIcon.style.color = 'var(--ac-blue, #3b82f6)';
           taskResultIcon.style.background = 'rgba(59, 130, 246, 0.1)';
-          taskResultSubTitle.textContent = '耗时 ' + (s.durationSec || 1) + ' 秒 · 达标奖励此前已领满，剩余任务需在客户端对话或使用达成';
+          taskResultSubTitle.textContent = t('js.noGainSub', s.durationSec || 1);
         } else {
-          taskResultMainTitle.textContent = '批量任务执行完成';
+          taskResultMainTitle.textContent = t('js.doneTitle');
           taskResultIcon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
           taskResultIcon.style.color = 'var(--ac-emerald, #10b981)';
           taskResultIcon.style.background = 'rgba(16, 185, 129, 0.12)';
-          taskResultSubTitle.textContent = '耗时 ' + (s.durationSec || 1) + ' 秒 · 处理 ' + (s.processedAccounts || 0) + '/' + (s.totalAccounts || 0) + ' 个账号';
+          taskResultSubTitle.textContent = t('js.doneSub', s.durationSec || 1, s.processedAccounts || 0, s.totalAccounts || 0);
         }
         resClaimedCredits.textContent = '+' + fmtNum(s.totalCredits || 0);
         resClaimedTasks.textContent = String(s.totalClaimed || 0);
@@ -2850,12 +2879,12 @@
 
         const details = s.details || [];
         taskResultDetails.innerHTML = details.length ? details.map(d => {
-          const rawName = d.accountName || '账号';
+          const rawName = d.accountName || t('common.account');
           const name = privacyMode ? maskName(rawName) : rawName;
           const isOk = d.status === 'ok';
           const color = isOk ? 'var(--ac-emerald, #10b981)' : d.status === 'stopped' ? 'var(--muted)' : 'var(--gh-red, #ef4444)';
           return '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:500;">' + escHtml(name) + '</span><span style="color:' + color + ';">' + escHtml(d.message || '') + '</span></div>';
-        }).join('') : '<div style="color:var(--muted);text-align:center;">无明细记录</div>';
+        }).join('') : '<div style="color:var(--muted);text-align:center;">' + escHtml(t('js.noDetails')) + '</div>';
       } else if (msg.command === 'updateTasks') {
         currentTasks = (msg.data && msg.data.tasks) || [];
         if (msg.data && msg.data.accountId) {
@@ -2863,7 +2892,7 @@
         }
         const accName = (msg.data && msg.data.accountName) || '';
         if (accName) {
-          taskAccountSummary.textContent = (privacyMode ? maskName(accName) : accName) + ' (当前展示该号任务)';
+          taskAccountSummary.textContent = (privacyMode ? maskName(accName) : accName) + t('js.viewingSuffix');
         }
 
         if (msg.data && msg.data.assetSummary) {
@@ -2875,33 +2904,33 @@
 
           if (travelText && travelBadge) {
             if (a.travelState === 'traveling') {
-              const loc = a.travelLocationName || '咖啡馆';
-              const cr = a.travelExpectedCredits ? `预估+${a.travelExpectedCredits}分` : '可获积分';
-              const eta = a.travelEtaHours ? ` · 约 ${a.travelEtaHours}h 后返航` : '';
-              travelText.textContent = `Buddy 正在「${loc}」打工 (${cr}${eta})`;
-              travelBadge.textContent = '打工中';
+              const loc = a.travelLocationName || t('js.defaultLocation');
+              const cr = a.travelExpectedCredits ? t('js.estimateCredits', a.travelExpectedCredits) : t('js.canEarnCredits');
+              const eta = a.travelEtaHours ? t('js.etaHours', a.travelEtaHours) : '';
+              travelText.textContent = t('js.travelWorking', loc, cr, eta);
+              travelBadge.textContent = t('js.workingBadge');
               travelBadge.className = 'grid-health-badge grid-health-warn';
             } else if (a.travelState === 'arrived') {
-              travelText.textContent = 'Buddy 打工返航！点击一键完成立即收成礼物';
-              travelBadge.textContent = '待收成';
+              travelText.textContent = t('js.arrivedText');
+              travelBadge.textContent = t('js.arrivedBadge');
               travelBadge.className = 'grid-health-badge grid-health-ok';
             } else if (a.travelDailyLimit) {
-              travelText.textContent = 'Buddy 今日出游打工已达上限，休息中';
-              travelBadge.textContent = '休息中';
+              travelText.textContent = t('js.travelLimitText');
+              travelBadge.textContent = t('js.restBadge');
               travelBadge.className = 'grid-health-badge';
             } else {
-              travelText.textContent = 'Buddy 在家待命 (一键完成可立即派去打工赚钱)';
-              travelBadge.textContent = '待命';
+              travelText.textContent = t('js.idleText');
+              travelBadge.textContent = t('js.idleBadge');
               travelBadge.className = 'grid-health-badge grid-health-ok';
             }
           }
 
           if (streakText) {
-            streakText.textContent = `连签 ${a.streakDays} 天 (离 ${a.nextTier} 礼包差 ${a.nextTierRemaining} 天)${a.makeupCards > 0 ? ` · 补登卡 ${a.makeupCards} 张` : ''}`;
+            streakText.textContent = t('js.streakText', a.streakDays, a.nextTier, a.nextTierRemaining, a.makeupCards > 0 ? t('js.makeupCardsSuffix', a.makeupCards) : '');
           }
 
           if (energyText) {
-            energyText.textContent = `能量: ${a.energyBalance} 点${a.energyAffordableBoxes > 0 ? ` (可开 ${a.energyAffordableBoxes} 个盲盒)` : ''}`;
+            energyText.textContent = t('js.energyText', a.energyBalance, a.energyAffordableBoxes > 0 ? t('js.energyBoxesSuffix', a.energyAffordableBoxes) : '');
           }
         }
 

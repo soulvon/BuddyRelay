@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import { PATHS, PATCH_V5 } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { t } from './i18n';
 
 export interface PatchCheckResult {
   mainJsFound: boolean;
@@ -100,7 +101,7 @@ export class SeamlessSwitcher {
         isPatched: false,
         hasOriginBackup: false,
         anchorsValid: false,
-        message: '未找到 CodeBuddy main.js 文件'
+        message: t('sw.mainJsNotFound')
       };
     }
 
@@ -139,12 +140,12 @@ export class SeamlessSwitcher {
         isLegacyV4
       },
       message: isPatched
-        ? `main.js 已成功打上 ${PATCH_V5.VERSION} 热切补丁 (含回执闭环)`
+        ? t('sw.patched', PATCH_V5.VERSION)
         : isLegacyV4
-          ? '检测到旧版 v4 补丁 (无回执能力)，将自愈升级至 v5'
+          ? t('sw.upgradeFromV4')
           : anchorsValid
-            ? 'main.js 为原始状态，所有 Patch v5 锚点校验通过，可安全注入'
-            : 'main.js 锚点特征串不唯一或已被第三方修改'
+            ? t('sw.originalOk')
+            : t('sw.anchorTampered')
     };
   }
 
@@ -158,7 +159,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath || '',
         backupCreated: false,
-        message: '无法定位 CodeBuddy main.js',
+        message: t('sw.cannotLocate'),
         error: 'MAIN_JS_NOT_FOUND'
       };
     }
@@ -173,7 +174,7 @@ export class SeamlessSwitcher {
           success: true,
           mainJsPath: mainPath,
           backupCreated: check.hasOriginBackup,
-          message: 'main.js Patch v5 运行状态正常且语法校验通过'
+          message: t('sw.patchHealthy')
         };
       }
       // 语法损坏，触发自愈回滚重打
@@ -198,7 +199,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'AM 构造函数锚点缺失',
+        message: t('sw.anchorAmMissing'),
         error: 'AM_ANCHOR_MISSING'
       };
     }
@@ -210,7 +211,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'getV2ReconcileData 锚点缺失',
+        message: t('sw.anchorGvMissing'),
         error: 'GV_ANCHOR_MISSING'
       };
     }
@@ -222,7 +223,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'getSessions 锚点缺失',
+        message: t('sw.anchorGsMissing'),
         error: 'GS_ANCHOR_MISSING'
       };
     }
@@ -235,7 +236,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: '方法插入点锚点缺失',
+        message: t('sw.anchorMethodMissing'),
         error: 'WATCHER_ANCHOR_MISSING'
       };
     }
@@ -250,7 +251,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: 'restoreSession 启动锚点缺失',
+        message: t('sw.anchorRestoreMissing'),
         error: 'RESTORE_ANCHOR_MISSING'
       };
     }
@@ -270,7 +271,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: `Patch v5 语法自检失败: ${checkRes.error || '语法错误'}，已中止写入以防损坏 IDE`,
+        message: t('sw.syntaxCheckFailed', checkRes.error || 'syntax error'),
         error: 'SYNTAX_CHECK_FAILED'
       };
     }
@@ -284,7 +285,7 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: `写入 main.js 失败: ${err.message}`,
+        message: t('sw.writeFailed', err.message),
         error: err.message
       };
     }
@@ -293,7 +294,7 @@ export class SeamlessSwitcher {
       success: true,
       mainJsPath: mainPath,
       backupCreated,
-      message: 'main.js Patch v5 注入与语法自愈成功完成'
+      message: t('sw.patchDone')
     };
   }
 
@@ -352,7 +353,7 @@ export class SeamlessSwitcher {
         masterPath,
         targetPath: targetLink,
         alreadyExisted: true,
-        message: '当前账号为母号实体存储节点，无需创建 Junction'
+        message: t('sw.junctionMaster')
       };
     }
 
@@ -381,7 +382,7 @@ export class SeamlessSwitcher {
         masterPath,
         targetPath: targetLink,
         alreadyExisted: true,
-        message: `NTFS Junction 已就绪: ${targetLink} -> ${masterPath}`
+        message: t('sw.junctionReady', targetLink, masterPath)
       };
     }
 
@@ -396,7 +397,7 @@ export class SeamlessSwitcher {
           masterPath,
           targetPath: targetLink,
           alreadyExisted: false,
-          message: `已有非 Junction 目录备份失败: ${err.message}`,
+          message: t('sw.backupFailed', err.message),
           error: err.message
         };
       }
@@ -413,7 +414,7 @@ export class SeamlessSwitcher {
         masterPath,
         targetPath: targetLink,
         alreadyExisted: false,
-        message: `成功建立会话目录软链接: ${targetLink} -> ${masterPath}`
+        message: t('sw.symlinkCreated', targetLink, masterPath)
       };
     } catch (err: any) {
       if (isWin) {
@@ -427,7 +428,7 @@ export class SeamlessSwitcher {
             masterPath,
             targetPath: targetLink,
             alreadyExisted: false,
-            message: `通过 mklink /J 建立会话穿透 Junction: ${targetLink} -> ${masterPath}`
+            message: t('sw.junctionViaMklink', targetLink, masterPath)
           };
         } catch (cmdErr: any) {
           return {
@@ -435,7 +436,7 @@ export class SeamlessSwitcher {
             masterPath,
             targetPath: targetLink,
             alreadyExisted: false,
-            message: `建立 Junction 联结失败: ${cmdErr.message}`,
+            message: t('sw.junctionFailed', cmdErr.message),
             error: cmdErr.message
           };
         }
@@ -450,7 +451,7 @@ export class SeamlessSwitcher {
             masterPath,
             targetPath: targetLink,
             alreadyExisted: false,
-            message: `通过 ln -s 建立会话软链接: ${targetLink} -> ${masterPath}`
+            message: t('sw.symlinkViaLn', targetLink, masterPath)
           };
         } catch (lnErr: any) {
           return {
@@ -458,7 +459,7 @@ export class SeamlessSwitcher {
             masterPath,
             targetPath: targetLink,
             alreadyExisted: false,
-            message: `建立符号链接失败: ${lnErr.message}`,
+            message: t('sw.symlinkFailed', lnErr.message),
             error: lnErr.message
           };
         }
@@ -575,8 +576,8 @@ export class SeamlessSwitcher {
                 skipped: Boolean(data.skipped),
                 legacyHost: false,
                 message: data.skipped
-                  ? '宿主报告本就已在目标账号 (same-uid skip)'
-                  : '宿主已确认完成切换'
+                  ? t('sw.receiptSkipped')
+                  : t('sw.receiptDone')
               };
             }
             return {
@@ -584,7 +585,7 @@ export class SeamlessSwitcher {
               ok: false,
               skipped: false,
               legacyHost: false,
-              message: `宿主切换失败: ${data.err || '未知原因'}`
+              message: t('sw.hostSwitchFailed', data.err || t('err.unknownError'))
             };
           }
           // 旧回执（ts 不匹配）：清除防止后续误读
@@ -599,7 +600,7 @@ export class SeamlessSwitcher {
         ok: true,
         skipped: false,
         legacyHost: true,
-        message: '切换指令已被宿主消费，但当前宿主为 v4 旧补丁无回执能力；若界面账号未变更请重启 CodeBuddy 后重试'
+        message: t('sw.legacyNoReceipt')
       };
     }
     return {
@@ -607,7 +608,7 @@ export class SeamlessSwitcher {
       ok: false,
       skipped: false,
       legacyHost: false,
-      message: '宿主未消费切换指令 (watcher 未运行：main.js 未打补丁或 IDE 打补丁后未重启)'
+      message: t('sw.noReceipt')
     };
   }
 
@@ -633,11 +634,11 @@ export class SeamlessSwitcher {
     let account: CodeBuddyAccount | undefined;
     if (typeof accountOrUid === 'string') {
       if (!store) {
-        throw new Error('[SeamlessSwitcher] 提供 UID 时必须同时提供 AccountStore');
+        throw new Error(t('err.uidNeedsStore'));
       }
       account = store.get(accountOrUid) || store.find(accountOrUid);
       if (!account) {
-        throw new Error(`[SeamlessSwitcher] 未在号池中找到指定账号: ${accountOrUid}`);
+        throw new Error(t('err.notInPool', accountOrUid));
       }
     } else {
       account = accountOrUid;
@@ -655,9 +656,9 @@ export class SeamlessSwitcher {
           masterPath: '',
           targetPath: '',
           alreadyExisted: false,
-          message: 'Patch v5 检查自愈失败，中止后续步骤'
+          message: t('sw.patchHealFailed')
         },
-        message: `Patch v5 注入或语法自愈失败: ${patchResult.message}`,
+        message: t('sw.patchInjectFailed', patchResult.message),
         error: patchResult.error
       };
     }
@@ -676,7 +677,7 @@ export class SeamlessSwitcher {
         account,
         patchResult,
         junctionResult,
-        message: `写入热切指令失败: ${err.message}`,
+        message: t('sw.cmdWriteFailed', err.message),
         error: err.message
       };
     }
@@ -698,9 +699,9 @@ export class SeamlessSwitcher {
       receipt,
       message: receipt.ok
         ? (receipt.verified
-            ? `已切换至 ${account.nickname} (宿主回执确认${receipt.skipped ? '，本就在目标账号' : ''})`
-            : `已切换至 ${account.nickname} (指令已消费，v4 宿主无回执，建议重启 IDE 以获得回执确认)`)
-        : `热切未生效: ${receipt.message}`,
+            ? t('sw.switchedReceipt', account.nickname, receipt.skipped ? t('sw.receiptSkipSuffix') : '')
+            : t('sw.switchedLegacy', account.nickname))
+        : t('sw.notEffective', receipt.message),
       error: receipt.ok ? undefined : 'HOST_RECEIPT_FAILED'
     };
   }

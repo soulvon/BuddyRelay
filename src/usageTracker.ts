@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PATHS } from './constants';
 import { CodeBuddyAccount } from './accountStore';
+import { t } from './i18n';
 
 export interface UsageRecord {
   id: string;
@@ -101,7 +102,7 @@ export class UsageTracker {
    * 记录配额快照差值 (Delta Snapshot)
    * 当从云端刷新拿到新的总可用积分时调用，自动计算净消耗或新增
    */
-  public recordSnapshot(account: CodeBuddyAccount, newCredits: number, source: string = '巡检对账'): void {
+  public recordSnapshot(account: CodeBuddyAccount, newCredits: number, source: string = t('ut.snapshotSource')): void {
     const aid = account.id || account.uid;
     const name = account.nickname || account.email || account.uid;
     const prev = this.lastCreditsMap.get(aid);
@@ -136,8 +137,8 @@ export class UsageTracker {
         accountName: name,
         deltaCredits: delta,
         balanceAfter: newCredits,
-        title: '会话/代码补全消耗',
-        detail: `[${source}] 算力变动 ${delta} 点，剩余可用: ${newCredits} 点`
+        title: t('ut.consumeTitle'),
+        detail: t('ut.consumeDetail', source, delta, newCredits)
       });
       this.save();
     } else {
@@ -153,8 +154,8 @@ export class UsageTracker {
         accountName: name,
         deltaCredits: delta,
         balanceAfter: newCredits,
-        title: '算力增长到账',
-        detail: `[${source}] 新增入账 +${delta} 点，累计结存: ${newCredits} 点`
+        title: t('ut.gainTitle'),
+        detail: t('ut.gainDetail', source, delta, newCredits)
       });
       this.save();
     }
