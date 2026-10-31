@@ -39,9 +39,9 @@ export function getCurrentVersion(): string {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
     );
-    return packageJson.version || "1.0.1";
+    return packageJson.version || "1.0.3";
   } catch (_) {
-    return "1.0.1";
+    return "1.0.3";
   }
 }
 

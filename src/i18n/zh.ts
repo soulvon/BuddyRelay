@@ -274,7 +274,7 @@ export const zh: Record<string, string> = {
   'err.networkError': '网络异常: {0}',
   'task.noTaskList': '未拉取到任务列表（网络或登录态异常）',
   'task.wechatOnly': '（需微信扫码关注）',
-  'task.lockedSuffix': '（未解锁）',
+  'task.lockedSuffix': '未解锁',
   'err.claimFailedShort': '领取失败',
 
   // ── cockpitImporter ──
@@ -472,7 +472,7 @@ export const zh: Record<string, string> = {
   'js.tagChecked': '已签',
   'js.tagUnchecked': '未签',
   'js.tagLow': '低额度',
-  'js.currentSuffix': '（当前）',
+  'js.currentSuffix': '当前',
   'js.currentSuffixShort': ' (当前)',
   'js.creditsShort': '{0}分',
   'js.selectedN': '已选 {0}',

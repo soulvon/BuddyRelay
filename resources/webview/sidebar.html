@@ -1996,7 +1996,7 @@
         const checked = selectedAccountIds.has(acc.id);
         const rawName = acc.nickname || acc.email;
         const name = privacyMode ? maskName(rawName) : rawName;
-        const suffix = acc.isActive ? t('js.currentSuffix') : '';
+        const suffix = acc.isActive ? t('js.currentSuffixShort') : '';
         return '<label class="acct-chip ' + (checked ? 'is-selected' : '') + '" style="display:flex;align-items:center;justify-content:space-between;width:100%;border-radius:var(--radius-sm);padding:4px 8px;margin-bottom:2px;" title="' + escHtml(rawName) + '">' +
           '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input type="checkbox" data-acct="' + acc.id + '" ' + (checked ? 'checked' : '') + '>' +

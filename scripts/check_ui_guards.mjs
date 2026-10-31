@@ -145,9 +145,9 @@ gate('G20 README: 社区图源指向官方 GitHub 仓库', readmeMd.includes('ht
 
 // ── G21: 版本一致性门控 ──
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-gate('G21 版本一致性: package.json 版本为 1.0.1', packageJson.version === '1.0.1');
-gate('G21 版本一致性: README 徽标版本对齐 1.0.1', readmeMd.includes('version-1.0.1'));
-gate('G21 版本一致性: README 安装说明版本对齐 1.0.1', readmeMd.includes('buddy-relay-1.0.1.vsix'));
+gate('G21 版本一致性: package.json 版本为 1.0.3', packageJson.version === '1.0.3');
+gate('G21 版本一致性: README 徽标版本对齐 1.0.3', readmeMd.includes('version-1.0.3'));
+gate('G21 版本一致性: README 安装说明版本对齐 1.0.3', readmeMd.includes('buddy-relay-1.0.3.vsix'));
 gate('G21 互推五件套: 同系列作品区含 Antigravity-Kite', readmeMd.includes('Antigravity-Kite'));
 
 // ── G22: 全局隐私模式贯通门控 (侧栏 / 状态栏 / QuickPick) ──
@@ -318,6 +318,14 @@ gate('G41 字体系统: 抽屉统计徽标采用无衬线胶囊药丸 .usage-bad
 const vscodeIgnore = fs.readFileSync(path.join(ROOT, '.vscodeignore'), 'utf8');
 gate('G42 包体瘦身: .vscodeignore 严格排除非运行时大图与二维码', vscodeIgnore.includes('resources/preview-*.png') && vscodeIgnore.includes('resources/qq-group-qrcode.png'));
 gate('G42 包体瘦身: .vscodeignore 排除本地临时产物 tmp/ 严禁混入发布包', vscodeIgnore.includes('tmp/**'));
+
+// ── G44: i18n 字典文案纪律 门控 (防止徽章类短文案被括号劣化) ──
+const zhDictG44 = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'zh.ts'), 'utf8');
+const enDictG44 = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'en.ts'), 'utf8');
+gate('G44 i18n 纪律: 「当前」徽章回归纯文本 (禁全角括号劣化)', zhDictG44.includes("'js.currentSuffix': '当前'") && enDictG44.includes("'js.currentSuffix': 'Current'"));
+gate('G44 i18n 纪律: chip 摘要用半角空格短后缀', zhDictG44.includes("'js.currentSuffixShort': ' (当前)'"));
+gate('G44 i18n 纪律: 未解锁标签回归纯文本', zhDictG44.includes("'task.lockedSuffix': '未解锁'"));
+gate('G44 i18n 纪律: 统计值保持半角括号格式', zhDictG44.includes("'ui.highQuotaVal': '{0} 个 (≥ 80%)'") && zhDictG44.includes("'ui.lowQuotaVal': '{0} 个 (≤ 30%)'"));
 
 // ── G43: 算力总览口径与流水徽标语义 门控 ──
 const mainCss = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'main.css'), 'utf8');

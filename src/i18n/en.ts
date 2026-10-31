@@ -469,7 +469,7 @@ export const en: Record<string, string> = {
   'js.tagChecked': 'Checked',
   'js.tagUnchecked': 'Unchecked',
   'js.tagLow': 'Low quota',
-  'js.currentSuffix': ' (current)',
+  'js.currentSuffix': 'Current',
   'js.currentSuffixShort': ' (current)',
   'js.creditsShort': '{0}',
   'js.selectedN': '{0} selected',
