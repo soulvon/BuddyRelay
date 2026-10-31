@@ -11,3 +11,8 @@ CLAUDE.md
 .vscode-test/
 .DS_Store
 Thumbs.db
+
+# >>> experience-ignore >>>
+docs/experience/
+docs/tasks/
+# <<< experience-ignore <<<
