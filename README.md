@@ -12,6 +12,8 @@
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
 [![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange&style=flat-square)](https://open-vsx.org/extension/soulvon/buddy-relay)
 
+[English](README_en.md) • [简体中文](README.md)
+
 [📥 下载安装](#-下载与安装) •
 [🖼️ 界面预览](#️-界面预览) •
 [⚡ 解决什么问题](#-它解决什么问题) •
