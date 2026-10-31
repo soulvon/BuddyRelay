@@ -9,6 +9,25 @@ import { t } from './i18n';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
+/**
+ * 合计剩余算力占比（基础体验包 + 活动赠送包），与侧栏总账口径一致。
+ * 仅活动包有数据时回退活动包占比；两者皆缺返回 null（数据不足不做配额决策）。
+ */
+function combinedQuotaPercent(acc: CodeBuddyAccount): number | null {
+  const base = acc.basePackage;
+  const act = acc.activityPackage;
+  if (base && act) {
+    const total = (base.total || 0) + (act.total || 0);
+    if (total > 0) {
+      return Math.max(0, Math.min(100, ((base.remain || 0) + (act.remain || 0)) / total * 100));
+    }
+  }
+  if (act && act.total > 0) {
+    return act.percent ?? Math.max(0, Math.min(100, (act.remain || 0) / act.total * 100));
+  }
+  return null;
+}
+
 export interface RotationEvent {
   fromUid: string;
   toUid: string;
@@ -165,8 +184,8 @@ export class AutoSwitcher extends EventEmitter {
 
     if (this.strategy === 'highest_quota') {
       candidates.sort((a, b) => {
-        const aPct = a.activityPackage ? a.activityPackage.percent : (a.totalCredits != null ? -1 : -2);
-        const bPct = b.activityPackage ? b.activityPackage.percent : (b.totalCredits != null ? -1 : -2);
+        const aPct = combinedQuotaPercent(a) ?? (a.totalCredits != null ? -1 : -2);
+        const bPct = combinedQuotaPercent(b) ?? (b.totalCredits != null ? -1 : -2);
         if (bPct !== aPct) return bPct - aPct;
         return (a.lastUsed || 0) - (b.lastUsed || 0);
       });
@@ -365,10 +384,8 @@ export class AutoSwitcher extends EventEmitter {
           return;
         }
 
-        // 计算当前账号剩余算力占比
-        const pct = active.activityPackage
-          ? active.activityPackage.percent
-          : null;
+        // 计算当前账号剩余算力占比（基础包+活动包合计，与侧栏总账口径一致）
+        const pct = combinedQuotaPercent(active);
         if (pct == null || isNaN(pct)) {
           return;
         }

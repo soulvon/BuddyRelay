@@ -88,13 +88,6 @@ export class CheckinService {
       return null;
     }
 
-    const now = new Date();
-    const future = new Date(now.getTime() + 5 * 365 * 24 * 3600 * 1000);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const fmt = (d: Date) =>
-      d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
-      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-
     const headers: Record<string, string> = {
       'Authorization': 'Bearer ' + account.accessToken,
       'X-User-Id': account.uid,
@@ -102,13 +95,14 @@ export class CheckinService {
     };
 
     const url = this.baseUrl + API_ENDPOINTS.USER_RESOURCE;
+    // 注意：严禁加 PackageEndTimeRange 时间窗——实测基础体验包（TCACA_code_008）的
+    // 包结束时间不在 now~now+5y 窗口内，会被整体滤掉导致显示 0/500（月发放仍在）。
+    // Status [0,3]（生效中/已耗尽）语义已足够，耗尽的包 remain=0 不影响聚合。
     const body = {
       PageNumber: 1,
       PageSize: 100,
       ProductCode: 'p_tcaca',
-      Status: [0, 3],
-      PackageEndTimeRangeBegin: fmt(now),
-      PackageEndTimeRangeEnd: fmt(future)
+      Status: [0, 3]
     };
 
     try {

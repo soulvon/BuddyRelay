@@ -69,6 +69,85 @@
       padding-right: 5px;
     }
 
+    /* 汇总指标卡（纯粹大盘模式：移除细进度条与进度百分比，直观展示核心数值 / 总容量） */
+    .summary-stats {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 8px !important;
+      margin-bottom: 2px !important;
+    }
+    .summary-stat {
+      padding: 10px 12px !important;
+      border-radius: var(--radius-md, 8px) !important;
+      border: 1px solid var(--card-border) !important;
+      background: var(--ui-surface-raised, rgba(255, 255, 255, 0.02)) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+      gap: 6px !important;
+      min-height: 58px !important;
+      box-sizing: border-box !important;
+      transition: border-color 0.18s ease !important;
+    }
+    .summary-stat:hover {
+      transform: none !important;
+      border-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 30%, var(--card-border)) !important;
+    }
+    .summary-stat-head {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin-bottom: 0 !important;
+    }
+    .summary-stat-icon {
+      flex-shrink: 0 !important;
+    }
+    #summaryDailyStat .summary-stat-icon {
+      color: #10b981 !important;
+    }
+    #summaryWeeklyStat .summary-stat-icon {
+      color: #0ea5e9 !important;
+    }
+    .summary-stat-label {
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      color: var(--vscode-foreground) !important;
+      opacity: 0.9 !important;
+      line-height: 1 !important;
+    }
+    /* 隐藏旧进度条与百分比进度（不占高度，仅作后台 DOM 兼容） */
+    .summary-stat .summary-bar,
+    .summary-stat-pct {
+      display: none !important;
+    }
+    .summary-stat-footer {
+      display: flex !important;
+      align-items: baseline !important;
+      gap: 4px !important;
+      margin-top: 2px !important;
+      font-variant-numeric: tabular-nums !important;
+      line-height: 1 !important;
+    }
+    .summary-stat-num {
+      font-size: 19px !important;
+      font-weight: 700 !important;
+      color: var(--vscode-foreground) !important;
+      line-height: 1 !important;
+      letter-spacing: -0.02em !important;
+      font-family: var(--font-sans) !important;
+    }
+    #summaryWeeklyNum {
+      font-size: 16.5px !important; /* 长串算力数值自适应窄屏，绝不折行 */
+    }
+    .summary-stat-max {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      color: var(--muted, rgba(255, 255, 255, 0.45)) !important;
+      opacity: 0.75 !important;
+      line-height: 1 !important;
+      font-family: var(--font-sans) !important;
+    }
+
     /* ── 过滤下拉面板补齐（浅色主题白底与勾选列） ── */
     body.vscode-light .filter-dropdown {
       background: #ffffff !important;
