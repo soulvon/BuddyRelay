@@ -262,6 +262,16 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了适配与梳理：
 
 ---
 
+---
+
+## ⭐ Star History
+
+**如果这个工具帮到了你，点一个 Star 让更多开发者看到它 · If this project helps you, a star means a lot.**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/soulvon/BuddyRelay&Date)
+
+---
+
 ## 📄 开源许可证
 
 本项目基于 [MIT License](LICENSE) 开源发布。

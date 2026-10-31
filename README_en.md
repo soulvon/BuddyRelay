@@ -257,6 +257,16 @@ If BuddyRelay saves you switching and account-maintenance effort, join the group
 
 ---
 
+---
+
+## ⭐ Star History
+
+**如果这个工具帮到了你，点一个 Star 让更多开发者看到它 · If this project helps you, a star means a lot.**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/soulvon/BuddyRelay&Date)
+
+---
+
 ## 📄 License
 
 Released under the [MIT License](LICENSE).
