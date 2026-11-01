@@ -16,6 +16,8 @@ export interface UsageRecord {
   balanceAfter?: number;
   title: string;
   detail?: string;
+  /** 来源：snapshot=余额快照差值（仅明细展示），action=明确业务动作（计入今日到账） */
+  source?: 'snapshot' | 'action';
   /** 单调递增写入序号：同一毫秒内多条记录的排序兜底键 */
   seq?: number;
 }
@@ -27,7 +29,29 @@ export interface DailySummary {
   switchCount: number;
 }
 
-const MAX_RECORDS = 200;
+/**
+ * 今日统计：完全基于官方数据源
+ * - consumed: 官方请求明细求和 (get-user-request-usage)
+ * - grants: 官方今日发放包容量求和 (get-user-resource, CreateTime 当日)
+ * - 每月 1 号基础基数: 启用账号数 × 500（基础体验包月度重置）
+ */
+export interface DailyStats {
+  date: string;
+  consumed: number;
+  grants: number;
+  perAccountConsumed: Record<string, number>;
+  perAccountGrants: Record<string, number>;
+  recentRequests: Array<{
+    requestId: string;
+    credit: number;
+    model: string;
+    client: string;
+    requestTime: string;
+    input: string;
+  }>;
+}
+
+const MAX_RECORDS = 1000;
 
 /**
  * 算力流水对账与调度审计追踪引擎
@@ -43,10 +67,16 @@ export class UsageTracker {
   private lastCreditsMap: Map<string, number> = new Map();
   private switchTimestamps: number[] = [];
   private _seq: number = 0;
+  private dailyStatsPath: string;
+  private dailyStats: DailyStats = { date: '', consumed: 0, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: [] };
+  private lastFetchTsMap: Map<string, number> = new Map();
+  private lastBalances: Map<string, number> = new Map();
 
   constructor(customFilePath?: string) {
     this.filePath = customFilePath || path.join(PATHS.RELAY_DIR, 'usage-records.json');
+    this.dailyStatsPath = path.join(path.dirname(this.filePath), 'daily-stats.json');
     this.load();
+    this.loadDailyStats();
   }
 
   private load(): void {
@@ -66,6 +96,265 @@ export class UsageTracker {
       this.records = [];
     }
   }
+
+  private loadDailyStats(): void {
+    try {
+      if (!fs.existsSync(this.dailyStatsPath)) {
+        return;
+      }
+      const raw = fs.readFileSync(this.dailyStatsPath, 'utf8');
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object' || typeof data.date !== 'string') {
+        return;
+      }
+      this.dailyStats = {
+        date: data.date,
+        consumed: typeof data.consumed === 'number' ? data.consumed : 0,
+        grants: typeof data.grants === 'number' ? data.grants : 0,
+        perAccountConsumed: data.perAccountConsumed && typeof data.perAccountConsumed === 'object' ? data.perAccountConsumed : {},
+        perAccountGrants: data.perAccountGrants && typeof data.perAccountGrants === 'object' ? data.perAccountGrants : {},
+        recentRequests: Array.isArray(data.recentRequests) ? data.recentRequests : []
+      };
+    } catch (_) {
+      // 文件损坏就从零起算，不阻塞扩展
+    }
+  }
+
+  private saveDailyStats(): void {
+    try {
+      const dir = path.dirname(this.dailyStatsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const payload = JSON.stringify(this.dailyStats, null, 2);
+      const tmp = `${this.dailyStatsPath}.tmp_${Date.now()}`;
+      fs.writeFileSync(tmp, payload, 'utf8');
+      try {
+        fs.renameSync(tmp, this.dailyStatsPath);
+      } catch (_) {
+        fs.writeFileSync(this.dailyStatsPath, payload, 'utf8');
+        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      }
+    } catch (err: any) {
+      console.warn('[UsageTracker] 保存今日统计失败:', err.message);
+    }
+  }
+
+  /**
+   * 检测余额变化的账号（每次向侧栏推送状态时调用，同步、零成本）
+   * 变化的账号才需要去官方核对消耗与到账
+   */
+  public detectChangedAccounts(items: Array<{ id: string; credits: number }>): string[] {
+    const today = this.formatTime(Date.now()).dateStr;
+    const changedIds: string[] = [];
+    let valid = false;
+
+    for (const item of items) {
+      if (!item || !item.id || typeof item.credits !== 'number' || !isFinite(item.credits)) {
+        continue;
+      }
+      valid = true;
+      const prev = this.lastBalances.get(item.id);
+      if (prev === undefined || Math.abs(prev - item.credits) >= 0.01) {
+        changedIds.push(item.id);
+      }
+      this.lastBalances.set(item.id, item.credits);
+    }
+    if (!valid) {
+      return [];
+    }
+
+    if (this.dailyStats.date !== today) {
+      // 跨天：消耗/到账统计清零，全部账号重新核对
+      this.dailyStats = {
+        date: today,
+        consumed: 0,
+        grants: 0,
+        perAccountConsumed: {},
+        perAccountGrants: {},
+        recentRequests: []
+      };
+      this.saveDailyStats();
+      return items.filter((i) => i && typeof i.credits === 'number').map((i) => i.id);
+    }
+    return changedIds;
+  }
+
+  /**
+   * 拉取官方今日数据（每账号一次调用）
+   * 包含：1. 消耗明细 2. 今日新发放资源包
+   */
+  public async refreshOfficialStats(items: Array<{ id: string; token: string; uid: string }>): Promise<boolean> {
+    const now = Date.now();
+    // 按账号 3 分钟节流：一次使用通常只有一个号在消耗，单号最多每 3 分钟请求一次
+    const valid = (items || []).filter(
+      (i) => i && i.id && i.token && i.uid && now - (this.lastFetchTsMap.get(i.id) || 0) >= 180_000
+    );
+    if (!valid.length) {
+      return false;
+    }
+    for (const i of valid) {
+      this.lastFetchTsMap.set(i.id, now);
+    }
+
+    const results = await Promise.all(valid.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid)));
+
+    const today = this.formatTime(Date.now()).dateStr;
+    if (this.dailyStats.date !== today) {
+      this.dailyStats = {
+        date: today,
+        consumed: 0,
+        grants: 0,
+        perAccountConsumed: {},
+        perAccountGrants: {},
+        recentRequests: []
+      };
+    }
+
+    // 只覆盖本次成功查到的账号，其余沿用缓存
+    for (let i = 0; i < valid.length; i++) {
+      const r = results[i];
+      if (!r) {
+        continue;
+      }
+      this.dailyStats.perAccountConsumed[valid[i].id] = r.consumed;
+      this.dailyStats.perAccountGrants[valid[i].id] = r.grants;
+
+      const seen = new Set(this.dailyStats.recentRequests.map((x) => x.requestId));
+      for (const row of r.rows) {
+        if (!row.requestId || seen.has(row.requestId)) {
+          continue;
+        }
+        seen.add(row.requestId);
+        this.dailyStats.recentRequests.push({
+          requestId: row.requestId,
+          credit: Number(row.credit || 0),
+          model: row.model || '',
+          client: row.client || '',
+          requestTime: row.requestTime || '',
+          input: String(row.input || row.inputTrunc || '').slice(0, 120)
+        });
+      }
+    }
+    this.dailyStats.recentRequests.sort((a, b) => b.requestTime.localeCompare(a.requestTime));
+    if (this.dailyStats.recentRequests.length > 200) {
+      this.dailyStats.recentRequests = this.dailyStats.recentRequests.slice(0, 200);
+    }
+
+    const totalConsumed = Math.round(
+      Object.keys(this.dailyStats.perAccountConsumed).reduce((s, k) => s + (Number(this.dailyStats.perAccountConsumed[k]) || 0), 0) * 100
+    ) / 100;
+    const totalGrants = Math.round(
+      Object.keys(this.dailyStats.perAccountGrants).reduce((s, k) => s + (Number(this.dailyStats.perAccountGrants[k]) || 0), 0) * 100
+    ) / 100;
+
+    const changed = Math.abs(this.dailyStats.consumed - totalConsumed) >= 0.01 || Math.abs(this.dailyStats.grants - totalGrants) >= 0.01;
+    this.dailyStats.consumed = totalConsumed;
+    this.dailyStats.grants = totalGrants;
+    if (changed) {
+      this.saveDailyStats();
+    }
+    return changed;
+  }
+
+  /**
+   * 拉取单账号官方今日消耗与今日发包数据
+   */
+  public static async fetchOfficialDaily(
+    token: string,
+    uid: string
+  ): Promise<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> {
+    const headers = {
+      Authorization: 'Bearer ' + token,
+      'X-User-Id': uid,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    const d = new Date();
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    const dayStart = new Date(dateStr + ' 00:00:00').getTime();
+    const dayEnd = dayStart + 86400_000;
+
+    // 1. 查消耗明细（自动翻页）
+    let consumedSum = 0;
+    const allRows: Array<Record<string, any>> = [];
+    let pageNum = 1;
+    try {
+      for (let page = 0; page < 5; page++) {
+        const res = await fetch('https://www.codebuddy.cn/billing/meter/get-user-request-usage', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            startTime: dateStr + ' 00:00:00',
+            endTime: dateStr + ' 23:59:59',
+            pageNum,
+            pageSize: 200
+          })
+        });
+        if (!res.ok) {
+          return null;
+        }
+        const json: any = await res.json().catch(() => null);
+        if (!json || json.code !== 0 || !json.data) {
+          return null;
+        }
+        const rows: Array<Record<string, any>> = json.data.data || [];
+        consumedSum += rows.reduce((s, r) => s + Number(r.credit || 0), 0);
+        allRows.push(...rows);
+        const total = Number(json.data.total || 0);
+        if (pageNum * 200 >= total || rows.length === 0) {
+          break;
+        }
+        pageNum++;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    // 2. 查今日新到账资源包（签到包 100 + 活动任务包）
+    let grantsSum = 0;
+    try {
+      const res = await fetch('https://www.codebuddy.cn/v2/billing/meter/get-user-resource', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          PageNumber: 1,
+          PageSize: 100,
+          ProductCode: 'p_tcaca',
+          Status: [0, 3]
+        })
+      });
+      if (res.ok) {
+        const json: any = await res.json().catch(() => null);
+        const packs = json?.data?.Response?.Data?.Accounts || [];
+        for (const p of packs) {
+          const ct = Number(p.CreateTime || 0);
+          if (ct >= dayStart && ct < dayEnd) {
+            grantsSum += Number(p.CapacitySize || 0);
+          }
+        }
+      }
+    } catch (_) {
+      // 查包失败不阻断，grants 保持 0
+    }
+
+    return {
+      consumed: Math.round(consumedSum * 100) / 100,
+      grants: Math.round(grantsSum * 100) / 100,
+      rows: allRows
+    };
+  }
+
+  /** 官方请求明细（全账号合并，倒序），供侧栏明细列表展示 */
+  public getRecentOfficialRequests(limit: number = 25): Array<Record<string, any>> {
+    if (this.dailyStats.date !== this.formatTime(Date.now()).dateStr) {
+      return [];
+    }
+    return this.dailyStats.recentRequests.slice(0, limit);
+  }
+
+
 
   private save(): void {
     try {
@@ -211,31 +500,61 @@ export class UsageTracker {
 
   /**
    * 获取今日经营对账总报表
+   * - 消耗 = 官方明细求和（权威）
+   * - 新增 = 官方今日发包容量求和 + （每月1号 ? activeAccountCount * 500 : 0）
    */
-  public getDailySummary(targetDate?: string): DailySummary {
+  public getDailySummary(activeAccountCount: number = 0, targetDate?: string): DailySummary {
     const today = targetDate || this.formatTime(Date.now()).dateStr;
-    let totalConsumed = 0;
-    let totalAwarded = 0;
-    let switchCount = 0;
+    const sameDay = this.dailyStats.date === today;
 
+    let switchCount = 0;
     for (const r of this.records) {
-      if (r.dateStr === today) {
-        if (r.type === 'consume' && r.deltaCredits) {
-          totalConsumed += Math.abs(r.deltaCredits);
-        } else if (r.type === 'reward' && r.deltaCredits) {
-          totalAwarded += Math.abs(r.deltaCredits);
-        } else if (r.type === 'switch') {
-          switchCount++;
-        }
+      if (r.dateStr === today && r.type === 'switch') {
+        switchCount++;
       }
     }
 
+    const consumed = sameDay ? this.dailyStats.consumed : 0;
+    const grants = sameDay ? this.dailyStats.grants : 0;
+
+    // 每月 1 号基础体验包重置基数：每号 500
+    const dayOfMonth = new Date(today).getDate();
+    const isFirstDayOfMonth = dayOfMonth === 1;
+    const firstDayBonus = isFirstDayOfMonth ? Math.max(0, activeAccountCount) * 500 : 0;
+    const totalAwarded = Math.round((grants + firstDayBonus) * 100) / 100;
+
     return {
       date: today,
-      totalConsumed: Math.round(totalConsumed * 100) / 100,
-      totalAwarded: Math.round(totalAwarded * 100) / 100,
+      totalConsumed: sameDay ? Math.round(consumed * 100) / 100 : 0,
+      totalAwarded,
       switchCount
     };
+  }
+
+  /** 手动写入今日消耗（测试与离线兜底） */
+  public updateTodayConsumed(total: number): void {
+    const today = this.formatTime(Date.now()).dateStr;
+    const value = Math.round(total * 100) / 100;
+    if (this.dailyStats.date !== today) {
+      this.dailyStats = { date: today, consumed: value, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests };
+    } else {
+      this.dailyStats.consumed = value;
+      this.dailyStats.perAccountConsumed = {};
+    }
+    this.saveDailyStats();
+  }
+
+  /** 手动写入今日到账（测试与离线兜底） */
+  public updateTodayGrants(total: number): void {
+    const today = this.formatTime(Date.now()).dateStr;
+    const value = Math.round(total * 100) / 100;
+    if (this.dailyStats.date !== today) {
+      this.dailyStats = { date: today, consumed: 0, grants: value, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests };
+    } else {
+      this.dailyStats.grants = value;
+      this.dailyStats.perAccountGrants = {};
+    }
+    this.saveDailyStats();
   }
 
   /**

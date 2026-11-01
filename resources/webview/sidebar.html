@@ -69,7 +69,7 @@
       padding-right: 5px;
     }
 
-    /* 汇总指标卡（纯粹大盘模式：移除细进度条与进度百分比，直观展示核心数值 / 总容量） */
+    /* 汇总指标卡：标签居左、数值居右，进度条跨底行 */
     .summary-stats {
       display: grid !important;
       grid-template-columns: 1fr 1fr !important;
@@ -77,15 +77,15 @@
       margin-bottom: 2px !important;
     }
     .summary-stat {
-      padding: 10px 12px !important;
+      padding: 9px 11px 10px !important;
       border-radius: var(--radius-md, 8px) !important;
       border: 1px solid var(--card-border) !important;
       background: var(--ui-surface-raised, rgba(255, 255, 255, 0.02)) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      justify-content: space-between !important;
-      gap: 6px !important;
-      min-height: 58px !important;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      align-items: center !important;
+      gap: 7px 6px !important;
+      min-height: 0 !important;
       box-sizing: border-box !important;
       transition: border-color 0.18s ease !important;
     }
@@ -94,19 +94,22 @@
       border-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 30%, var(--card-border)) !important;
     }
     .summary-stat-head {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
       display: flex !important;
       align-items: center !important;
       gap: 6px !important;
+      min-width: 0 !important;
       margin-bottom: 0 !important;
     }
     .summary-stat-icon {
       flex-shrink: 0 !important;
     }
     #summaryDailyStat .summary-stat-icon {
-      color: #10b981 !important;
+      color: var(--tone-ok, #4f9d7c) !important;
     }
     #summaryWeeklyStat .summary-stat-icon {
-      color: #0ea5e9 !important;
+      color: var(--tone-info, #6b8fb8) !important;
     }
     .summary-stat-label {
       font-size: 12px !important;
@@ -114,27 +117,65 @@
       color: var(--vscode-foreground) !important;
       opacity: 0.9 !important;
       line-height: 1 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
     }
-    /* 隐藏旧进度条与百分比进度（不占高度，仅作后台 DOM 兼容） */
-    .summary-stat .summary-bar,
+    /* 百分比让位给进度条 */
     .summary-stat-pct {
       display: none !important;
     }
+    /* 进度条：跨两列压底 */
+    .summary-stat .summary-bar {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      display: block !important;
+      height: 5px !important;
+      margin: 0 !important;
+      border-radius: 999px !important;
+      background: color-mix(in srgb, var(--vscode-foreground) 9%, transparent) !important;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22) !important;
+      overflow: hidden !important;
+    }
+    .summary-stat .summary-bar-fill {
+      height: 100% !important;
+      border-radius: 999px !important;
+      background: linear-gradient(90deg, var(--gh-blue) 0%, var(--gh-green) 100%) !important;
+      box-shadow: 0 0 6px rgba(14, 99, 156, 0.45) !important;
+      transition: width 0.45s ease !important;
+    }
+    .summary-stat .summary-bar-fill.is-warn {
+      background: linear-gradient(90deg, var(--gh-orange) 0%, var(--gh-yellow-soft) 100%) !important;
+      box-shadow: 0 0 6px rgba(209, 154, 102, 0.45) !important;
+    }
+    .summary-stat .summary-bar-fill.is-danger {
+      background: linear-gradient(90deg, var(--gh-red) 0%, var(--ac-red) 100%) !important;
+      box-shadow: 0 0 6px rgba(248, 81, 73, 0.45) !important;
+    }
     .summary-stat-footer {
+      grid-column: 2 !important;
+      grid-row: 1 !important;
       display: flex !important;
       align-items: baseline !important;
+      justify-content: flex-end !important;
       gap: 4px !important;
-      margin-top: 2px !important;
+      margin-top: 0 !important;
       font-variant-numeric: tabular-nums !important;
       line-height: 1 !important;
     }
     .summary-stat-num {
-      font-size: 19px !important;
+      font-size: 18px !important;
       font-weight: 700 !important;
       color: var(--vscode-foreground) !important;
       line-height: 1 !important;
       letter-spacing: -0.02em !important;
       font-family: var(--font-sans) !important;
+    }
+    #summaryDailyStat .summary-stat-num {
+      color: var(--tone-ok, #4f9d7c) !important;
+    }
+    #summaryWeeklyStat .summary-stat-num {
+      color: var(--tone-info, #6b8fb8) !important;
     }
     #summaryWeeklyNum {
       font-size: 16.5px !important; /* 长串算力数值自适应窄屏，绝不折行 */
@@ -146,6 +187,7 @@
       opacity: 0.75 !important;
       line-height: 1 !important;
       font-family: var(--font-sans) !important;
+      white-space: nowrap !important;
     }
 
     /* ── 过滤下拉面板补齐（浅色主题白底与勾选列） ── */
@@ -348,25 +390,19 @@
       100% { background-position: -200% 0; }
     }
 
-    /* 总量积分数值：显眼放大 + 胶囊药丸高亮，突出核心总资产指标 */
+    /* 总量积分数值：靠字号与字重立层级，不套胶囊（避免读成可点按钮） */
     .grid-quota-val.is-neutral {
-      color: var(--vscode-foreground, #3b3b3b);
-      font-size: 13.5px !important;
+      color: var(--tone-info, #6b8fb8);
+      font-size: 15px !important;
       font-weight: 700 !important;
       letter-spacing: -0.2px !important;
-      background: color-mix(in srgb, var(--vscode-foreground) 4.5%, transparent) !important;
-      padding: 1px 7px 2px !important;
-      border-radius: 4px !important;
-      border: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent) !important;
+      background: none !important;
+      padding: 0 !important;
+      border: 0 !important;
       display: inline-flex !important;
       align-items: baseline !important;
-      gap: 2px !important;
-      line-height: 1.2 !important;
-    }
-
-    body.vscode-light .grid-quota-val.is-neutral {
-      background: rgba(0, 0, 0, 0.04) !important;
-      border-color: rgba(0, 0, 0, 0.08) !important;
+      gap: 3px !important;
+      line-height: 1.1 !important;
     }
 
     .grid-quota-unit {
@@ -474,14 +510,25 @@
       letter-spacing: -0.1px !important;
     }
     .usage-badge-pill.is-plus {
-      color: var(--ac-emerald, #10b981) !important;
-      background: color-mix(in srgb, var(--ac-emerald, #10b981) 12%, transparent) !important;
-      border: 1px solid color-mix(in srgb, var(--ac-emerald, #10b981) 22%, transparent) !important;
+      color: var(--tone-ok, #4f9d7c) !important;
+      background: var(--tone-ok-soft, rgba(79, 157, 124, 0.10)) !important;
+      border: 1px solid var(--tone-ok-line, rgba(79, 157, 124, 0.24)) !important;
     }
     .usage-badge-pill.is-minus {
-      color: var(--gh-red, #ef4444) !important;
-      background: color-mix(in srgb, var(--gh-red, #ef4444) 10%, transparent) !important;
-      border: 1px solid color-mix(in srgb, var(--gh-red, #ef4444) 20%, transparent) !important;
+      color: var(--tone-warn, #b8934a) !important;
+      background: var(--tone-warn-soft, rgba(184, 147, 74, 0.10)) !important;
+      border: 1px solid var(--tone-warn-line, rgba(184, 147, 74, 0.24)) !important;
+    }
+    /* 亮色：空心即空心 —— 透明底 + 不透明实色描边，不留半透明灰边 */
+    body.vscode-light .usage-badge-pill.is-plus,
+    body.vscode-light .usage-badge-pill.is-minus {
+      background: transparent !important;
+    }
+    body.vscode-light .usage-badge-pill.is-plus {
+      border-color: var(--tone-ok, #157a52) !important;
+    }
+    body.vscode-light .usage-badge-pill.is-minus {
+      border-color: var(--tone-warn, #96690c) !important;
     }
 
     .usage-item {
@@ -2584,8 +2631,9 @@
         const rawName = acc.nickname || acc.email;
         const displayName = maskName(rawName);
         const displayUid = maskUid(acc.uid);
-        const planText = (acc.paymentType || 'free');
+        const planText = String(acc.paymentType || 'free').toLowerCase();
         const planLabel = planText.charAt(0).toUpperCase() + planText.slice(1);
+        const planTier = 'tier-' + (['free', 'trial', 'pro', 'team', 'enterprise'].indexOf(planText) >= 0 ? planText : 'unknown');
 
         const totalVal = fmtNum(acc.totalCredits);
         const totalLevel = levelClass(acc.activityPackage ? acc.activityPackage.percent : 100, acc.totalCredits || 0);
@@ -2628,7 +2676,7 @@
               ? '<span class="grid-current-label"><span style="color:#3fb950">●</span> ' + escHtml(t('js.inUse')) + '</span>'
               : `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''} title="${escHtml(isDisabled ? t('js.switchDisabledTitle') : t('js.switchTitle'))}">${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>' + escHtml(t('js.switching')) : escHtml(t('js.switchBtn'))}</button>`);
 
-        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled' : 'is-disabled'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${escHtml(acc.todayCheckedIn ? t('js.checkinDoneTitle') : (isDisabled ? t('js.checkinDisabledTitle') : t('js.checkinDoTitle')))}">${acc.todayCheckedIn ? escHtml(t('js.checkedInShort')) : escHtml(t('js.checkinBtn'))}</button>`;
+        const checkinBtn = `<button class="status-toggle-btn ${acc.todayCheckedIn ? 'is-enabled is-done' : 'is-disabled is-pending'}" onclick="onCheckin('${acc.id}')" ${acc.todayCheckedIn || isDisabled ? 'disabled' : ''} title="${escHtml(acc.todayCheckedIn ? t('js.checkinDoneTitle') : (isDisabled ? t('js.checkinDisabledTitle') : t('js.checkinDoTitle')))}">${acc.todayCheckedIn ? escHtml(t('js.checkedInShort')) : escHtml(t('js.checkinBtn'))}</button>`;
 
         const statusToggleBtn = `<button class="status-switch ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${escHtml(isDisabled ? t('js.enableTitle') : t('js.disableTitle'))}" aria-label="${escHtml(isDisabled ? t('js.ariaEnable') : t('js.ariaDisable'))}"><span class="status-switch-thumb"></span></button>`;
 
@@ -2640,7 +2688,7 @@
             </div>
 
             <div class="grid-card-meta">
-              <span class="grid-plan-chip tier-free">${planLabel}</span>
+              <span class="grid-plan-chip ${planTier}">${planLabel}</span>
               ${healthBadge}
               ${tagsHtml}
             </div>
@@ -2762,13 +2810,13 @@
         return;
       }
       container.innerHTML = records.map(r => {
-        const deltaClass = r.type === 'consume' ? 'is-minus' : (r.type === 'reward' ? 'is-plus' : 'is-info');
-        const deltaText = r.deltaCredits ? (r.deltaCredits > 0 ? '+' + r.deltaCredits : String(r.deltaCredits)) : '';
-        return '<div class="usage-item" title="' + escHtml(r.detail || '') + '">'
-          + '<span class="usage-item-time">' + escHtml(r.timeStr) + '</span>'
-          + '<span class="usage-item-name" title="' + escHtml(r.accountName) + '">' + escHtml(r.accountName) + '</span>'
-          + '<span class="usage-item-title">' + escHtml(r.title) + '</span>'
-          + (deltaText ? '<span class="usage-item-delta ' + deltaClass + '">' + deltaText + '</span>' : '')
+        const credit = Number(r.credit || 0);
+        const time = String(r.requestTime || '').slice(11) || String(r.requestTime || '');
+        const tip = [r.model, r.client, r.input].filter(Boolean).join(' · ');
+        return '<div class="usage-item" title="' + escHtml(tip) + '">'
+          + '<span class="usage-item-time">' + escHtml(time) + '</span>'
+          + '<span class="usage-item-name" title="' + escHtml(r.model || '') + '">' + escHtml(r.model || '') + '</span>'
+          + '<span class="usage-item-delta is-minus">-' + fmtNum(credit) + '</span>'
           + '</div>';
       }).join('');
     }

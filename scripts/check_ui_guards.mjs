@@ -90,9 +90,9 @@ gate('G7 文案: 无「Buddy加油站活动签到获得」', !html.includes('Bud
 gate('G7 文案: 无「账号 UID」标签', !html.includes('>账号 UID<'));
 gate('G7 文案: 活动来源为「WorkBuddy加油站活动」(js.actReset 字典项)', zhDict.includes("'js.actReset': 'WorkBuddy加油站活动'") && html.includes("t('js.actReset')"));
 
-// ── G8: 总量积分中性色 ──
-gate('G8 配色: 总量积分为 is-neutral 灰黑', html.includes('grid-quota-val is-neutral'));
-gate('G8 配色: is-neutral 使用主题前景色', /\.grid-quota-val\.is-neutral\s*{[^}]*var\(--vscode-foreground/.test(html));
+// ── G8: 总量积分走语义强调色（与汇总卡「算力」同源，禁硬编码色值） ──
+gate('G8 配色: 总量积分为 is-neutral 排版位', html.includes('grid-quota-val is-neutral'));
+gate('G8 配色: is-neutral 使用 --tone-info 语义色', /\.grid-quota-val\.is-neutral\s*{[^}]*var\(--tone-info/.test(html));
 
 // ── G8.5: 任务模态框账号批量选择（防回归丢失） ──
 gate('G8.5 批量选择: 账号芯片容器存在', html.includes('id="taskAcctList"') && html.includes('acct-chip'));

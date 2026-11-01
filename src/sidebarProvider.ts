@@ -235,6 +235,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       locale: cfg.get<string>('locale', 'auto')
     };
 
+    // 今日统计：检测余额发生变化的账号（零成本），低频拉取官方明细与今日发放资源包
+    const usageItems = accounts
+      .filter((a) => typeof a.totalCredits === 'number')
+      .map((a) => ({
+        id: a.id,
+        credits: a.totalCredits as number,
+        token: a.accessToken || '',
+        uid: a.uid || '',
+        disabled: a.status === 'disabled'
+      }));
+    const changedIds = new Set(this.usageTracker?.detectChangedAccounts(usageItems) || []);
+    const refreshTargets = usageItems.filter((i) => changedIds.has(i.id) && i.token && i.uid);
+    if (this.usageTracker && refreshTargets.length) {
+      void this.usageTracker
+        .refreshOfficialStats(refreshTargets)
+        .then((changed) => {
+          if (changed) {
+            this.postStateToWebview();
+          }
+        })
+        .catch(() => {});
+    }
+
+    const enabledAccountCount = accounts.filter((a) => a.status !== 'disabled').length;
+
     this._view.webview.postMessage({
       command: 'updateState',
       data: {
@@ -293,8 +318,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         version: getCurrentVersion(),
         hostEdition: detectHostEdition(),
         allTags: this.store.getAllTags(),
-        usageSummary: this.usageTracker?.getDailySummary(),
-        recentRecords: this.usageTracker?.getRecentRecords(25) || []
+        usageSummary: this.usageTracker?.getDailySummary(enabledAccountCount),
+        recentRecords: this.usageTracker?.getRecentOfficialRequests(25) || []
       }
     });
   }

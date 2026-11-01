@@ -84,10 +84,16 @@ async function runTests() {
   records = tracker.getRecentRecords();
   check('切号审计: 正确记录 switch 事件流水', records.length === 3 && records[0].type === 'switch');
 
-  // 今日经营总账对账汇总
-  const summary = tracker.getDailySummary();
-  check('今日经营总账: 正确统计今日累计消耗 25.5 点', summary.totalConsumed === 25.5);
-  check('今日经营总账: 正确统计今日累计新增 10 点', summary.totalAwarded === 10);
+  // 今日统计：官方明细消耗 + 官方发包到账（1号按启用账号数叠 500 基数）
+  tracker.detectChangedAccounts([{ id: 'test-acc-1', credits: 1000 }]);
+  tracker.updateTodayConsumed(25.5);
+  tracker.updateTodayGrants(145);
+
+  const summary = tracker.getDailySummary(1);
+  const isFirstDay = new Date().getDate() === 1;
+  const expectedAwarded = isFirstDay ? 645 : 145; // 1号: 500+145=645；平时: 145
+  check('今日经营总账: 消耗走官方明细口径 25.5 点', summary.totalConsumed === 25.5);
+  check('今日经营总账: 到账走官方发包口径（含1号基数）', summary.totalAwarded === expectedAwarded, `actual=${summary.totalAwarded}, expected=${expectedAwarded}`);
   check('今日经营总账: 正确统计今日切号次数 1 次', summary.switchCount === 1);
 
   console.log('');
