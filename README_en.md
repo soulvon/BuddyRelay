@@ -6,7 +6,7 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -37,7 +37,7 @@ BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDE
 
 ### Option 1: Extensions panel (recommended)
 
-1. Download the latest `buddy-relay-1.1.0.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.2.0.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** or **WorkBuddy**;
 3. Open the Extensions view (`Ctrl+Shift+X` / macOS `Cmd+Shift+X`);
 4. Click the `...` menu ➔ **"Install from VSIX..."**;
@@ -46,40 +46,70 @@ BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDE
 ### Option 2: Command line
 
 ```bash
-buddycn --install-extension buddy-relay-1.1.0.vsix --force
+buddycn --install-extension buddy-relay-1.2.0.vsix --force
 ```
 
 ---
 
 ## 🖼️ Preview
 
-Fully graphical experience covering **account card flow**, **real-time quota dashboard**, **multi-source import** and the **automated task center**:
+Fully graphical experience covering **account card flow**, **usage & model analytics dashboard**, **automated task center**, **multi-source import** and **smart scheduling settings**:
 
 ### 1. Account cards & quota dashboard
 > Core: **switch without restart · no editor reload · session history fully intact**
-> One-click privacy masking, live credits badge 🪙 in the status bar, precise dual-package quota reconciliation and low-quota alerts.
+> Dual-column card flow layout, one-click privacy masking, active status toggle switch, precise dual-package quota reconciliation and low-quota alerts.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-dashboard.webp" width="480" alt="BuddyRelay account pool & quota dashboard">
+  <img src="resources/preview-dashboard.webp" width="480" alt="BuddyRelay account pool & quota dashboard">
 </div>
 
 ---
 
-### 2. Multi-source account import
+### 2. Usage & multi-model analytics dashboard
+> Core: **direct official metering API reconciliation · 7-day multi-dimensional trends · model consumption ranking**
+> Live aggregation of total quota spent, request count, daily average consumption, and active models; visual breakdown of model share (GLM / DeepSeek / Hunyuan) and daily consumption trend charts.
+
+<div align="center">
+  <img src="resources/preview-usage-analysis.webp" width="560" alt="BuddyRelay usage & model analytics dashboard">
+</div>
+
+---
+
+### 3. Real-time detailed usage ledger
+> Core: **grouped by account · millisecond timestamps · per-request deduction audit**
+> Inspect every chat and completion request in real time, showing the exact model used, quota deducted, and request timestamp.
+
+<div align="center">
+  <img src="resources/preview-usage-detail.webp" width="560" alt="BuddyRelay detailed usage records">
+</div>
+
+---
+
+### 4. Full lifecycle growth automation
+> Core: **one-click check-in · one-click tasks**
+> The task center displays pet work countdown, check-in streak progress, mystery-box energy, and 20 official growth tasks; one-click registration and automatic reward claiming across all accounts.
+
+<div align="center">
+  <img src="resources/preview-tasks.webp" width="480" alt="BuddyRelay growth automation & trip dashboard">
+</div>
+
+---
+
+### 5. Multi-source account import
 > Official OAuth (web/QR), **one-click migration from Cockpit Tools (AES-256-GCM encrypted pools)**, local session extraction and JSON bulk import.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-import.webp" width="480" alt="BuddyRelay add-account modal">
+  <img src="resources/preview-import.webp" width="480" alt="BuddyRelay add-account modal">
 </div>
 
 ---
 
-### 3. Full lifecycle growth automation
-> Core: **one-click check-in · one-click tasks**
-> The task center shows pet work location, trip countdown and streak days at the top; dual-source task claiming, dependency self-healing, pet trips and reward auto-collection.
+### 6. Rules & smart scheduling settings
+> Core: **scheduled humanized check-in · 429 rate limit seamless auto-switch · max-quota priority strategy**
+> Custom daily check-in time with jitter window, linked task execution, and automatic smooth fallback to standby accounts on quota exhaustion or 429 rate limits.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-tasks.webp" width="480" alt="BuddyRelay growth automation & trip dashboard">
+  <img src="resources/preview-settings.webp" width="480" alt="BuddyRelay rules & smart scheduling settings">
 </div>
 
 ---

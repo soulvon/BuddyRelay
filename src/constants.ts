@@ -146,32 +146,37 @@ export const PATHS = {
 export const PATCH_V5 = {
   VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
-  // v5 特征码：v4 补丁无此标记，用于强制自愈升级
-  V5_MARKER: '/*__BYOK_V5_R2__*/',
+  // v5 特征码：R2/R3 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
+  V5_MARKER: '/*__BYOK_V5_R3__*/',
 
-  // 锚点 1: AM 构造函数注入全局会话实例
-  AM_ANCHOR: 'AM=class{constructor(t,e,i){',
-  AM_REPLACEMENT: 'AM=class{constructor(t,e,i){globalThis.__cbSession=this;',
+  // 锚点 1: 会话服务类构造函数注入全局会话实例
+  // 类名随宿主构建漂移 (AM -> HM)，硬编码类名必失效；
+  // 运行时以特征方法 GV_OLD 向前动态发现类定义头，SESSION_HOOK 为注入体
+  SESSION_HOOK: 'globalThis.__cbSession=this;',
 
   // 锚点 2: 放开 getV2ReconcileData 隔离，防止切号后历史会话丢失
+  // 可选步骤：宿主改动实现体时跳过（显式标注），由 __byokApplySwitch 的会话迁移兜底
+  // （切换时全量改写会话 userId 为目标 uid，getSessions 过滤天然命中）
   GV_OLD: 'getV2ReconcileData(t){const e=t?.userId;return e?{enabled:!0,sessions:Array.from(this._sessions.values()).filter(s=>s.userId===e||!s.userId).sort((s,n)=>n.updatedAt-s.updatedAt)}:{enabled:!0,sessions:[]}}',
   GV_NEW: 'getV2ReconcileData(t){return{enabled:!0,sessions:Array.from(this._sessions.values()).filter(s=>!this._isClawSession(s)&&s.deletedAt===void 0).sort((s,n)=>n.updatedAt-s.updatedAt)}}',
 
-  // 锚点 3: 放开 getSessions 隔离，保证全量会话常驻
+  // 锚点 3: 放开 getSessions 隔离，保证全量会话常驻（同上，可选步骤）
   GS_OLD: 'getSessions(t){const e=t?.limit??100,i=t?.offset??0,s=t?.userId;if(!s)return this.logService.trace("[CodeBuddySession] Get sessions: no userId provided, returning empty list"),{sessions:[],total:0,hasMore:!1};const n=Array.from(this._sessions.values()).filter(l=>l.deletedAt===void 0&&(l.userId===s||!l.userId)&&!this._isClawSession(l)).sort((l,d)=>d.updatedAt-l.updatedAt),r=n.length,o=n.slice(i,i+e),a=i+e<r,c=n.filter(l=>!l.userId).length;return c>0&&this.logService.info(`[CodeBuddySession] Get sessions: found ${c} legacy sessions without userId, will be migrated on next update`),this.logService.trace(`[CodeBuddySession] Get sessions: userId=${s}, limit=${e}, offset=${i}, total=${r}, returned=${o.length}, hasMore=${a}`),{sessions:o,total:r,hasMore:a}}',
   GS_NEW: 'getSessions(t){const e=t?.limit??100,i=t?.offset??0,s=t?.userId;const n=Array.from(this._sessions.values()).filter(l=>l.deletedAt===void 0&&!this._isClawSession(l)).sort((l,d)=>d.updatedAt-l.updatedAt),r=n.length,o=n.slice(i,i+e),a=i+e<r;return{sessions:o,total:r,hasMore:a}}',
 
-  // 锚点 4: 方法插入点（AuthMainService 中 getStorageKey 之后）
-  ANCHOR_METHOD_END: 'getStorageKey(){const e="tencent-cloud.coding-copilot",i=this.apiClient.storageKey;return`secret://${JSON.stringify({extensionId:e,key:i})}`}',
-  NEXT_METHOD: 'scheduleRefresh(e=0){',
+  // 锚点 4: watcher 挂载（healPatch 以语义签名正则 /async restoreSession\([^)]*\)\{/ 唯一匹配，
+  // 在其前插入 WATCHER_METHODS——restoreSession 定义前即类体内方法边界，插入合法。
+  // restoreSession 为宿主语义命名（非混淆产物），签名参数漂移由正则 [^)]* 免疫。
 
-  // 锚点 5: 启动挂载 watcher
-  ANCHOR_RESTORE: 'async restoreSession(){try{await this.storageService.whenReady;',
-  RESTORE_REPLACEMENT: 'async restoreSession(){this.startByokWatcher();try{await this.storageService.whenReady;',
+  // 锚点 5: watcher 启动（构造函数注入，healPatch 以 /constructor\([^)]*\)\{this\.instantiationService=/
+  // 唯一匹配后在其后注入 this.startByokWatcher();）。
+  // 不再依赖 restoreSession 时机：其前置 await ensureInitialized() 为网络初始化，
+  // 挂起或拒绝时 watcher 永不启动（2026-11-02 事故实证）。构造函数实例化必然执行。
+  // __byokStarted 防重入；构造首句时 logService 未赋值由 __byokLog 的 try/catch 保护。
 
-  // 注入的完整 WATCHER_METHODS 源码块 (v5 R2: 跨平台数据目录解析 / 非 Windows dir 软链 / 回执闭环)
+  // 注入的完整 WATCHER_METHODS 源码块 (v5 R3: 跨平台目录 / 非 Windows 软链 / 回执闭环 / 启动诊断黑匣子)
   WATCHER_METHODS:
-    '/*__BYOK_V5_R2__*/' +
+    '/*__BYOK_V5_R3__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
     '__byokDir(k){try{const pm=globalThis.__byokPath;if(!pm)return "";const h=process.env.HOME||process.env.USERPROFILE||"";const mac=process.platform==="darwin";const win=process.platform==="win32";if(k==="data"){if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_CONFIG_HOME||pm.join(h,".config");return process.env.APPDATA||pm.join(h,"AppData","Roaming")}if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_DATA_HOME||pm.join(h,".local","share");return process.env.LOCALAPPDATA||pm.join(h,"AppData","Local")}catch(e){return ""}}' +
     '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const f=pm.join(this.__byokDir("data"),"CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now();fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}catch(_){}}' +
@@ -229,17 +234,22 @@ export const PATCH_V5 = {
     '}' +
     'startByokWatcher(){' +
     'if(this.__byokStarted)return;this.__byokStarted=1;' +
+    'let fs=null,path=null;' +
+    'const dgw=(m)=>{try{fs.appendFileSync(path.join(process.env.APPDATA||"","CodeBuddy CN","byok-watcher.log"),Date.now()+" "+m+"\\n")}catch(_){}};' +
     '(async()=>{' +
     'try{' +
     'const fm=await import("fs"),pm=await import("path");' +
-    'const fs=fm.default||fm,path=pm.default||pm;' +
+    'fs=fm.default||fm;path=pm.default||pm;' +
     'globalThis.__byokFs=fs;globalThis.__byokPath=path;' +
+    'dgw("boot");' +
     'const f=path.join(this.__byokDir("data"),"CodeBuddy CN","byok-switch.json");' +
+    'dgw("watch "+f);' +
     'this.__byokLog("watcher on "+f);' +
     'setInterval(()=>{' +
     'fs.readFile(f,"utf8",(err,txt)=>{' +
-    'if(err)return;' +
+    'if(err){if(err.code!=="ENOENT")dgw("readErr "+err.message);return;}' +
     'fs.unlink(f,()=>{});' +
+    'dgw("cmd-in");' +
     'let cmd=null;' +
     'try{cmd=JSON.parse(txt)}catch(_){this.__byokLog("bad json");this.__byokReceipt({ok:!1,err:"bad_json",ts:0});return}' +
     'const s=cmd&&cmd.session;' +
@@ -250,7 +260,7 @@ export const PATCH_V5 = {
     'this.__byokApplySwitch(s,cmd.ts||0);' +
     '});' +
     '},2000);' +
-    '}catch(e){this.__byokLog("watcher err "+e.message)}' +
+    '}catch(e){dgw("err "+e.message);this.__byokLog("watcher err "+e.message)}' +
     '})()' +
     '}'
 } as const;

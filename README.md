@@ -6,7 +6,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -42,7 +42,7 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 
 ### 方式一：扩展面板安装（推荐）
 
-1. 下载最新版 `buddy-relay-1.1.0.vsix`；
+1. 下载最新版 `buddy-relay-1.2.0.vsix`；
 2. 打开 **CodeBuddy CN** 或 **WorkBuddy** 编辑器；
 3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
 4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
@@ -51,40 +51,70 @@ BuddyRelay 是一款面向 **CodeBuddy CN** 与 **WorkBuddy** 系列 IDE 的多�
 ### 方式二：命令行安装
 
 ```bash
-buddycn --install-extension buddy-relay-1.1.0.vsix --force
+buddycn --install-extension buddy-relay-1.2.0.vsix --force
 ```
 
 ---
 
 ## 🖼️ 界面预览
 
-全图形化沉浸操作，涵盖**多账号卡片流**、**实时算力看板**、**多种导入途径**与**全自动任务中心**：
+全图形化沉浸操作，涵盖**多账号卡片流**、**算力流水与模型用量分析**、**全自动任务中心**、**多源便捷导入**与**智能调度设置**：
 
 ### 1. 账号管理卡片流与配额仪表盘
 > 核心特性：**切号不关窗口 · 不重启编辑器 · 历史会话完全互通**  
-> 支持一键隐私脱敏、状态栏金币图标 🪙 实时显示、算力余额精准双包对账与低额度智能告警。
+> 支持两列卡片流排版、一键隐私脱敏、当前账号状态开关、算力余额精准双包对账与低额度智能告警。
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-dashboard.webp" width="480" alt="BuddyRelay 账号池与配额仪表盘">
+  <img src="resources/preview-dashboard.webp" width="480" alt="BuddyRelay 账号池与配额仪表盘">
 </div>
 
 ---
 
-### 2. 多源便捷账号导入
+### 2. 算力流水与多维模型用量分析看板
+> 核心特性：**穿透官方计量明细接口 · 7 天多维趋势 · 模型用量排行**  
+> 实时统计总消耗算力、请求总次数、日均消耗与涉及模型；直观呈现各模型用量占比（GLM / DeepSeek / 混元等）与每日消耗趋势柱状图。
+
+<div align="center">
+  <img src="resources/preview-usage-analysis.webp" width="560" alt="BuddyRelay 算力流水与模型用量分析看板">
+</div>
+
+---
+
+### 3. 今日明细流水精准追溯
+> 核心特性：**按账号折叠聚合 · 毫秒级时间戳 · 单次调用精确扣费记录**  
+> 实时抓取当日所有对话与补全请求，详细列出每次调用的模型、精确扣减算力与时间，账目清清楚楚。
+
+<div align="center">
+  <img src="resources/preview-usage-detail.webp" width="560" alt="BuddyRelay 今日明细流水记录">
+</div>
+
+---
+
+### 4. 全生命周期成长体系自动化
+> 核心特性：**一键签到 · 一键做任务**  
+> 任务中心直观展示宠物打工返航倒计时、连签进度条、盲盒能量与 20 项官方成长任务；支持全账号一键报名接单与达标奖励自动打捞。
+
+<div align="center">
+  <img src="resources/preview-tasks.webp" width="480" alt="BuddyRelay 成长体系自动化与出游看板">
+</div>
+
+---
+
+### 5. 多源便捷账号导入
 > 支持官方 OAuth 网页/扫码登录、**Cockpit Tools 本地 AES-256-GCM 密文池一键迁移**、本地已登录会话直读与 JSON 批量导入。
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-import.webp" width="480" alt="BuddyRelay 添加账号模态框">
+  <img src="resources/preview-import.webp" width="480" alt="BuddyRelay 添加账号模态框">
 </div>
 
 ---
 
-### 3. 全生命周期成长体系自动化
-> 核心特性：**一键签到 · 一键做任务**  
-> 任务中心顶部直观展示宠物打工地点、出游倒计时与连签天数；自动双源报名、前置依赖自愈、打工收成与达标奖励自动打捞入袋。
+### 6. 规则与智能调度设置
+> 核心特性：**定点拟人签到 · 429 速率限制自动无感切号 · 满额度优先策略**  
+> 支持自定义定时签到时间与随机抖动窗口、成长任务联动执行、额度耗尽或遭遇 429 速率限制时自动平滑切至备用账号。
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/soulvon/BuddyRelay/main/resources/preview-tasks.webp" width="480" alt="BuddyRelay 成长体系自动化与出游看板">
+  <img src="resources/preview-settings.webp" width="480" alt="BuddyRelay 规则与智能调度设置">
 </div>
 
 ---

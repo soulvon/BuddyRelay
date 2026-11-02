@@ -24,6 +24,27 @@ let tag = '';
 try { tag = execSync('git describe --tags --abbrev=0', { cwd: ROOT, encoding: 'utf8' }).trim(); } catch { /* 无 tag */ }
 gate('R1.1 最新 git tag == package.json 版本 (防更新引擎死循环)', tag === `v${V}`, tag === '');
 
+// ── R1.2 版本号必须严格大于历史所有已打包 vsix（防同版本覆盖，2026-11-02 事故） ──
+const parseVer = (s) => {
+  const m = String(s).match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+};
+const cmpVer = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
+const curVer = parseVer(V) || [0, 0, 0];
+const historyVsix = fs.readdirSync(ROOT).filter((f) => /^buddy-relay-\d+\.\d+\.\d+\.vsix$/.test(f));
+const olderVersions = historyVsix
+  .map((f) => ({ f, v: parseVer(f.replace(/^buddy-relay-/, '').replace(/\.vsix$/, '')) }))
+  .filter((x) => x.v && cmpVer(curVer, x.v) > 0);
+const sameVersionOthers = historyVsix.filter((f) => f === `buddy-relay-${V}.vsix`);
+const newerPackages = historyVsix.filter(
+  (f) => !olderVersions.some((x) => x.f === f) && f !== `buddy-relay-${V}.vsix`
+);
+gate(
+  'R1.2 版本号递增: 当前版本是历史最高（同版本重复打包须走 package:same）' +
+    (newerPackages.length ? ` — 存在更高版本包: ${newerPackages.join(', ')}` : ''),
+  newerPackages.length === 0
+);
+
 // ── R2 打包卫生 (对当前版本 vsix) ──
 const vsixPath = path.join(ROOT, `buddy-relay-${V}.vsix`);
 if (fs.existsSync(vsixPath)) {
@@ -41,6 +62,25 @@ if (fs.existsSync(vsixPath)) {
   gate('R2.7 包体瘦身: vsix 严格排除 node_modules (零打包依赖)', !names.some(n => /(^|\/)node_modules\//.test(n)));
   gate('R2.8 包体瘦身: vsix 严格排除非运行时预览/打赏大图 resources/(preview-*|qq-group|wechat)', !names.some(n => /resources\/(preview-|qq-group|wechat)/.test(n)));
   gate('R2.9 包体瘦身: vsix 严格排除 .github/ 与 AGENTS.md', !names.some(n => /(^|\/)(\.github|AGENTS\.md)/.test(n)));
+
+  // R2.10 包体新鲜度：源码改动必须晚于 vsix 打包时间之前（防"改了没重打"）
+  const vsixMtime = fs.statSync(vsixPath).mtimeMs;
+  const watchedDirs = [path.join(ROOT, 'src'), path.join(ROOT, 'resources', 'webview')];
+  let newestSrc = { file: '', mtime: 0 };
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(p); continue; }
+      const m = fs.statSync(p).mtimeMs;
+      if (m > newestSrc.mtime) newestSrc = { file: path.relative(ROOT, p), mtime: m };
+    }
+  };
+  watchedDirs.forEach((d) => { if (fs.existsSync(d)) walk(d); });
+  gate(
+    'R2.10 包体新鲜度: vsix 不早于源码最后修改（改了代码必须重打包）' +
+      (newestSrc.mtime > vsixMtime ? ` — 源码 ${newestSrc.file} 比 vsix 新` : ''),
+    newestSrc.mtime <= vsixMtime
+  );
 } else {
   gate(`R2.* vsix buddy-relay-${V}.vsix 不存在 (先 vsce package)`, false);
 }

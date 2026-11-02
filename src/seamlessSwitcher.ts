@@ -20,6 +20,8 @@ export interface PatchApplyResult {
   success: boolean;
   mainJsPath: string;
   backupCreated: boolean;
+  /** 本次是否实际重打了 main.js（true 时运行中的 main 进程仍是旧代码，需完全重启一次） */
+  repatched?: boolean;
   message: string;
   error?: string;
 }
@@ -45,12 +47,33 @@ export interface SwitchReceipt {
   message: string;
 }
 
+export interface DoctorCheck {
+  id: string;
+  ok: boolean;
+  detail: string;
+}
+
+export type DoctorStatus =
+  | 'healthy'
+  | 'needs_full_restart'
+  | 'repaired_needs_full_restart'
+  | 'main_missing'
+  | 'repair_failed';
+
+export interface DoctorReport {
+  status: DoctorStatus;
+  checks: DoctorCheck[];
+  message: string;
+}
+
 export interface SwitchResult {
   success: boolean;
   account: CodeBuddyAccount;
   patchResult: PatchApplyResult;
   junctionResult: JunctionResult;
   receipt?: SwitchReceipt;
+  /** 补丁本次重打：指令已就位，完全重启 CodeBuddy 后 watcher 自动消费完成切换 */
+  needsFullRestart?: boolean;
   message: string;
   error?: string;
 }
@@ -118,12 +141,13 @@ export class SeamlessSwitcher {
       ? fs.readFileSync(originPath, 'utf8')
       : content;
 
-    const amCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.AM_ANCHOR), 'g')) || []).length;
+    const amCount = this.resolveSessionClassAnchor(checkTargetContent) ? 1 : 0;
     const gvCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.GV_OLD), 'g')) || []).length;
     const gsCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.GS_OLD), 'g')) || []).length;
-    const restoreCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.ANCHOR_RESTORE), 'g')) || []).length;
+    const restoreCount = (checkTargetContent.match(/async restoreSession\([^)]*\)\{/g) || []).length;
 
-    const anchorsValid = isPatched || (amCount === 1 && gvCount === 1 && gsCount === 1 && restoreCount === 1);
+    // 必需锚点 = 会话服务类头 + restoreSession 语义签名；GV/GS 为可选步骤不参与硬校验
+    const anchorsValid = isPatched || (amCount === 1 && restoreCount === 1);
 
     return {
       mainJsFound: true,
@@ -166,7 +190,7 @@ export class SeamlessSwitcher {
 
     const check = this.checkPatch(mainPath);
 
-    // 若已经打好补丁且语法自检正常，直接放行
+    // 若已经打好补丁且语法自检正常，直接放行（运行中的 main 进程与磁盘一致，无需重启）
     if (check.isPatched) {
       const syntaxCheck = this.validateSyntax(mainPath);
       if (syntaxCheck.valid) {
@@ -174,6 +198,7 @@ export class SeamlessSwitcher {
           success: true,
           mainJsPath: mainPath,
           backupCreated: check.hasOriginBackup,
+          repatched: false,
           message: t('sw.patchHealthy')
         };
       }
@@ -193,8 +218,11 @@ export class SeamlessSwitcher {
     let src = fs.readFileSync(originPath, 'utf8');
 
     // 3. 逐级注入 Patch v5
-    // (1) AM 构造函数注入全局会话
-    if (!src.includes(PATCH_V5.AM_ANCHOR)) {
+    const skipNotes: string[] = [];
+
+    // (1) 会话服务类构造函数注入全局会话（类名随宿主构建漂移 AM->HM，以特征方法动态发现类头；失败=阻断）
+    const sessionAnchor = this.resolveSessionClassAnchor(src);
+    if (!sessionAnchor || src.split(sessionAnchor).length - 1 !== 1) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -203,50 +231,28 @@ export class SeamlessSwitcher {
         error: 'AM_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V5.AM_ANCHOR, PATCH_V5.AM_REPLACEMENT);
+    src = src.replace(sessionAnchor, () => sessionAnchor + PATCH_V5.SESSION_HOOK);
 
-    // (2) 放开 getV2ReconcileData 隔离
-    if (!src.includes(PATCH_V5.GV_OLD)) {
-      return {
-        success: false,
-        mainJsPath: mainPath,
-        backupCreated,
-        message: t('sw.anchorGvMissing'),
-        error: 'GV_ANCHOR_MISSING'
-      };
+    // (2)(3) 放开会话隔离（可选步骤：宿主改动实现体时跳过并显式标注，
+    // 由 __byokApplySwitch 的会话迁移兜底——切换时全量改写会话 userId 为目标 uid）
+    const optionalMissing: string[] = [];
+    if (src.includes(PATCH_V5.GV_OLD)) {
+      src = src.replace(PATCH_V5.GV_OLD, () => PATCH_V5.GV_NEW);
+    } else {
+      optionalMissing.push('getV2ReconcileData');
     }
-    src = src.replace(PATCH_V5.GV_OLD, PATCH_V5.GV_NEW);
-
-    // (3) 放开 getSessions 隔离
-    if (!src.includes(PATCH_V5.GS_OLD)) {
-      return {
-        success: false,
-        mainJsPath: mainPath,
-        backupCreated,
-        message: t('sw.anchorGsMissing'),
-        error: 'GS_ANCHOR_MISSING'
-      };
+    if (src.includes(PATCH_V5.GS_OLD)) {
+      src = src.replace(PATCH_V5.GS_OLD, () => PATCH_V5.GS_NEW);
+    } else {
+      optionalMissing.push('getSessions');
     }
-    src = src.replace(PATCH_V5.GS_OLD, PATCH_V5.GS_NEW);
-
-    // (4) 注入 WATCHER_METHODS (getStorageKey 之后)
-    const expectedMethodEnd = PATCH_V5.ANCHOR_METHOD_END + PATCH_V5.NEXT_METHOD;
-    if (!src.includes(expectedMethodEnd)) {
-      return {
-        success: false,
-        mainJsPath: mainPath,
-        backupCreated,
-        message: t('sw.anchorMethodMissing'),
-        error: 'WATCHER_ANCHOR_MISSING'
-      };
+    if (optionalMissing.length > 0) {
+      skipNotes.push(t('sw.optionalAnchorSkipped', optionalMissing.join(', ')));
     }
-    src = src.replace(
-      expectedMethodEnd,
-      PATCH_V5.ANCHOR_METHOD_END + PATCH_V5.WATCHER_METHODS + PATCH_V5.NEXT_METHOD
-    );
 
-    // (5) 注入 restoreSession 启动 watcher
-    if (!src.includes(PATCH_V5.ANCHOR_RESTORE)) {
+    // (4) 挂载 WATCHER_METHODS（restoreSession 定义前即类体内方法边界，插入合法；失败=阻断）
+    const restoreMatches = src.match(/async restoreSession\([^)]*\)\{/g) || [];
+    if (restoreMatches.length !== 1) {
       return {
         success: false,
         mainJsPath: mainPath,
@@ -255,7 +261,25 @@ export class SeamlessSwitcher {
         error: 'RESTORE_ANCHOR_MISSING'
       };
     }
-    src = src.replace(PATCH_V5.ANCHOR_RESTORE, PATCH_V5.RESTORE_REPLACEMENT);
+    src = src.replace(restoreMatches[0], () => PATCH_V5.WATCHER_METHODS + restoreMatches[0]);
+
+    // (5) 构造函数注入 watcher 启动（restoreSession 前置 await ensureInitialized 为网络初始化，
+    // 挂起或拒绝时 watcher 永不启动——2026-11-02 事故实证；构造函数实例化必然执行，__byokStarted 防重入）
+    // lookahead 锚定：匹配止于 "{"，注入落在构造函数体首句，不破坏首个字段赋值。
+    // 校验与替换必须用同一正则对象——lookahead 语义只存在于正则匹配中，
+    // 若以匹配文本做字面 replace，会撞上同签名但特征不符的其他类（真实宿主含多个 constructor(e,i,s,n)）
+    const bootRe = /constructor\([^)]*\)\{(?=this\.instantiationService=)/g;
+    const bootMatches = src.match(bootRe) || [];
+    if (bootMatches.length !== 1) {
+      return {
+        success: false,
+        mainJsPath: mainPath,
+        backupCreated,
+        message: t('sw.anchorRestoreMissing'),
+        error: 'WATCHER_BOOT_ANCHOR_MISSING'
+      };
+    }
+    src = src.replace(bootRe, (m0) => m0 + 'this.startByokWatcher();');
 
     // 4. 原子安全写入：文件名必须以 .js 结尾，兼容现代 Node.js ESM/CJS loader 扩展名校验规范
     const tmpWritePath = `${mainPath}.tmp_${Date.now()}.js`;
@@ -294,7 +318,10 @@ export class SeamlessSwitcher {
       success: true,
       mainJsPath: mainPath,
       backupCreated,
-      message: t('sw.patchDone')
+      repatched: true,
+      message: skipNotes.length > 0
+        ? `${t('sw.patchDone')} ${skipNotes.join(' ')}`
+        : t('sw.patchDone')
     };
   }
 
@@ -682,6 +709,21 @@ export class SeamlessSwitcher {
       };
     }
 
+    // 3.5 补丁本次重打：运行中的 main 进程仍是旧代码，等待回执必然超时。
+    // 指令已写入磁盘，完全重启 CodeBuddy 后 watcher 自动消费完成切换；
+    // needsFullRestart 标记供 UI 层弹引导模态框（确认/取消 + 帮用户直接退出）
+    if (patchResult.repatched) {
+      return {
+        success: false,
+        account,
+        patchResult,
+        junctionResult,
+        needsFullRestart: true,
+        message: t('sw.repatchPending', account.nickname || account.email || account.uid),
+        error: 'NEEDS_FULL_RESTART'
+      };
+    }
+
     // 4. 等待宿主回执（v5 闭环；v4 宿主降级为消费确认）
     const receipt = await this.waitForSwitchReceipt(cmdTs);
 
@@ -704,6 +746,100 @@ export class SeamlessSwitcher {
         : t('sw.notEffective', receipt.message),
       error: receipt.ok ? undefined : 'HOST_RECEIPT_FAILED'
     };
+  }
+
+  /**
+   * 动态发现会话服务类构造函数锚点
+   * 宿主每次构建混淆类名漂移（AM -> HM），硬编码类名必失效。
+   * 会话服务类必含 getV2ReconcileData 特征方法（GV_OLD），取其前方最近的
+   * "X=class{constructor(...)}{" 定义头即为该类锚点。
+   * 返回 null 表示锚点缺失（宿主结构大改，显式失败，不做静默兜底）。
+   */
+  private resolveSessionClassAnchor(src: string): string | null {
+    // 特征定位: GV_OLD 完整方法体优先; 宿主改动实现体时退化为语义方法签名（非混淆命名, 参数漂移免疫）
+    let idx = src.indexOf(PATCH_V5.GV_OLD);
+    if (idx < 0) {
+      const sigMatches = src.match(/getV2ReconcileData\([^)]*\)\{/g) || [];
+      if (sigMatches.length !== 1) {
+        return null;
+      }
+      idx = src.indexOf(sigMatches[0]);
+    }
+    // 窗口须覆盖类头到特征方法的整个方法区（实测宿主 2026-10-30 版约 8.5K 字符），
+    // 取窗口内最后一个类头即为所属类，窗口过大无副作用
+    const window = src.slice(Math.max(0, idx - 20000), idx);
+    const classDefRe = /[A-Za-z_$][\w$]*=class\{constructor\([^)]*\)\{/g;
+    let last: RegExpExecArray | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = classDefRe.exec(window)) !== null) {
+      last = m;
+    }
+    return last ? last[0] : null;
+  }
+
+  /**
+   * 切号链路自检：main.js 定位 → 磁盘补丁 → watcher 运行痕迹 → 指令状态
+   * watcher 活性判定：诊断日志 mtime 必须不早于 main.js mtime——
+   * 日志不存在或比补丁旧，说明运行中的 main 进程没有加载当前补丁（需完全重启一次）
+   */
+  public runDoctor(targetPath?: string, logOverridePath?: string): DoctorReport {
+    const checks: DoctorCheck[] = [];
+    const mainPath = targetPath || this.locateMainJs();
+    if (!mainPath || !fs.existsSync(mainPath)) {
+      checks.push({ id: 'main_js', ok: false, detail: t('doctor.mainMissing') });
+      return { status: 'main_missing', checks, message: t('doctor.mainMissing') };
+    }
+    checks.push({ id: 'main_js', ok: true, detail: mainPath });
+
+    let src: string;
+    try {
+      src = fs.readFileSync(mainPath, 'utf8');
+    } catch (err: any) {
+      checks.push({ id: 'main_js', ok: false, detail: t('doctor.mainUnreadable', err.message) });
+      return { status: 'main_missing', checks, message: t('doctor.mainUnreadable', err.message) };
+    }
+    const hasR3 = src.includes(PATCH_V5.V5_MARKER);
+    checks.push({ id: 'patch', ok: hasR3, detail: hasR3 ? t('doctor.patchOk') : t('doctor.patchMissing') });
+
+    let watcherAlive = false;
+    let logMtime = 0;
+    const logPath = logOverridePath || path.join(PATHS.CODEBUDDY_APPDATA_DIR, 'byok-watcher.log');
+    try {
+      logMtime = fs.statSync(logPath).mtimeMs;
+      const mainMtime = fs.statSync(mainPath).mtimeMs;
+      // 1s 容差：吸收打补丁与重启之间秒级时钟/写入顺序抖动
+      watcherAlive = logMtime >= mainMtime - 1000;
+    } catch (_) {
+      watcherAlive = false;
+    }
+    checks.push({
+      id: 'watcher',
+      ok: watcherAlive,
+      detail: watcherAlive ? t('doctor.watcherAlive') : t('doctor.watcherDown')
+    });
+
+    const cmdPending = fs.existsSync(PATHS.BYOK_SWITCH_FILE);
+    checks.push({
+      id: 'command',
+      ok: true,
+      detail: cmdPending ? t('doctor.cmdPending') : t('doctor.cmdIdle')
+    });
+
+    if (!hasR3) {
+      // 自动修复：重打补丁，随后同样需要完全重启加载
+      const rep = this.healPatch(mainPath);
+      if (!rep.success) {
+        checks.push({ id: 'repair', ok: false, detail: rep.message });
+        return { status: 'repair_failed', checks, message: rep.message };
+      }
+      checks.push({ id: 'repair', ok: true, detail: t('doctor.patchRepaired') });
+      return { status: 'repaired_needs_full_restart', checks, message: t('doctor.repairedNeedsRestart') };
+    }
+
+    if (!watcherAlive) {
+      return { status: 'needs_full_restart', checks, message: t('doctor.needsRestart') };
+    }
+    return { status: 'healthy', checks, message: t('doctor.healthy') };
   }
 
   private escapeRegExp(string: string): string {

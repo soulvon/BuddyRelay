@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as child_process from 'child_process';
 import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount, QuotaPackageItem, maskName, maskUid } from './accountStore';
 import { SeamlessSwitcher } from './seamlessSwitcher';
@@ -14,6 +15,7 @@ import { t, getLangDict } from './i18n';
 import { detectHostEdition } from './host';
 import { isCnAccount } from './domain';
 import { readHostLoginUid } from './hostSession';
+import { PATHS } from './constants';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -80,6 +82,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.handleSwitchAccount(message.accountId);
           break;
 
+        case 'runDoctor':
+          await this.handleRunDoctor();
+          break;
+
+        case 'restartApp':
+          await this.handleRestartApp();
+          break;
+
         case 'checkinAccount':
           await this.handleCheckinAccount(message.accountId);
           break;
@@ -102,6 +112,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         case 'refreshStatus':
           await this.handleRefreshStatus();
+          break;
+
+        case 'refreshModelStats':
+          await this.handleRefreshModelStats(Number(message.days) || 7, message.force === true);
           break;
 
         case 'importJson':
@@ -299,7 +313,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         hostEdition: detectHostEdition(),
         allTags: this.store.getAllTags(),
         usageSummary: this.usageTracker?.getDailySummary(enabledAccountCount),
-        recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || []
+        recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || [],
+        modelStats: this.usageTracker?.getModelStatsSnapshot() || null
       }
     });
   }
@@ -318,17 +333,116 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const res = await this.switcher.switchAccount(target, this.store);
+      if (res.needsFullRestart) {
+        // 补丁本次重打：指令已就位，重启后自动完成切号。模态框引导用户一键完全退出
+        await this.promptFullRestart();
+        return;
+      }
       if (res.success) {
         this.sendNotify('success',
           t('msg.switched', target.nickname || target.email)
         );
       } else {
+        // 切号失败自动跑链路自检：可引导的直接弹重启模态框，其余原样报错
+        const doc = this.switcher.runDoctor();
+        if (doc.status === 'needs_full_restart' || doc.status === 'repaired_needs_full_restart') {
+          await this.promptFullRestart();
+          return;
+        }
         this.sendNotify('error', t('err.switchAbnormal', res.message));
       }
     } catch (err: any) {
       this.sendNotify('error', t('err.switchFailed', err.message));
     } finally {
       this.setOperating(false);
+    }
+  }
+
+  /**
+   * 链路自检入口（工具栏按钮）：按检查结果分派处理
+   */
+  public async handleRunDoctor(): Promise<void> {
+    const doc = this.switcher.runDoctor();
+    if (doc.status === 'healthy') {
+      this.sendNotify('success', doc.message);
+      return;
+    }
+    if (doc.status === 'needs_full_restart' || doc.status === 'repaired_needs_full_restart') {
+      await this.promptFullRestart();
+      return;
+    }
+    this.sendNotify('error', doc.message);
+  }
+
+  /**
+   * 完全重启引导：确认/取消，确认则直接帮用户退出整个应用。
+   * 仅在补丁安装/升级后需要一次；之后切号均为无感热切，不再弹出。
+   */
+  private async promptFullRestart(): Promise<void> {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.postMessage({ command: 'showRestartModal' });
+  }
+
+  /**
+   * 一键自动重启：派脱离助手进程等主进程退出后拉起 CodeBuddy，再发起退出。
+   * 用户点确认即完成"退出 + 重新打开"，无需自己找图标。
+   */
+  public async handleRestartApp(): Promise<void> {
+    this.spawnRestartHelper();
+    await vscode.commands.executeCommand('workbench.action.quit');
+  }
+
+  /**
+   * 派发完全重启助手（detached，主进程退出后自动拉起宿主）。
+   * helper 以 ELECTRON_RUN_AS_NODE 运行（同 execPath 的 Node 模式），
+   * 轮询主进程 PID（扩展宿主的父进程）消失后启动宿主可执行文件。
+   */
+  private spawnRestartHelper(): void {
+    try {
+      const dir = PATHS.RELAY_DIR;
+      fs.mkdirSync(dir, { recursive: true });
+      const helperPath = path.join(dir, 'restart-helper.js');
+      const logPath = path.join(dir, 'restart-helper.log').replace(/\\/g, '\\\\');
+      fs.writeFileSync(helperPath, [
+        "const { spawn } = require('child_process');",
+        "const fs = require('fs');",
+        'const pid = Number(process.argv[2]);',
+        'const exe = process.argv[3];',
+        `const logPath = '${logPath}';`,
+        "const log = m => { try { fs.appendFileSync(logPath, Date.now() + ' ' + m + '\\n'); } catch (_) {} };",
+        "log('wait pid=' + pid + ' exe=' + exe);",
+        'const t0 = Date.now();',
+        'const timer = setInterval(() => {',
+        '  let alive = true;',
+        '  try { process.kill(pid, 0); } catch { alive = false; }',
+        '  if (alive && Date.now() - t0 < 120000) return;',
+        '  clearInterval(timer);',
+        '  if (!alive) {',
+        '    setTimeout(() => {',
+        "      try { spawn(exe, [], { detached: true, stdio: 'ignore' }).unref(); log('relaunched'); }",
+        "      catch (e) { log('relaunch-failed ' + e.message); }",
+        '      process.exit(0);',
+        '    }, 800);',
+        '  } else {',
+        "    log('timeout waiting exit');",
+        '    process.exit(0);',
+        '  }',
+        '}, 400);',
+        ''
+      ].join('\n'), 'utf8');
+
+      const exe = process.execPath;
+      const child = child_process.spawn(exe, [helperPath, String(process.ppid), exe], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+      });
+      child.unref();
+    } catch (_) {
+      // 助手派发失败不阻断退出：最坏情况用户需手动重新打开
     }
   }
 
@@ -488,6 +602,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
       })
       .catch(() => {});
+    // 模型用量统计跟随刷新（内部自带 3 分钟节流与历史天一次性同步，重复调度无害）
+    void this.usageTracker
+      .refreshModelStats(eligible, { force })
+      .then((changed) => {
+        if (changed) {
+          this.postStateToWebview();
+        }
+      })
+      .catch(() => {});
+  }
+
+  /**
+   * 模型用量统计拉取（侧栏切换时间范围或手动刷新时触发）
+   * 历史天按账号一次性同步，之后只补今天；完成后推送最新快照
+   */
+  private async handleRefreshModelStats(days: number, force: boolean): Promise<void> {
+    if (!this.usageTracker) {
+      return;
+    }
+    const eligible = this.store
+      .getAll()
+      .filter((a) => a.accessToken && a.uid)
+      .map((a) => ({ id: a.id, token: a.accessToken || '', uid: a.uid || '' }));
+    if (!eligible.length) {
+      return;
+    }
+    try {
+      const changed = await this.usageTracker.refreshModelStats(eligible, { days, force });
+      if (changed) {
+        this.postStateToWebview();
+      }
+    } catch (err: any) {
+      console.warn('[SidebarProvider] 模型统计拉取失败:', err.message);
+    }
   }
 
   public async handleRefreshStatus(): Promise<void> {
