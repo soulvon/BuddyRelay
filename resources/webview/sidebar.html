@@ -531,35 +531,116 @@
       border-color: var(--tone-warn, #96690c) !important;
     }
 
-    .usage-item {
+    /* 今日流水：整块列表，行为单位，禁多层卡片堆叠 */
+    .usage-list-head {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 6px;
-      font-size: 10.5px;
-      padding: 4px 6px;
-      border-radius: 4px;
-      background: var(--subtle-bg);
-      border: 1px solid var(--card-border);
+      padding: 0 2px;
     }
-    .usage-item-time {
-      font-family: var(--font-mono) !important;
-      color: var(--muted);
-      font-size: 10px;
-      flex-shrink: 0;
-      letter-spacing: -0.2px;
-    }
-    .usage-item-name {
+    .usage-list-title {
+      font-size: 12px;
       font-weight: 600;
       color: var(--vscode-foreground);
-      max-width: 68px;
+    }
+    .usage-list-count {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-list {
+      display: flex;
+      flex-direction: column;
+      max-height: 268px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--ui-surface-raised, rgba(255, 255, 255, 0.02));
+    }
+    .usage-list-empty {
+      padding: 14px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* 账号组：组头一行汇总，点开看该号明细 */
+    .usage-group + .usage-group {
+      border-top: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    }
+    .usage-group-head {
+      display: grid;
+      grid-template-columns: 6px minmax(0, 1fr) auto auto 12px;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 10px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-family: var(--font-sans);
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 0.16s ease;
+    }
+    .usage-group-head:hover { background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent); }
+    .usage-group-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
+    }
+    .usage-group.is-active .usage-group-dot { background: var(--ac-emerald, #10b981); }
+    .usage-group-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .usage-group-meta {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-group-sum {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--gh-red, #ef4444);
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-group-caret { color: var(--muted); transition: transform 0.16s ease; }
+    .usage-group.is-open .usage-group-caret { transform: rotate(180deg); }
+    .usage-group-body { display: none; padding-bottom: 4px; }
+    .usage-group.is-open .usage-group-body { display: block; }
+
+    .usage-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 30px;
+      padding: 5px 10px 5px 24px;
+      font-size: 12px;
+      box-sizing: border-box;
+      transition: background-color 0.16s ease;
+    }
+    .usage-item:hover { background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent); }
+    .usage-item-time {
+      font-family: var(--font-sans) !important;
+      font-variant-numeric: tabular-nums !important;
+      font-size: 12px;
+      color: var(--muted);
       flex-shrink: 0;
     }
-    .usage-item-title {
-      flex: 1;
-      color: var(--muted);
+    .usage-item-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -567,13 +648,17 @@
     .usage-item-delta {
       font-family: var(--font-sans) !important;
       font-variant-numeric: tabular-nums !important;
+      font-size: 12px;
       font-weight: 600;
+      letter-spacing: 0;
+      padding: 1px 7px;
+      border-radius: 5px;
       flex-shrink: 0;
-      letter-spacing: -0.2px;
+      text-align: right;
     }
-    .usage-item-delta.is-plus { color: var(--ac-emerald, #10b981); }
-    .usage-item-delta.is-minus { color: var(--gh-red, #ef4444); }
-    .usage-item-delta.is-info { color: var(--ac-blue, #3b82f6); }
+    .usage-item-delta.is-plus { color: var(--ac-emerald, #10b981); background: color-mix(in srgb, var(--ac-emerald, #10b981) 12%, transparent); }
+    .usage-item-delta.is-minus { color: var(--gh-red, #ef4444); background: color-mix(in srgb, var(--gh-red, #ef4444) 11%, transparent); }
+    .usage-item-delta.is-info { color: var(--ac-blue, #3b82f6); background: color-mix(in srgb, var(--ac-blue, #3b82f6) 12%, transparent); }
 
     .version-tag-pill {
       font-size: 10px !important;
@@ -780,14 +865,15 @@
     }
 
     .task-drawer-btn {
-      height: 22px;
-      padding: 0 6px;
-      font-size: 10px;
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
       border: 1px solid var(--card-border);
       border-radius: var(--radius-sm);
       background: transparent;
       color: var(--muted);
       cursor: pointer;
+      font-family: var(--font-sans);
     }
 
     .task-drawer-btn:hover {
@@ -799,9 +885,183 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
-      max-height: 140px;
+      max-height: 156px;
       overflow-y: auto;
     }
+
+    /* 任务中心：紧凑统计行（任务数 / 已完成 · 可领取） */
+    .task-stats-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 2px;
+    }
+    .task-stat {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+    .task-stat b {
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--vscode-foreground);
+    }
+    .task-stat b.is-ok { color: var(--tone-ok); }
+    .task-stat i {
+      font-style: normal;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .task-stat-divider {
+      width: 1px;
+      height: 12px;
+      background: var(--card-border);
+    }
+
+    /* 任务中心：成长资产看板 */
+    .task-asset {
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--card-bg);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .task-asset-main {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .task-asset-text {
+      flex: 1;
+      min-width: 0;
+      font-weight: 500;
+      color: var(--vscode-foreground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-asset-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 6px;
+      border-top: 1px dashed var(--card-border);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .task-asset-meta > div {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .task-asset-meta span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 任务中心：单条任务卡（标题/状态 + 进度），不复用账号卡片 */
+    .task-item {
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--ui-surface-raised, rgba(255, 255, 255, 0.02));
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .task-item.is-claimed { background: transparent; }
+    .task-item-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .task-item-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-badge {
+      flex: none;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.5;
+      padding: 1px 7px;
+      border-radius: 5px;
+    }
+    .task-badge.is-ok {
+      color: var(--tone-ok);
+      background: var(--tone-ok-soft);
+      border: 1px solid var(--tone-ok-line);
+    }
+    .task-badge.is-warn {
+      color: var(--tone-warn);
+      background: var(--tone-warn-soft);
+      border: 1px solid var(--tone-warn-line);
+    }
+    .task-badge.is-muted {
+      color: var(--muted);
+      background: var(--subtle-bg);
+      border: 1px solid var(--card-border);
+    }
+    .task-item-foot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .task-item-bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--subtle-bg);
+      overflow: hidden;
+    }
+    .task-item-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 2px;
+      background: var(--ac-emerald, #10b981);
+    }
+    .task-item-bar.is-warn i { background: var(--ac-amber, #f59e0b); }
+    /* 已领取的进度条弱化，让进行中/可领取的条目更醒目 */
+    .task-item.is-claimed .task-item-bar i { background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent); }
+    .task-item-num {
+      flex: none;
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .task-item-btn {
+      flex: none;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 1px solid var(--tone-ok-line);
+      background: var(--tone-ok-soft);
+      color: var(--tone-ok);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .task-item-btn:hover { background: color-mix(in srgb, var(--tone-ok) 20%, transparent); }
+    .task-item-btn.is-accept {
+      border-color: var(--card-border);
+      background: var(--subtle-bg);
+      color: var(--vscode-foreground);
+    }
+    .task-item-btn.is-accept:hover { background: var(--hover-bg); }
 
     /* 结果统计指标 4 格网格 */
     .task-summary-grid {
@@ -1035,6 +1295,11 @@
       justify-content: center !important;
       flex-shrink: 0 !important;
     }
+
+    /* 刷新中的旋转反馈 */
+    #btnRefreshUsage.is-spinning svg {
+      animation: spin 0.8s linear infinite;
+    }
   </style>
 </head>
 <body>
@@ -1090,7 +1355,7 @@
               <!-- 统计与流水对账折叠抽屉（位于“我的账号”总览内，支持默认折叠/展开） -->
               <details class="list-details" id="usageDetails" style="margin-top: 8px; border-top: 1px dashed var(--card-border); padding-top: 4px;">
                 <summary class="list-summary" style="padding: 4px 2px; cursor: pointer;">
-                  <div style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--vscode-foreground);">
+                  <div style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--vscode-foreground);">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
                       <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                     </svg>
@@ -1101,23 +1366,18 @@
                     <span id="usageAwardedBadge" class="usage-badge-pill is-plus">{{i:js.gainedBadgePlain}}</span>
                     <span id="usageConsumedBadge" class="usage-badge-pill is-minus">{{i:js.consumedBadgePlain}}</span>
                   </div>
-                  <button class="icon-btn" id="btnClearUsage" title="{{i:ui.clearUsageTitle}}" style="margin-left:4px;" onclick="event.stopPropagation();">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg>
+                  <button class="icon-btn" id="btnRefreshUsage" title="{{i:ui.refreshStatsTitle}}" style="margin-left:4px;" onclick="event.stopPropagation();">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                   </button>
                 </summary>
-                <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:8px;">
-                  <!-- 号池大盘状态统计 -->
-                  <div class="summary-status-grid" id="summaryStatusGrid" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--subtle-bg);padding:6px 10px;">
-                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.activeDisabled}}</span><span class="summary-status-val" id="summaryActiveDisabled">0 / 0</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.highQuotaAccounts}}</span><span class="summary-status-val ok" id="summaryHighQuota">0</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.lowQuotaAccounts}}</span><span class="summary-status-val warn" id="summaryLowQuota">0</span></div>
-                    <div class="summary-status-row"><span class="summary-status-label">{{i:ui.lastRefresh}}</span><span class="summary-status-val off" id="summaryLastRefresh">--</span></div>
-                  </div>
-
+                <div class="list-body" style="padding-top: 6px;display:flex;flex-direction:column;gap:6px;">
                   <!-- 今日流水记录列表 -->
-                  <div style="font-size:10.5px;font-weight:600;color:var(--muted);padding-left:2px;">{{i:ui.usageRecords}}</div>
-                  <div id="usageRecordsList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;padding-right:2px;">
-                    <div class="empty-state" style="padding:10px;font-size:11px;">{{i:ui.usageEmpty}}</div>
+                  <div class="usage-list-head">
+                    <span class="usage-list-title">{{i:ui.usageRecords}}</span>
+                    <span class="usage-list-count" id="usageRecordsCount"></span>
+                  </div>
+                  <div id="usageRecordsList" class="usage-list">
+                    <div class="empty-state usage-list-empty">{{i:ui.usageEmpty}}</div>
                   </div>
                 </div>
               </details>
@@ -1294,8 +1554,8 @@
           <div class="task-account-trigger" id="taskAccountTrigger" title="{{i:ui.taskTriggerTitle}}">
             <div class="task-account-trigger-info">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.75;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <span style="font-size:11px;color:var(--muted);">{{i:ui.taskExecTarget}}</span>
-              <span id="taskAccountSummary" style="font-size:11px;font-weight:600;color:var(--vscode-foreground);">{{i:js.taskSelectedInit}}</span>
+              <span style="font-size:12px;color:var(--muted);">{{i:ui.taskExecTarget}}</span>
+              <span id="taskAccountSummary" style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">{{i:js.taskSelectedInit}}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
               <span class="batch-count" id="taskSelCount">{{i:js.selectedInit}}</span>
@@ -1304,7 +1564,7 @@
           </div>
           <div class="task-account-drawer" id="taskAccountDrawer" hidden>
             <div class="task-drawer-tools">
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--muted);">
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:var(--muted);">
                 <input type="checkbox" id="taskSelAll"> <span>{{i:ui.selectAll}}</span>
               </label>
               <div style="flex:1"></div>
@@ -1316,30 +1576,29 @@
         </div>
 
         <!-- 成长体系资产看板（Buddy旅行打工、连签兑换进度、盲盒能量余额） -->
-        <div id="taskAssetDashboard" class="card" style="border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);padding:7px 10px;margin-bottom:2px;display:flex;flex-direction:column;gap:5px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-              <span id="assetTravelText" style="font-weight:500;color:var(--vscode-foreground);">{{i:ui.assetTravelInit}}</span>
-            </div>
-            <span id="assetTravelBadge" class="grid-health-badge grid-health-warn" style="font-size:10px;">{{i:ui.assetTravelBadge}}</span>
+        <div id="taskAssetDashboard" class="task-asset">
+          <div class="task-asset-main">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+            <span id="assetTravelText" class="task-asset-text">{{i:ui.assetTravelInit}}</span>
+            <span id="assetTravelBadge" class="task-badge is-warn">{{i:ui.assetTravelBadge}}</span>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:4px;border-top:1px dashed var(--card-border);font-size:10px;color:var(--muted);">
-            <div style="display:flex;align-items:center;gap:4px;">
+          <div class="task-asset-meta">
+            <div>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               <span id="assetStreakText">{{i:ui.assetStreakInit}}</span>
             </div>
-            <div style="display:flex;align-items:center;gap:4px;">
+            <div>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               <span id="assetEnergyText">{{i:ui.assetEnergyInit}}</span>
             </div>
           </div>
         </div>
 
-        <!-- 任务总数与可领取统计 -->
-        <div class="summary-status-grid" style="margin:2px 0 0;">
-          <div class="summary-status-row"><span class="summary-status-label">{{i:ui.taskTotal}}</span><span class="summary-status-val" id="taskCount">0</span></div>
-          <div class="summary-status-row"><span class="summary-status-label">{{i:ui.taskDoneStat}}</span><span class="summary-status-val ok" id="taskDoneStat">0 / 0</span></div>
+        <!-- 任务总数与可领取统计（单行紧凑） -->
+        <div class="task-stats-row">
+          <span class="task-stat"><b id="taskCount">0</b><i>{{i:ui.taskTotal}}</i></span>
+          <span class="task-stat-divider"></span>
+          <span class="task-stat"><b id="taskDoneStat" class="is-ok">0 / 0</b><i>{{i:ui.taskDoneStat}}</i></span>
         </div>
 
         <!-- 骨架屏占位 -->
@@ -1350,7 +1609,7 @@
         </div>
 
         <!-- 任务卡片列表 -->
-        <div id="taskList" style="display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto;padding-right:2px;"></div>
+        <div id="taskList" style="display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;padding-right:2px;"></div>
         <div id="taskEmpty" class="empty-state" hidden>
           <p>{{i:ui.taskEmptyHint}}</p>
         </div>
@@ -1708,7 +1967,13 @@
     let switchingId = '';
     let activeTag = 'all';
     let searchQuery = '';
-    let lastRefreshTs = 0;
+
+    // ── 今日流水：最后一次推送的数据 + 各账号展开状态（重绘后保持用户手选的展开态） ──
+    let lastUsageRecords = [];
+    let lastUsageSummary = null;
+    let lastUsageFingerprint = '';
+    let usageRefreshLockTs = 0;
+    const usageOpenState = new Map();
 
     const savedState = vscode.getState() || {};
     privacyMode = savedState.privacyMode === true;
@@ -1831,10 +2096,6 @@
     const summaryWeeklyBar = document.getElementById('summaryWeeklyBar');
     const summaryWeeklyNum = document.getElementById('summaryWeeklyNum');
     const summaryWeeklyMax = document.getElementById('summaryWeeklyMax');
-    const summaryActiveDisabled = document.getElementById('summaryActiveDisabled');
-    const summaryHighQuota = document.getElementById('summaryHighQuota');
-    const summaryLowQuota = document.getElementById('summaryLowQuota');
-    const summaryLastRefresh = document.getElementById('summaryLastRefresh');
     const searchInput = document.getElementById('searchInput');
     const searchClear = document.getElementById('searchClear');
     const filterLabel = document.getElementById('filterLabel');
@@ -2039,6 +2300,8 @@
       if (eyeOff) {
         if (privacyMode) { eyeOff.removeAttribute('hidden'); } else { eyeOff.setAttribute('hidden', ''); }
       }
+      // 流水里的账号名跟随脱敏状态同步重绘
+      if (lastUsageRecords.length) renderUsageRecords(lastUsageRecords, lastUsageSummary);
     }
 
     privacyModeBtn.addEventListener('click', () => {
@@ -2067,6 +2330,19 @@
     const taskFooterHint = document.getElementById('taskFooterHint');
 
     const selectedAccountIds = new Set();
+    // 勾选结果跨 webview 重建保留（vscode.setState 由宿主持久化）
+    if (Array.isArray(savedState.taskSelection)) {
+      savedState.taskSelection.forEach((id) => {
+        if (typeof id === 'string' && id) {
+          selectedAccountIds.add(id);
+        }
+      });
+    }
+    function persistTaskSelection() {
+      const st = vscode.getState() || {};
+      st.taskSelection = Array.from(selectedAccountIds);
+      vscode.setState(st);
+    }
     const taskAccountBar = document.getElementById('taskAccountBar');
     const taskAccountTrigger = document.getElementById('taskAccountTrigger');
     const taskAccountDrawer = document.getElementById('taskAccountDrawer');
@@ -2118,6 +2394,19 @@
         return;
       }
 
+      // 恢复出来的选择可能包含已删除的账号，落盘前先剔除
+      const aliveIds = new Set(currentAccounts.map((a) => a.id));
+      let pruned = false;
+      for (const id of Array.from(selectedAccountIds)) {
+        if (!aliveIds.has(id)) {
+          selectedAccountIds.delete(id);
+          pruned = true;
+        }
+      }
+      if (pruned) {
+        persistTaskSelection();
+      }
+
       taskAcctList.innerHTML = currentAccounts.map(acc => {
         const checked = selectedAccountIds.has(acc.id);
         const rawName = acc.nickname || acc.email;
@@ -2166,6 +2455,7 @@
       if (!input.dataset || !input.dataset.acct) return;
       if (input.checked) selectedAccountIds.add(input.dataset.acct);
       else selectedAccountIds.delete(input.dataset.acct);
+      persistTaskSelection();
       renderAcctChips();
       // 单选切号时自动拉取并展示该账号的任务列表
       if (selectedAccountIds.size === 1) {
@@ -2186,6 +2476,7 @@
       } else {
         selectedAccountIds.clear();
       }
+      persistTaskSelection();
       renderAcctChips();
     });
 
@@ -2200,6 +2491,7 @@
         btnTaskRefresh.querySelector('.refresh-icon')?.classList.add('is-spinning');
         vscode.postMessage({ command: 'taskList', accountId: active.id });
       }
+      persistTaskSelection();
       renderAcctChips();
     });
 
@@ -2208,6 +2500,7 @@
         if (selectedAccountIds.has(a.id)) selectedAccountIds.delete(a.id);
         else selectedAccountIds.add(a.id);
       });
+      persistTaskSelection();
       renderAcctChips();
       if (selectedAccountIds.size === 1) {
         const id = Array.from(selectedAccountIds)[0];
@@ -2244,9 +2537,13 @@
     // 打开全屏任务中心
     btnGrowthTasks.addEventListener('click', () => {
       taskModalOverlay.hidden = false;
+      // 每次打开回到收起态：账号抽屉展开会挤掉任务列表
+      taskAccountBar.classList.remove('is-expanded');
+      taskAccountDrawer.hidden = true;
       const active = currentAccounts.find(a => a.isActive);
       if (active && selectedAccountIds.size === 0) {
         selectedAccountIds.add(active.id);
+        persistTaskSelection();
       }
       if (selectedAccountIds.size === 1) {
         viewingAccountId = Array.from(selectedAccountIds)[0];
@@ -2261,6 +2558,8 @@
 
     taskModalClose.addEventListener('click', () => {
       taskModalOverlay.hidden = true;
+      taskAccountBar.classList.remove('is-expanded');
+      taskAccountDrawer.hidden = true;
     });
 
     // 刷新图标按钮（支持刷新当前所选账号）
@@ -2326,41 +2625,49 @@
 
       taskListEl.innerHTML = currentTasks.map(task => {
         const claimable = isTaskClaimable(task);
+        const claimed = task.claimed || task.acceptStatus === 'claimed';
         let statusLabel = t('js.taskStatusProgress');
-        let statusClass = 'grid-health-badge grid-health-warn';
+        let statusClass = 'task-badge is-warn';
         let action = '';
 
-        if (task.claimed || task.acceptStatus === 'claimed') {
+        if (claimed) {
           statusLabel = t('js.taskStatusClaimed');
-          statusClass = 'grid-health-badge grid-health-ok';
+          statusClass = 'task-badge is-ok';
         } else if (task.locked) {
           statusLabel = t('js.taskStatusLocked');
-          statusClass = 'grid-health-badge grid-health-warn';
+          statusClass = 'task-badge is-muted';
         } else if (task.manualOnly) {
           statusLabel = t('js.taskStatusManual');
-          statusClass = 'grid-health-badge grid-health-warn';
+          statusClass = 'task-badge is-warn';
         } else if (claimable) {
           statusLabel = t('js.taskStatusClaimable');
-          statusClass = 'grid-health-badge grid-health-ok';
-          action = '<button class="grid-switch-btn" onclick="onTaskClaim(\'' + task.taskCode + '\')">' + t('js.claimBtn') + '</button>';
+          statusClass = 'task-badge is-ok';
+          action = '<button class="task-item-btn" onclick="onTaskClaim(\'' + task.taskCode + '\')">' + t('js.claimBtn') + '</button>';
         } else if (task.acceptStatus === 'not_accepted') {
           statusLabel = t('js.taskStatusNotAccepted');
-          action = '<button class="status-toggle-btn is-enabled" onclick="onTaskAccept(\'' + task.taskCode + '\')">' + t('js.acceptBtn') + '</button>';
+          statusClass = 'task-badge is-muted';
+          action = '<button class="task-item-btn is-accept" onclick="onTaskAccept(\'' + task.taskCode + '\')">' + t('js.acceptBtn') + '</button>';
         }
 
         // 防御乱码字符
         const safeTitle = (task.title || '').replace(/\uFFFD/g, '');
+        const pct = task.target > 0
+          ? Math.min(100, Math.round((task.current / task.target) * 100))
+          : (claimed ? 100 : 0);
+        const nums = task.target > 0 ? task.current + ' / ' + task.target : (task.locked ? '' : String(task.current));
+        const barClass = 'task-item-bar' + (!claimed && pct < 100 ? ' is-warn' : '');
+        const tipText = safeTitle + (task.lockedHint ? ' ' + task.lockedHint : '');
 
-        return '<div class="grid-card" data-code="' + task.taskCode + '">' +
-          '<div class="grid-card-head">' +
-            '<div class="grid-card-email" title="' + escHtml(safeTitle) + '">' + escHtml(safeTitle) + '</div>' +
+        return '<div class="task-item' + (claimed ? ' is-claimed' : '') + '" data-code="' + task.taskCode + '">' +
+          '<div class="task-item-main">' +
+            '<span class="task-item-title" title="' + escHtml(tipText) + '">' + escHtml(safeTitle) + '</span>' +
             '<span class="' + statusClass + '">' + statusLabel + '</span>' +
           '</div>' +
-          '<div class="grid-quota-head" style="margin-top:2px;">' +
-            '<span style="font-family:var(--font-mono);font-size:10.5px;opacity:0.75;">' + escHtml(task.taskCode) + '</span>' +
-            '<span class="grid-quota-val ' + (task.current >= task.target && task.target > 0 ? 'is-ok' : '') + '">' + task.current + ' / ' + task.target + '</span>' +
+          '<div class="task-item-foot">' +
+            '<div class="' + barClass + '"><i style="width:' + pct + '%"></i></div>' +
+            '<span class="task-item-num">' + escHtml(nums) + '</span>' +
+            action +
           '</div>' +
-          (action ? '<div class="grid-card-actions">' + action + '</div>' : '') +
         '</div>';
       }).join('');
     }
@@ -2572,28 +2879,7 @@
       summaryWeeklyBar.className = 'summary-bar-fill ' + levelClass(creditPct, totalRemain);
       summaryWeeklyNum.textContent = fmtNum(totalRemain);
       summaryWeeklyMax.textContent = '/ ' + fmtNum(totalCap);
-
-      const disabledCount = currentAccounts.filter(a => a.status === 'disabled').length;
-      const activeCount = total - disabledCount;
-      summaryActiveDisabled.textContent = activeCount + ' / ' + disabledCount;
-
-      const high = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent >= 80).length;
-      const low = currentAccounts.filter(a => a.activityPackage && a.activityPackage.percent <= 30).length;
-      summaryHighQuota.textContent = t('ui.highQuotaVal', high);
-      summaryLowQuota.textContent = t('ui.lowQuotaVal', low);
-
-      updateLastRefreshText();
     }
-
-    function updateLastRefreshText() {
-      if (!lastRefreshTs) { summaryLastRefresh.textContent = '--'; return; }
-      const sec = Math.max(0, Math.round((Date.now() - lastRefreshTs) / 1000));
-      if (sec < 60) summaryLastRefresh.textContent = t('js.secAgo', sec);
-      else if (sec < 3600) summaryLastRefresh.textContent = t('js.minAgo', Math.round(sec / 60));
-      else summaryLastRefresh.textContent = t('js.hourAgo', Math.round(sec / 3600));
-    }
-
-    setInterval(updateLastRefreshText, 5000);
 
     // ── 账号卡片流（Kite buildCard 原版结构） ──
     function renderCards() {
@@ -2795,30 +3081,102 @@
       renderCards();
     };
 
-    // ── 渲染今日算力对账流水 ──
+    // ── 渲染今日算力流水（按账号分组，明细可折叠） ──
+    function usageAccountLabel(accountId) {
+      const acc = currentAccounts.find(a => a.id === accountId);
+      if (!acc) return t('ui.usageUnknownAccount');
+      const raw = acc.nickname || acc.email || accountId;
+      return privacyMode ? maskName(raw) : raw;
+    }
+
     function renderUsageRecords(records, summary) {
       const container = document.getElementById('usageRecordsList');
+      const countEl = document.getElementById('usageRecordsCount');
       const awardedBadge = document.getElementById('usageAwardedBadge');
       const consumedBadge = document.getElementById('usageConsumedBadge');
+      lastUsageRecords = Array.isArray(records) ? records : [];
+      lastUsageSummary = summary || null;
       if (summary) {
         if (awardedBadge) awardedBadge.textContent = t('js.gainedBadge', fmtNum(summary.totalAwarded || 0));
         if (consumedBadge) consumedBadge.textContent = t('js.consumedBadge', summary.totalConsumed ? '-' + fmtNum(summary.totalConsumed) : '0');
       }
       if (!container) return;
-      if (!Array.isArray(records) || records.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding:10px;font-size:11px;">' + escHtml(t('ui.usageEmpty')) + '</div>';
+
+      // 数据指纹：内容没变就不重绘，保住滚动位置与手选展开态（隐私开关会改变账号名，必须计入）
+      const fingerprint = (privacyMode ? 'p1' : 'p0')
+        + '#' + lastUsageRecords.map(r => r.requestId + '|' + r.accountId + '|' + r.credit).join(',')
+        + '#' + (summary ? (summary.totalAwarded || 0) + '/' + (summary.totalConsumed || 0) : '');
+      if (fingerprint === lastUsageFingerprint && container.children.length) {
         return;
       }
-      container.innerHTML = records.map(r => {
-        const credit = Number(r.credit || 0);
-        const time = String(r.requestTime || '').slice(11) || String(r.requestTime || '');
-        const tip = [r.model, r.client, r.input].filter(Boolean).join(' · ');
-        return '<div class="usage-item" title="' + escHtml(tip) + '">'
-          + '<span class="usage-item-time">' + escHtml(time) + '</span>'
-          + '<span class="usage-item-name" title="' + escHtml(r.model || '') + '">' + escHtml(r.model || '') + '</span>'
-          + '<span class="usage-item-delta is-minus">-' + fmtNum(credit) + '</span>'
+      lastUsageFingerprint = fingerprint;
+      const prevScrollTop = container.scrollTop;
+
+      if (lastUsageRecords.length === 0) {
+        if (countEl) countEl.textContent = '';
+        container.innerHTML = '<div class="empty-state usage-list-empty">' + escHtml(t('ui.usageEmpty')) + '</div>';
+        return;
+      }
+      if (countEl) countEl.textContent = t('ui.usageRecordsCount', lastUsageRecords.length);
+
+      // 按账号归组，组内保持接口返回的时间倒序
+      const groups = [];
+      const groupIndex = new Map();
+      for (const r of lastUsageRecords) {
+        const key = String(r.accountId || '');
+        let g = groupIndex.get(key);
+        if (!g) {
+          const acc = key ? currentAccounts.find(a => a.id === key) : null;
+          g = { id: key, name: usageAccountLabel(key), isActive: !!(acc && acc.isActive), total: 0, items: [] };
+          groupIndex.set(key, g);
+          groups.push(g);
+        }
+        g.total += Number(r.credit || 0);
+        g.items.push(r);
+      }
+
+      container.innerHTML = groups.map(g => {
+        const open = usageOpenState.has(g.id) ? usageOpenState.get(g.id) : g.isActive;
+        const rows = g.items.map(r => {
+          const credit = Number(r.credit || 0);
+          const rawTime = String(r.requestTime || '');
+          const time = rawTime.length >= 19 ? rawTime.slice(11, 19) : rawTime;
+          const model = r.model || '';
+          const tip = [model, r.client].filter(Boolean).join(' / ');
+          return '<div class="usage-item" title="' + escHtml(tip) + '">'
+            + '<span class="usage-item-time">' + escHtml(time) + '</span>'
+            + '<span class="usage-item-name" title="' + escHtml(model) + '">' + escHtml(model) + '</span>'
+            + '<span class="usage-item-delta is-minus">-' + fmtNum(credit) + '</span>'
+            + '</div>';
+        }).join('');
+        return '<div class="usage-group' + (open ? ' is-open' : '') + (g.isActive ? ' is-active' : '') + '" data-account="' + escHtml(g.id) + '">'
+          + '<button type="button" class="usage-group-head" aria-expanded="' + (open ? 'true' : 'false') + '">'
+          + '<span class="usage-group-dot"></span>'
+          + '<span class="usage-group-name">' + escHtml(g.name) + '</span>'
+          + '<span class="usage-group-meta">' + escHtml(t('ui.usageGroupRequests', g.items.length)) + '</span>'
+          + '<span class="usage-group-sum">-' + fmtNum(Math.round(g.total * 100) / 100) + '</span>'
+          + '<svg class="usage-group-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+          + '</button>'
+          + '<div class="usage-group-body">' + rows + '</div>'
           + '</div>';
       }).join('');
+      container.scrollTop = prevScrollTop;
+    }
+
+    // 账号组折叠：事件委托一次绑定，重绘不丢
+    const usageListEl = document.getElementById('usageRecordsList');
+    if (usageListEl) {
+      usageListEl.addEventListener('click', (e) => {
+        const head = e.target.closest ? e.target.closest('.usage-group-head') : null;
+        if (!head) return;
+        const group = head.closest('.usage-group');
+        if (!group) return;
+        const id = group.getAttribute('data-account') || '';
+        const open = !group.classList.contains('is-open');
+        usageOpenState.set(id, open);
+        group.classList.toggle('is-open', open);
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
     }
 
     // ── 导出号池模态框 ──
@@ -2898,14 +3256,30 @@
       });
     }
 
-    // ── 清空流水 ──
-    const btnClearUsage = document.getElementById('btnClearUsage');
-    if (btnClearUsage) {
-      btnClearUsage.addEventListener('click', async () => {
-        const ok = await showConfirm(t('js.clearUsageConfirm'), t('js.clearUsageTitle'), t('js.clearUsageBtn'), true);
-        if (ok) {
-          vscode.postMessage({ command: 'clearUsage' });
+    // ── 刷新统计与流水 ──
+    const btnRefreshUsage = document.getElementById('btnRefreshUsage');
+    let usageSpinTimer = 0;
+    function stopUsageRefreshSpin() {
+      if (!btnRefreshUsage) return;
+      btnRefreshUsage.classList.remove('is-spinning');
+      if (usageSpinTimer) { clearTimeout(usageSpinTimer); usageSpinTimer = 0; }
+    }
+    if (btnRefreshUsage) {
+      btnRefreshUsage.addEventListener('click', () => {
+        // 与后端手动刷新保底间隔一致：10 秒内重复点击直接明说，而不是发一个被节流吞掉的请求
+        const now = Date.now();
+        if (now - usageRefreshLockTs < 10000) {
+          showToast(t('js.refreshTooSoon'), 'warn', 3000);
+          return;
         }
+        usageRefreshLockTs = now;
+        btnRefreshUsage.classList.add('is-spinning');
+        if (usageSpinTimer) clearTimeout(usageSpinTimer);
+        usageSpinTimer = setTimeout(() => {
+          stopUsageRefreshSpin();
+          showToast(t('js.refreshTimeout'), 'warn', 8000);
+        }, 30000);
+        vscode.postMessage({ command: 'refreshStatus' });
       });
     }
 
@@ -2915,7 +3289,7 @@
         const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy, lockedUids: backendLockedUids } = msg.data;
         currentAccounts = accounts || [];
         currentLockedUids = Array.isArray(backendLockedUids) ? backendLockedUids : [];
-        lastRefreshTs = Date.now();
+        stopUsageRefreshSpin();
         if (msg.data && msg.data.settings) {
           currentSettings = msg.data.settings;
         }
@@ -3037,19 +3411,19 @@
               const eta = a.travelEtaHours ? t('js.etaHours', a.travelEtaHours) : '';
               travelText.textContent = t('js.travelWorking', loc, cr, eta);
               travelBadge.textContent = t('js.workingBadge');
-              travelBadge.className = 'grid-health-badge grid-health-warn';
+              travelBadge.className = 'task-badge is-warn';
             } else if (a.travelState === 'arrived') {
               travelText.textContent = t('js.arrivedText');
               travelBadge.textContent = t('js.arrivedBadge');
-              travelBadge.className = 'grid-health-badge grid-health-ok';
+              travelBadge.className = 'task-badge is-ok';
             } else if (a.travelDailyLimit) {
               travelText.textContent = t('js.travelLimitText');
               travelBadge.textContent = t('js.restBadge');
-              travelBadge.className = 'grid-health-badge';
+              travelBadge.className = 'task-badge is-muted';
             } else {
               travelText.textContent = t('js.idleText');
               travelBadge.textContent = t('js.idleBadge');
-              travelBadge.className = 'grid-health-badge grid-health-ok';
+              travelBadge.className = 'task-badge is-ok';
             }
           }
 

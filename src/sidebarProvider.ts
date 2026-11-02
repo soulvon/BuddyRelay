@@ -235,28 +235,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       locale: cfg.get<string>('locale', 'auto')
     };
 
-    // 今日统计：检测余额发生变化的账号（零成本），低频拉取官方明细与今日发放资源包
-    const usageItems = accounts
-      .filter((a) => typeof a.totalCredits === 'number')
-      .map((a) => ({
-        id: a.id,
-        credits: a.totalCredits as number,
-        token: a.accessToken || '',
-        uid: a.uid || '',
-        disabled: a.status === 'disabled'
-      }));
-    const changedIds = new Set(this.usageTracker?.detectChangedAccounts(usageItems) || []);
-    const refreshTargets = usageItems.filter((i) => changedIds.has(i.id) && i.token && i.uid);
-    if (this.usageTracker && refreshTargets.length) {
-      void this.usageTracker
-        .refreshOfficialStats(refreshTargets)
-        .then((changed) => {
-          if (changed) {
-            this.postStateToWebview();
-          }
-        })
-        .catch(() => {});
-    }
+    // 今日统计：自动路径只查余额发生变化的账号，节流与退避由 UsageTracker 内部负责
+    this.refreshUsageStats(false);
 
     const enabledAccountCount = accounts.filter((a) => a.status !== 'disabled').length;
 
@@ -319,7 +299,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         hostEdition: detectHostEdition(),
         allTags: this.store.getAllTags(),
         usageSummary: this.usageTracker?.getDailySummary(enabledAccountCount),
-        recentRecords: this.usageTracker?.getRecentOfficialRequests(25) || []
+        recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || []
       }
     });
   }
@@ -477,10 +457,45 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * 7. 刷新状态与额度
    */
+  /**
+   * 今日统计拉取：自动路径只查余额变化的号；手动刷新强制重拉全部有凭证的号。
+   * 请求节流（自动 3 分钟 / 手动 10 秒）与失败退避由 UsageTracker 内部跨窗口共享。
+   */
+  private refreshUsageStats(force: boolean): void {
+    if (!this.usageTracker) {
+      return;
+    }
+    const usageItems = this.store
+      .getAll()
+      .filter((a) => typeof a.totalCredits === 'number')
+      .map((a) => ({
+        id: a.id,
+        credits: a.totalCredits as number,
+        token: a.accessToken || '',
+        uid: a.uid || ''
+      }));
+    const changedIds = new Set(this.usageTracker.detectChangedAccounts(usageItems) || []);
+    const eligible = usageItems.filter((i) => i.token && i.uid);
+    const targets = force ? eligible : eligible.filter((i) => changedIds.has(i.id));
+    if (!targets.length) {
+      return;
+    }
+    void this.usageTracker
+      .refreshOfficialStats(targets, { force })
+      .then((changed) => {
+        if (changed) {
+          this.postStateToWebview();
+        }
+      })
+      .catch(() => {});
+  }
+
   public async handleRefreshStatus(): Promise<void> {
     this.setOperating(true, t('msg.refreshing'));
     try {
       await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
+      // 手动刷新认定"用户要看最新"：强制重拉今日明细，避免被自动节流吞成无变化
+      this.refreshUsageStats(true);
       this.sendNotify('success', t('msg.refreshDone'));
     } catch (err: any) {
       this.sendNotify('error', t('err.refreshFailed', err.message));
@@ -791,9 +806,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const tasks = await this.growthTasks.listTasks(primaryTarget);
         this.pushTasksToWebview(tasks, primaryTarget.id, primaryTarget.nickname || primaryTarget.email);
       }
+
+      // 领奖会加积分：回拉余额，让侧栏算力/卡片/今日统计同步刷新
+      await this.syncBalancesAfterTasks(targets);
     } finally {
       this.setOperating(false);
     }
+  }
+
+  /**
+   * 任务批量结束后回拉余额：领奖会改积分，不同步则侧栏算力/卡片/今日统计停在旧值。
+   * 单号失败不阻断其他号，也不伪装成功——余额留旧值，下一次刷新纠正。
+   */
+  private async syncBalancesAfterTasks(targets: CodeBuddyAccount[]): Promise<void> {
+    if (!targets.length) {
+      return;
+    }
+    await Promise.all(
+      targets.map(async (acc) => {
+        try {
+          await this.checkinService.syncAccountStatus(acc, this.store);
+        } catch {
+          // 忽略单号同步失败，避免覆盖已成功的任务结果
+        }
+      })
+    );
+    this.postStateToWebview();
   }
 
   /**
@@ -817,6 +855,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
       const tasks = await this.growthTasks.listTasks(target);
       this.pushTasksToWebview(tasks, target.id, name);
+      if (r.ok && !r.already) {
+        await this.syncBalancesAfterTasks([target]);
+      }
     } catch (err: any) {
       this.sendNotify('error', t('err.claimFailed', err.message));
     }
@@ -950,6 +991,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const fresh = await this.growthTasks.listTasks(primaryTarget);
         this.pushTasksToWebview(fresh, primaryTarget.id, primaryTarget.nickname || primaryTarget.email);
       }
+
+      // 报名/领取后余额可能变化，回拉一次让统计跟上
+      await this.syncBalancesAfterTasks(targets);
     } finally {
       this.setOperating(false);
     }

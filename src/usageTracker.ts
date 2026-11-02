@@ -36,6 +36,8 @@ export interface DailySummary {
  * - 每月 1 号基础基数: 启用账号数 × 500（基础体验包月度重置）
  */
 export interface DailyStats {
+  /** 结构版本：3 = 明细带账号归属 + 跨窗口共享的拉取节流表。低版本文件整体重置，不迁移旧记录 */
+  schema: number;
   date: string;
   consumed: number;
   grants: number;
@@ -43,13 +45,27 @@ export interface DailyStats {
   perAccountGrants: Record<string, number>;
   recentRequests: Array<{
     requestId: string;
+    /** 归属账号：官方明细行本身不带账号，靠逐号查询时打标 */
+    accountId: string;
     credit: number;
     model: string;
     client: string;
     requestTime: string;
-    input: string;
   }>;
+  /** 每号拉取状态：ts=最后一次尝试时间，fails=连续失败次数（多窗口共享同一份节流） */
+  fetchState: Record<string, { ts: number; fails: number }>;
 }
+
+const DAILY_STATS_SCHEMA = 3;
+/** 自动拉取：单号 3 分钟内最多一次 */
+const AUTO_FETCH_GAP_MS = 180_000;
+/** 手动刷新：允许绕过自动节流，但保底 10 秒防连点 */
+const FORCE_FETCH_GAP_MS = 10_000;
+/** 连续失败退避：30s 起，指数翻倍，上限 10 分钟 */
+const FAIL_BACKOFF_BASE_MS = 30_000;
+const FAIL_BACKOFF_MAX_MS = 600_000;
+/** 同时查询的账号数上限，避免一次刷新打出几十个请求 */
+const FETCH_CONCURRENCY = 2;
 
 const MAX_RECORDS = 1000;
 
@@ -68,8 +84,9 @@ export class UsageTracker {
   private switchTimestamps: number[] = [];
   private _seq: number = 0;
   private dailyStatsPath: string;
-  private dailyStats: DailyStats = { date: '', consumed: 0, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: [] };
-  private lastFetchTsMap: Map<string, number> = new Map();
+  private dailyStats: DailyStats = { schema: DAILY_STATS_SCHEMA, date: '', consumed: 0, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: [], fetchState: {} };
+  /** 同进程内的在途请求：防连续推送导致同一账号并发重复拉取 */
+  private inFlight: Set<string> = new Set();
   private lastBalances: Map<string, number> = new Map();
 
   constructor(customFilePath?: string) {
@@ -107,13 +124,19 @@ export class UsageTracker {
       if (!data || typeof data !== 'object' || typeof data.date !== 'string') {
         return;
       }
+      // 无账号归属的旧结构（schema<=1）不迁移：整体重算，下次拉取从官方补回真实数据
+      if (data.schema !== 2 && data.schema !== DAILY_STATS_SCHEMA) {
+        return;
+      }
       this.dailyStats = {
+        schema: DAILY_STATS_SCHEMA,
         date: data.date,
         consumed: typeof data.consumed === 'number' ? data.consumed : 0,
         grants: typeof data.grants === 'number' ? data.grants : 0,
         perAccountConsumed: data.perAccountConsumed && typeof data.perAccountConsumed === 'object' ? data.perAccountConsumed : {},
         perAccountGrants: data.perAccountGrants && typeof data.perAccountGrants === 'object' ? data.perAccountGrants : {},
-        recentRequests: Array.isArray(data.recentRequests) ? data.recentRequests : []
+        recentRequests: Array.isArray(data.recentRequests) ? data.recentRequests : [],
+        fetchState: data.fetchState && typeof data.fetchState === 'object' ? data.fetchState : {}
       };
     } catch (_) {
       // 文件损坏就从零起算，不阻塞扩展
@@ -167,12 +190,14 @@ export class UsageTracker {
     if (this.dailyStats.date !== today) {
       // 跨天：消耗/到账统计清零，全部账号重新核对
       this.dailyStats = {
+        schema: DAILY_STATS_SCHEMA,
         date: today,
         consumed: 0,
         grants: 0,
         perAccountConsumed: {},
         perAccountGrants: {},
-        recentRequests: []
+        recentRequests: [],
+        fetchState: {}
       };
       this.saveDailyStats();
       return items.filter((i) => i && typeof i.credits === 'number').map((i) => i.id);
@@ -184,77 +209,109 @@ export class UsageTracker {
    * 拉取官方今日数据（每账号一次调用）
    * 包含：1. 消耗明细 2. 今日新发放资源包
    */
-  public async refreshOfficialStats(items: Array<{ id: string; token: string; uid: string }>): Promise<boolean> {
+  public async refreshOfficialStats(
+    items: Array<{ id: string; token: string; uid: string }>,
+    opts?: { force?: boolean }
+  ): Promise<boolean> {
     const now = Date.now();
-    // 按账号 3 分钟节流：一次使用通常只有一个号在消耗，单号最多每 3 分钟请求一次
-    const valid = (items || []).filter(
-      (i) => i && i.id && i.token && i.uid && now - (this.lastFetchTsMap.get(i.id) || 0) >= 180_000
-    );
+    const force = opts?.force === true;
+    const gap = force ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS;
+
+    // 单号节流 + 失败退避 + 在途去重：节流表随 daily-stats 落盘，多窗口共享同一份窗口
+    const valid = (items || []).filter((i) => {
+      if (!i || !i.id || !i.token || !i.uid) return false;
+      if (this.inFlight.has(i.id)) return false;
+      const st = this.dailyStats.fetchState[i.id];
+      const last = st ? Number(st.ts || 0) : 0;
+      if (now - last < gap) return false;
+      const fails = st ? Number(st.fails || 0) : 0;
+      if (fails > 0) {
+        const backoff = Math.min(FAIL_BACKOFF_MAX_MS, FAIL_BACKOFF_BASE_MS * Math.pow(2, fails - 1));
+        if (now - last < backoff) return false;
+      }
+      return true;
+    });
     if (!valid.length) {
       return false;
     }
-    for (const i of valid) {
-      this.lastFetchTsMap.set(i.id, now);
-    }
+    valid.forEach((i) => this.inFlight.add(i.id));
 
-    const results = await Promise.all(valid.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid)));
-
-    const today = this.formatTime(Date.now()).dateStr;
-    if (this.dailyStats.date !== today) {
-      this.dailyStats = {
-        date: today,
-        consumed: 0,
-        grants: 0,
-        perAccountConsumed: {},
-        perAccountGrants: {},
-        recentRequests: []
-      };
-    }
-
-    // 只覆盖本次成功查到的账号，其余沿用缓存
-    for (let i = 0; i < valid.length; i++) {
-      const r = results[i];
-      if (!r) {
-        continue;
+    try {
+      // 分批查询：单次刷新不会同时打出几十个请求
+      const results: Array<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> = [];
+      for (let k = 0; k < valid.length; k += FETCH_CONCURRENCY) {
+        const batch = valid.slice(k, k + FETCH_CONCURRENCY);
+        results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid)))));
       }
-      this.dailyStats.perAccountConsumed[valid[i].id] = r.consumed;
-      this.dailyStats.perAccountGrants[valid[i].id] = r.grants;
 
-      const seen = new Set(this.dailyStats.recentRequests.map((x) => x.requestId));
-      for (const row of r.rows) {
-        if (!row.requestId || seen.has(row.requestId)) {
+      const today = this.formatTime(Date.now()).dateStr;
+      if (this.dailyStats.date !== today) {
+        this.dailyStats = {
+          schema: DAILY_STATS_SCHEMA,
+          date: today,
+          consumed: 0,
+          grants: 0,
+          perAccountConsumed: {},
+          perAccountGrants: {},
+          recentRequests: [],
+          fetchState: this.dailyStats.fetchState
+        };
+      }
+
+      // 只覆盖本次成功查到的账号，其余沿用缓存；失败号记次数走退避
+      let failedCount = 0;
+      for (let i = 0; i < valid.length; i++) {
+        const r = results[i];
+        if (!r) {
+          failedCount++;
+          const prevFails = this.dailyStats.fetchState[valid[i].id]?.fails || 0;
+          this.dailyStats.fetchState[valid[i].id] = { ts: now, fails: Math.min(10, prevFails + 1) };
           continue;
         }
-        seen.add(row.requestId);
-        this.dailyStats.recentRequests.push({
-          requestId: row.requestId,
-          credit: Number(row.credit || 0),
-          model: row.model || '',
-          client: row.client || '',
-          requestTime: row.requestTime || '',
-          input: String(row.input || row.inputTrunc || '').slice(0, 120)
-        });
+        this.dailyStats.fetchState[valid[i].id] = { ts: now, fails: 0 };
+        this.dailyStats.perAccountConsumed[valid[i].id] = r.consumed;
+        this.dailyStats.perAccountGrants[valid[i].id] = r.grants;
+
+        const seen = new Set(this.dailyStats.recentRequests.map((x) => x.requestId));
+        for (const row of r.rows) {
+          if (!row.requestId || seen.has(row.requestId)) {
+            continue;
+          }
+          seen.add(row.requestId);
+          this.dailyStats.recentRequests.push({
+            requestId: row.requestId,
+            accountId: valid[i].id,
+            credit: Number(row.credit || 0),
+            model: row.model || '',
+            client: row.client || '',
+            requestTime: row.requestTime || ''
+          });
+        }
       }
-    }
-    this.dailyStats.recentRequests.sort((a, b) => b.requestTime.localeCompare(a.requestTime));
-    if (this.dailyStats.recentRequests.length > 200) {
-      this.dailyStats.recentRequests = this.dailyStats.recentRequests.slice(0, 200);
-    }
+      this.dailyStats.recentRequests.sort((a, b) => b.requestTime.localeCompare(a.requestTime));
+      if (this.dailyStats.recentRequests.length > 200) {
+        this.dailyStats.recentRequests = this.dailyStats.recentRequests.slice(0, 200);
+      }
 
-    const totalConsumed = Math.round(
-      Object.keys(this.dailyStats.perAccountConsumed).reduce((s, k) => s + (Number(this.dailyStats.perAccountConsumed[k]) || 0), 0) * 100
-    ) / 100;
-    const totalGrants = Math.round(
-      Object.keys(this.dailyStats.perAccountGrants).reduce((s, k) => s + (Number(this.dailyStats.perAccountGrants[k]) || 0), 0) * 100
-    ) / 100;
+      const totalConsumed = Math.round(
+        Object.keys(this.dailyStats.perAccountConsumed).reduce((s, k) => s + (Number(this.dailyStats.perAccountConsumed[k]) || 0), 0) * 100
+      ) / 100;
+      const totalGrants = Math.round(
+        Object.keys(this.dailyStats.perAccountGrants).reduce((s, k) => s + (Number(this.dailyStats.perAccountGrants[k]) || 0), 0) * 100
+      ) / 100;
 
-    const changed = Math.abs(this.dailyStats.consumed - totalConsumed) >= 0.01 || Math.abs(this.dailyStats.grants - totalGrants) >= 0.01;
-    this.dailyStats.consumed = totalConsumed;
-    this.dailyStats.grants = totalGrants;
-    if (changed) {
+      const changed =
+        Math.abs(this.dailyStats.consumed - totalConsumed) >= 0.01 ||
+        Math.abs(this.dailyStats.grants - totalGrants) >= 0.01 ||
+        failedCount > 0;
+      this.dailyStats.consumed = totalConsumed;
+      this.dailyStats.grants = totalGrants;
+      // fetchState 变化同样要落盘，否则多窗口退避与节流失效
       this.saveDailyStats();
+      return changed;
+    } finally {
+      valid.forEach((i) => this.inFlight.delete(i.id));
     }
-    return changed;
   }
 
   /**
@@ -536,7 +593,7 @@ export class UsageTracker {
     const today = this.formatTime(Date.now()).dateStr;
     const value = Math.round(total * 100) / 100;
     if (this.dailyStats.date !== today) {
-      this.dailyStats = { date: today, consumed: value, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests };
+      this.dailyStats = { schema: DAILY_STATS_SCHEMA, date: today, consumed: value, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests, fetchState: {} };
     } else {
       this.dailyStats.consumed = value;
       this.dailyStats.perAccountConsumed = {};
@@ -549,7 +606,7 @@ export class UsageTracker {
     const today = this.formatTime(Date.now()).dateStr;
     const value = Math.round(total * 100) / 100;
     if (this.dailyStats.date !== today) {
-      this.dailyStats = { date: today, consumed: 0, grants: value, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests };
+      this.dailyStats = { schema: DAILY_STATS_SCHEMA, date: today, consumed: 0, grants: value, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests, fetchState: {} };
     } else {
       this.dailyStats.grants = value;
       this.dailyStats.perAccountGrants = {};

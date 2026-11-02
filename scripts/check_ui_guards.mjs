@@ -339,9 +339,23 @@ gate('G43 标点统一: 数值语境禁用全角括号混排 (杜绝双字体拼
 gate('G43 模态框滚动: 全局 modal-box 三段式 flex (header固定/body内滚/footer常驻)', /\.modal-box \{[^}]*display: flex/.test(mainCss) && /\.modal-body \{[^}]*min-height: 0/.test(mainCss) && /\.modal-body \{[^}]*overflow-y: auto/.test(mainCss) && /\.modal-footer \{/.test(mainCss));
 gate('G43 模态框滚动: 设置框操作区独立于滚动区 (modal-footer 在 body 外、overlay 内)', html.includes('<div class="modal-footer">') && html.indexOf('btnSettingsSave') > html.indexOf('class="modal-footer"') && html.indexOf('btnSettingsSave') < html.indexOf('全局 Toast 容器'));
 gate('G43 字体去污: 统计数值无等宽字体残留 (main.css)', !/\.summary-status-val \{[^}]*editor-font-family/.test(mainCss) && !/\.summary-count \{[^}]*editor-font-family/.test(mainCss));
-gate('G43 图标纪律: 清空流水按钮用 Lucide 官方 eraser 权威路径 (逐字节, 禁垃圾桶残留在该槽位)', /id="btnClearUsage"[\s\S]{0,400}M21 21H8a2 2 0 0 1-1\.42-\.587l-3\.994-3\.999/.test(html) && !/id="btnClearUsage"[\s\S]{0,400}polyline points="3 6 5 6 21 6"/.test(html));
+gate('G43 图标纪律: 统计刷新按钮用 Lucide refresh-cw 权威路径 (逐字节, 禁橡皮擦残留在该槽位)', /id="btnRefreshUsage"[\s\S]{0,400}M3 12a9 9 0 0 1 9-9 9\.75 9\.75 0 0 1 6\.74 2\.74L21 8/.test(html) && !/id="btnRefreshUsage"[\s\S]{0,400}M21 21H8a2 2 0 0 1-1\.42-\.587/.test(html));
 gate('G43 药丽数字: 「N 个」胶囊 12px 加粗 + sans 等宽数字覆盖', /\.grid-count \{[^}]*font-size: 12px !important/.test(html) && /\.grid-count \{[^}]*font-family: var\(--font-sans\) !important/.test(html));
-gate('G43 图标热区: 清空流水按钮吃全局 24px 规格 (禁内联缩小)', !/id="btnClearUsage"[^>]*width:20px/.test(html) && /id="btnClearUsage"[^>]*style="margin-left:4px;"/.test(html));
+gate('G43 图标热区: 统计刷新按钮吃全局 24px 规格 (禁内联缩小)', !/id="btnRefreshUsage"[^>]*width:20px/.test(html) && /id="btnRefreshUsage"[^>]*style="margin-left:4px;"/.test(html));
+
+// ── G45: 流水账号归属 门控（逐号查询时打标，前端按号分组；不再把提问原文落盘） ──
+gate('G45 流水归属: 官方明细写入时按查询账号打标 accountId', usageTrackerTs.includes('accountId: valid[i].id') && usageTrackerTs.includes('accountId: string'));
+gate('G45 流水归属: 侧栏按账号分组并支持组头折叠', /\.usage-group-head \{/.test(html) && /\.usage-group\.is-open \.usage-group-body \{ display: block; \}/.test(html) && html.includes('usageOpenState'));
+gate('G45 隐私: 明细不再把提问原文写入磁盘 (input 已剔除)', !/recentRequests\.push\(\{[\s\S]{0,400}input:/.test(usageTrackerTs));
+gate('G45 缓存: 手动刷新走 force 通道，不被自动节流吞掉', sidebarProviderTs.includes('refreshUsageStats(true)') && sidebarProviderTs.includes('{ force }'));
+gate('G45 缓存: 拉取节流表随日统计落盘并跨窗口共享', usageTrackerTs.includes('fetchState: Record<string, { ts: number; fails: number }>') && usageTrackerTs.includes('this.saveDailyStats();'));
+gate('G45 缓存: 前端按数据指纹决定是否重绘流水', html.includes('lastUsageFingerprint') && html.includes('container.scrollTop = prevScrollTop;'));
+
+// ── G46: 成长任务中心 门控（领奖后余额回流 + 卡片信息纪律 + 打开即收起账号栏） ──
+gate('G46 任务回流: 批量任务/领奖结束后回拉余额并推送状态', sidebarProviderTs.includes('syncBalancesAfterTasks') && sidebarProviderTs.includes('await this.syncBalancesAfterTasks(targets);'));
+gate('G46 任务中心: 任务卡不再暴露内部 taskCode', html.includes('task-item-bar') && !/task-item-title[\s\S]{0,300}escHtml\(task\.taskCode\)/.test(html));
+gate('G46 任务中心: 打开与关闭都回到账号栏收起态', (html.match(/taskAccountBar\.classList\.remove\('is-expanded'\)/g) || []).length >= 2);
+gate('G46 任务中心: 账号勾选跨 webview 重建持久化并剔除已删账号', html.includes('savedState.taskSelection') && html.includes('st.taskSelection = Array.from(selectedAccountIds);') && html.includes('persistTaskSelection()'));
 
 console.log('');
 console.log(`门控结果: ${passed} 通过, ${failed} 失败`);
