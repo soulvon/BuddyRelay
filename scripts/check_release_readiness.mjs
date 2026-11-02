@@ -38,6 +38,9 @@ if (fs.existsSync(vsixPath)) {
   gate('R2.4 vsix 内 README 无旧版本徽章残留', !/version-0\.\d+\.\d+-blue/.test(readmeInVsix) && !/version-1\.0\.[01]-blue/.test(readmeInVsix.replace(`version-${V}-blue`, '')));
   gate('R2.5 vsix 内 CSP 自声明 (sidebar.html)', /Content-Security-Policy/.test(zip.readAsText(extNames.find(n => /sidebar\.html$/i.test(n)) || '')));
   gate('R2.6 vsix 内互推五件套 (Antigravity-Kite)', readmeInVsix.includes('Antigravity-Kite'));
+  gate('R2.7 包体瘦身: vsix 严格排除 node_modules (零打包依赖)', !names.some(n => /(^|\/)node_modules\//.test(n)));
+  gate('R2.8 包体瘦身: vsix 严格排除非运行时预览/打赏大图 resources/(preview-*|qq-group|wechat)', !names.some(n => /resources\/(preview-|qq-group|wechat)/.test(n)));
+  gate('R2.9 包体瘦身: vsix 严格排除 .github/ 与 AGENTS.md', !names.some(n => /(^|\/)(\.github|AGENTS\.md)/.test(n)));
 } else {
   gate(`R2.* vsix buddy-relay-${V}.vsix 不存在 (先 vsce package)`, false);
 }
@@ -56,7 +59,8 @@ gate('R4.2 nls zh/en key 集一致', JSON.stringify(Object.keys(JSON.parse(fs.re
 
 // ── R5 发布渠道 (依赖 gh/网络, 失败 SKIP) ──
 try {
-  const assets = execSync(`gh release view v${V} -R soulvon/BuddyRelay --json assets --jq "[.assets[].name] | join(',')"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  const rel = JSON.parse(execSync(`gh release view v${V} -R soulvon/BuddyRelay --json assets`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim());
+  const assets = rel.assets.map(a => a.name).join(',');
   gate('R5.1 GitHub Release v' + V + ' 存在且挂 vsix (自动更新链)', assets.includes(`buddy-relay-${V}.vsix`));
 } catch { gate('R5.1 GitHub Release v' + V + ' 存在且挂 vsix', false, true); }
 try {
