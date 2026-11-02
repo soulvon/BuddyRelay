@@ -253,21 +253,167 @@ export async function downloadOnly(downloadUrl: string, version: string): Promis
   }
 }
 
+interface UnifiedReleaseInfo {
+  version: string;
+  downloadUrl: string;
+  releaseUrl: string;
+  body: string;
+  source: 'github-api' | 'open-vsx' | 'github-web';
+}
+
+function fetchOpenVsx(): Promise<UnifiedReleaseInfo> {
+  return new Promise((resolve, reject) => {
+    const url = 'https://open-vsx.org/api/soulvon/buddy-relay';
+    const req = https.get(url, { headers: { 'User-Agent': 'BuddyRelay-Updater' } }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            const json = JSON.parse(data);
+            const ver = String(json.version || '').trim();
+            const dl = json.downloads?.universal || json.files?.download || '';
+            if (ver && dl) {
+              resolve({
+                version: ver,
+                downloadUrl: dl,
+                releaseUrl: 'https://open-vsx.org/extension/soulvon/buddy-relay',
+                body: json.description || '',
+                source: 'open-vsx'
+              });
+              return;
+            }
+          }
+          reject(new Error(`Open VSX HTTP ${res.statusCode}`));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(12000, () => {
+      req.destroy();
+      reject(new Error('Open VSX timeout'));
+    });
+  });
+}
+
+function fetchGitHubWebRedirect(): Promise<UnifiedReleaseInfo> {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'github.com',
+      path: `/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+      method: 'HEAD',
+      headers: { 'User-Agent': 'BuddyRelay-Updater' }
+    }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const m = res.headers.location.match(/\/tag\/v?([^\/]+)$/);
+        if (m) {
+          const ver = m[1];
+          resolve({
+            version: ver,
+            downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${ver}/buddy-relay-${ver}.vsix`,
+            releaseUrl: res.headers.location,
+            body: '',
+            source: 'github-web'
+          });
+          return;
+        }
+      }
+      reject(new Error(`GitHub Web redirect HTTP ${res.statusCode}`));
+    });
+    req.on('error', reject);
+    req.setTimeout(12000, () => {
+      req.destroy();
+      reject(new Error('GitHub Web redirect timeout'));
+    });
+    req.end();
+  });
+}
+
+async function getLatestReleaseWithFallback(): Promise<UnifiedReleaseInfo> {
+  // 1. 首选通道: Open VSX 官方市场（CodeBuddy 内置市场源，全站 CDN 缓存，无 60次/小时限频）
+  try {
+    return await fetchOpenVsx();
+  } catch (_err) {
+    // 静默降级
+  }
+
+  // 2. 备用通道: GitHub Web Releases 302 重定向（网页路由，不计入 REST API 配额）
+  try {
+    return await fetchGitHubWebRedirect();
+  } catch (_err) {
+    // 继续降级
+  }
+
+  // 3. 末级兜底: GitHub REST API（限频最严，仅在前两级全部异常时使用）
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
+  const release: GitHubRelease = await fetchGitHubApi(url);
+  const latestVersion = release.tag_name.startsWith('v')
+    ? release.tag_name.slice(1)
+    : release.tag_name;
+  const vsixAsset = release.assets?.find(a => a.name.endsWith('.vsix'));
+  if (!vsixAsset) {
+    throw new Error(`no vsix asset in GitHub release ${latestVersion}`);
+  }
+  return {
+    version: latestVersion,
+    downloadUrl: vsixAsset.browser_download_url,
+    releaseUrl: release.html_url,
+    body: release.body || '',
+    source: 'github-api'
+  };
+}
+
+/**
+ * 尽力而为地从 GitHub API 补全更新日志正文（失败静默，不影响更新主流程）
+ */
+async function enrichChangelog(info: UnifiedReleaseInfo): Promise<UnifiedReleaseInfo> {
+  if (info.body || info.source === 'github-api') {
+    return info;
+  }
+  try {
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${info.version}`;
+    const release: GitHubRelease = await fetchGitHubApi(url);
+    if (release.body) {
+      info.body = release.body;
+    }
+  } catch (_err) {
+    // 限频或超时直接放弃，changelog 留空即可
+  }
+  return info;
+}
+
+/**
+ * 报错脱敏：剥离 GitHub 原始 JSON 噪音，只保留可读的关键词
+ */
+function sanitizeErrMessage(msg: string): string {
+  const raw = String(msg || '');
+  if (/rate limit/i.test(raw)) {
+    return 'GitHub rate limited (fallback channels all failed)';
+  }
+  // 去掉原始 JSON 载荷，仅保留 HTTP 状态码与首行可读信息
+  return raw.replace(/\{[\s\S]*\}/g, '').trim() || raw.slice(0, 120);
+}
+
+let isCheckingUpdate = false;
+
 /**
  * 检查更新核心方法
  * @param silent 是否静默检查（启动时静默，手动点击时弹窗）
  */
 export async function checkForUpdates(silent: boolean = false): Promise<boolean> {
+  if (isCheckingUpdate) {
+    return false;
+  }
+  isCheckingUpdate = true;
+
   const config = getUpdateConfig();
   const currentVersion = getCurrentVersion();
 
   try {
-    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
-    const release: GitHubRelease = await fetchGitHubApi(url);
-
-    const latestVersion = release.tag_name.startsWith('v')
-      ? release.tag_name.slice(1)
-      : release.tag_name;
+    let release = await getLatestReleaseWithFallback();
+    const latestVersion = release.version;
 
     if (compareVersions(latestVersion, currentVersion) <= 0) {
       if (!silent) {
@@ -276,17 +422,19 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
       return false;
     }
 
-    const vsixAsset = release.assets?.find(a => a.name.endsWith('.vsix'));
-    if (!vsixAsset) {
+    if (!release.downloadUrl) {
       if (!silent) {
         vscode.window.showWarningMessage(t('upd.noVsix', latestVersion));
       }
       return false;
     }
 
+    // 非 GitHub API 渠道命中时，尽力补全 changelog 正文（失败不影响主流程）
+    release = await enrichChangelog(release);
+
     // 若开启了免确认静默安装且处于后台检查场景，直接静默更新
     if (config.autoInstall && silent) {
-      await downloadAndInstall(vsixAsset.browser_download_url, latestVersion, true);
+      await downloadAndInstall(release.downloadUrl, latestVersion, true);
       return true;
     }
 
@@ -308,11 +456,11 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
     const choice = await vscode.window.showInformationMessage(message, ...actions);
 
     if (choice === installLabel) {
-      await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
+      await downloadAndInstall(release.downloadUrl, latestVersion);
     } else if (choice === downloadLabel) {
-      await downloadOnly(vsixAsset.browser_download_url, latestVersion);
+      await downloadOnly(release.downloadUrl, latestVersion);
     } else if (choice === viewLogLabel) {
-      await showFullChangelog(latestVersion, release.body, release.html_url);
+      await showFullChangelog(latestVersion, release.body, release.releaseUrl);
       // 日志打开后提示是否进一步更新
       const nextChoice = await vscode.window.showInformationMessage(
         t('upd.fullLogOpened', latestVersion),
@@ -321,20 +469,22 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
         laterLabel
       );
       if (nextChoice === installLabel) {
-        await downloadAndInstall(vsixAsset.browser_download_url, latestVersion);
+        await downloadAndInstall(release.downloadUrl, latestVersion);
       } else if (nextChoice === downloadLabel) {
-        await downloadOnly(vsixAsset.browser_download_url, latestVersion);
+        await downloadOnly(release.downloadUrl, latestVersion);
       }
     } else if (choice === openReleaseLabel) {
-      vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+      vscode.env.openExternal(vscode.Uri.parse(release.releaseUrl));
     }
 
     return true;
   } catch (err: any) {
     if (!silent) {
-      vscode.window.showErrorMessage(t('upd.checkFailed', err.message));
+      vscode.window.showErrorMessage(t('upd.checkFailed', sanitizeErrMessage(err.message)));
     }
     return false;
+  } finally {
+    isCheckingUpdate = false;
   }
 }
 
