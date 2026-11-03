@@ -11,6 +11,7 @@ import { SidebarProvider } from './sidebarProvider';
 import { checkForUpdates } from './updater';
 import { initAccountLock, acquireLock, releaseLock, startHeartbeat, stopHeartbeat } from './accountLock';
 import { UsageTracker } from './usageTracker';
+import { SessionHealer } from './sessionHealer';
 import { t, initI18n, watchLocaleConfig, onLangChange } from './i18n';
 import { detectHostEdition } from './host';
 
@@ -112,6 +113,20 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   } catch (err: any) {
     console.warn(`[BuddyRelay] Patch v4 自检异常: ${err.message}`);
+  }
+
+  // 3.2 会话母体自愈（2026-11-03 事故）：修复旧版硬编码母体建的错误链接，
+  // 把 .bak_ 备份里的会话数据合并回母体并登记正确母体。升级后用户打开 IDE 即自动修复。
+  const sessionHealer = new SessionHealer();
+  try {
+    const healRes = sessionHealer.heal();
+    if (healRes.healed) {
+      console.log(`[BuddyRelay] ${healRes.message}`);
+      const warnText = healRes.warnings.length > 0 ? `\n${healRes.warnings.join('\n')}` : '';
+      vscode.window.showInformationMessage(t('heal.done', healRes.masterUid || '-') + warnText);
+    }
+  } catch (err: any) {
+    console.warn(`[BuddyRelay] 会话母体自愈异常: ${err.message}`);
   }
 
   // 4. 初次启动号池打底检测：若为空则尝试自动导入 Cockpit Tools
@@ -240,6 +255,33 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // (9) 修复会话数据（母体自愈）：手动触发一次完整的母体发现/合并/链接修复
+  const repairSessionsCmd = vscode.commands.registerCommand(
+    'buddy-relay.repairSessions',
+    async () => {
+      try {
+        const res = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: t('heal.running'),
+            cancellable: false
+          },
+          async () => sessionHealer.heal()
+        );
+        if (res.error === 'NO_DATA_ROOT' || res.error === 'NO_USABLE_DATA') {
+          vscode.window.showWarningMessage(t('heal.nothing', res.message));
+          return;
+        }
+        if (res.warnings.length > 0) {
+          console.warn(`[BuddyRelay] 修复警告: ${res.warnings.join(' | ')}`);
+        }
+        vscode.window.showInformationMessage(t(res.healed ? 'heal.repairDone' : 'heal.noIssue', res.masterUid || '-'));
+      } catch (err: any) {
+        vscode.window.showErrorMessage(t('heal.failed', err.message));
+      }
+    }
+  );
+
   context.subscriptions.push(
     showQuickPickCmd,
     switchAccountCmd,
@@ -248,7 +290,8 @@ export async function activate(context: vscode.ExtensionContext) {
     addAccountOAuthCmd,
     deleteAccountCmd,
     refreshStatusCmd,
-    checkUpdateCmd
+    checkUpdateCmd,
+    repairSessionsCmd
   );
 
   // 6. 启动时后台静默检查更新 (延迟 8 秒，避免抢占启动资源)

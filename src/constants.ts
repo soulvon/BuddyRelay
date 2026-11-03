@@ -133,7 +133,12 @@ export const PATHS = {
 
   // 会话物理存储与软链接联结点 (跨账号会话穿透)
   EXTENSION_DATA_DIR: path.join(LOCALAPPDATA, 'CodeBuddyExtension', 'Data'),
-  MASTER_SESSION_UID: '69719899-bf05-4822-9e20-d4e7437a2edd',
+  // 历史遗留：曾把母体硬编码成作者本人 uid，在用户机器上会指向空目录并换走真实会话目录
+  // （2026-11-03 事故）。现仅用于识别/迁移旧版建的错误链接，不再作为建链目标。
+  LEGACY_MASTER_SESSION_UID: '69719899-bf05-4822-9e20-d4e7437a2edd',
+  // 母体登记与自愈日志（随号池同区，天然多窗口共享）
+  SESSION_MASTER_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'session-master.json'),
+  SESSION_HEAL_LOG: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'session-heal.log'),
 
   // 跨平台 CodeBuddy main.js 候选路径
   CANDIDATE_MAIN_JS_PATHS: resolveCandidateMainJsPaths()
@@ -146,8 +151,9 @@ export const PATHS = {
 export const PATCH_V5 = {
   VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
-  // v5 特征码：R2/R3 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
-  V5_MARKER: '/*__BYOK_V5_R3__*/',
+  // v5 特征码：R2/R3/R4 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
+  // R4 (2026-11-03)：__ensureJunction 安全化——主进程不再新建空母体、不再改名用户真实目录
+  V5_MARKER: '/*__BYOK_V5_R4__*/',
 
   // 锚点 1: 会话服务类构造函数注入全局会话实例
   // 类名随宿主构建漂移 (AM -> HM)，硬编码类名必失效；
@@ -174,12 +180,16 @@ export const PATCH_V5 = {
   // 挂起或拒绝时 watcher 永不启动（2026-11-02 事故实证）。构造函数实例化必然执行。
   // __byokStarted 防重入；构造首句时 logService 未赋值由 __byokLog 的 try/catch 保护。
 
-  // 注入的完整 WATCHER_METHODS 源码块 (v5 R3: 跨平台目录 / 非 Windows 软链 / 回执闭环 / 启动诊断黑匣子)
+  // 注入的完整 WATCHER_METHODS 源码块 (v5 R4: 跨平台目录 / 非 Windows 软链 / 回执闭环 / 启动诊断黑匣子 / 安全建链)
+  // 注意：此处 marker 必须与 V5_MARKER 一致，否则自愈判定永远认为"未打补丁"而反复重打
   WATCHER_METHODS:
-    '/*__BYOK_V5_R3__*/' +
+    '/*__BYOK_V5_R4__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
     '__byokDir(k){try{const pm=globalThis.__byokPath;if(!pm)return "";const h=process.env.HOME||process.env.USERPROFILE||"";const mac=process.platform==="darwin";const win=process.platform==="win32";if(k==="data"){if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_CONFIG_HOME||pm.join(h,".config");return process.env.APPDATA||pm.join(h,"AppData","Roaming")}if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_DATA_HOME||pm.join(h,".local","share");return process.env.LOCALAPPDATA||pm.join(h,"AppData","Local")}catch(e){return ""}}' +
     '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const f=pm.join(this.__byokDir("data"),"CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now();fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}catch(_){}}' +
+    // 2026-11-03 事故修复：主进程绝不新建母体、绝不移走真实目录。
+    // 母体不存在或为空 → 直接跳过，把建链交给扩展（SessionHealer 有完整的合并与备份流程）。
+    // 旧实现会 mkdir 一个空母体再把用户真实会话目录改名，导致切号后会话记录全部"消失"。
     '__ensureJunction(targetUid){' +
     'try{' +
     'const win=process.platform==="win32";' +
@@ -191,14 +201,16 @@ export const PATCH_V5 = {
     'const tp=pm.join(b,targetUid,"CodeBuddyIDE");' +
     'const td=pm.join(tp,targetUid);' +
     'if(win?td.toLowerCase()===m.toLowerCase():td===m)return;' +
-    'if(!fm.existsSync(tp))fm.mkdirSync(tp,{recursive:true});' +
+    'let usable=false;' +
+    'try{usable=fm.statSync(m).isDirectory()&&fm.readdirSync(m).length>0}catch(_){usable=false}' +
+    'if(!usable){this.__byokLog("skip link: master session dir missing or empty");return}' +
     'let isJ=false;' +
     'try{isJ=fm.lstatSync(td).isSymbolicLink()}catch(_){}' +
-    'if(!isJ){' +
-    'if(fm.existsSync(td)){try{fm.renameSync(td,td+".bak_"+Date.now())}catch(_){}}' +
+    'if(isJ)return;' +
+    'if(fm.existsSync(td)){this.__byokLog("skip link: real dir exists, left for healer");return}' +
+    'if(!fm.existsSync(tp))fm.mkdirSync(tp,{recursive:true});' +
     'fm.symlinkSync(m,td,win?"junction":"dir");' +
     'this.__byokLog("created session link: "+td+" -> "+m);' +
-    '}' +
     '}catch(e){this.__byokLog("junc err "+e.message)}' +
     '}' +
     '__byokApplySwitch(s,ts){' +

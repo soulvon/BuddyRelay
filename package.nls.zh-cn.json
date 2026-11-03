@@ -11,6 +11,7 @@
   "command.refreshStatus.title": "刷新状态与配额",
   "command.deleteAccount.title": "删除账号",
   "command.checkUpdate.title": "检查新版本更新",
+  "command.repairSessions.title": "修复会话数据（母体自愈）",
   "config.title": "BuddyRelay 配置",
   "config.locale": "界面语言 (auto 跟随 IDE 显示语言; 手动切换后重载窗口生效)",
   "config.locale.auto": "跟随系统语言",

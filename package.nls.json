@@ -11,6 +11,7 @@
   "command.refreshStatus.title": "Refresh Status & Quota",
   "command.deleteAccount.title": "Delete Account",
   "command.checkUpdate.title": "Check for Updates",
+  "command.repairSessions.title": "Repair Session Data (Master Heal)",
   "config.title": "BuddyRelay",
   "config.locale": "UI language (auto follows IDE display language; manual switch takes effect after reloading the window)",
   "config.locale.auto": "Follow system language",

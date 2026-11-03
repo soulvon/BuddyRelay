@@ -196,7 +196,10 @@ async function runTests() {
   const REAL_MAIN = 'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js';
   if (fs.existsSync(REAL_MAIN)) {
     const f6 = path.join(tmpDir, 'real-main.js');
-    fs.copyFileSync(REAL_MAIN, f6);
+    // 优先用安装目录的 .byok-origin 干净原版：磁盘 main.js 可能已是旧结构补丁，
+    // 直接拷补丁文件当源码会让 healPatch 二次注入。真实用户环境 healPatch 也是从干净 origin 重打。
+    const cleanSource = fs.existsSync(`${REAL_MAIN}.byok-origin`) ? `${REAL_MAIN}.byok-origin` : REAL_MAIN;
+    fs.copyFileSync(cleanSource, f6);
     const before = sw.checkPatch(f6);
     check('checkPatch 动态锚点识别有效', before.anchorsValid === true && before.details && before.details.amCount === 1,
       JSON.stringify(before.details || {}));
@@ -211,7 +214,7 @@ async function runTests() {
     console.log('  SKIP  真实宿主 main.js 不存在（非 CodeBuddy CN 机器），跳过端到端用例');
   }
 
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* 清理失败不影响结论 */ }
 
   console.log(`\n=== 结果: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) {

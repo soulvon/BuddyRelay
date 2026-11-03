@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import { PATHS, PATCH_V5 } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { SessionHealer, normalizeLinkTarget } from './sessionHealer';
 import { t } from './i18n';
 
 export interface PatchCheckResult {
@@ -136,6 +137,7 @@ interface SyntaxRunner {
 export class SeamlessSwitcher {
   private customMainJsPath?: string;
   private customCmdPath?: string;
+  private readonly healer: SessionHealer;
   // 上次校验成功的运行时：避免每次切号都先白跑一次失败分支（Electron 冷启动可达 1~2 秒）
   private static _preferredRunner = '';
   // 窗口内切号串行队列：消除自动切号与手动切号在 2s 轮询窗口内的指令覆盖竞态
@@ -144,9 +146,11 @@ export class SeamlessSwitcher {
   constructor(options?: {
     mainJsPath?: string;
     cmdPath?: string;
+    healer?: SessionHealer;
   }) {
     this.customMainJsPath = options?.mainJsPath;
     this.customCmdPath = options?.cmdPath;
+    this.healer = options?.healer || new SessionHealer();
   }
 
   /**
@@ -482,19 +486,57 @@ export class SeamlessSwitcher {
   /**
    * 自动创建并维系 NTFS Junction 映射
    * 穿透 Data\<uid>\CodeBuddyIDE\<uid> -> Data\<masterUid>\CodeBuddyIDE\<masterUid>
-   * 确保切号后 5.7GB 历史会话物理文件完全共享穿透
+   * 确保切号后历史会话物理文件完全共享穿透
+   *
+   * 2026-11-03 事故修复：母体不再硬编码成作者本人 uid。
+   * 母体必须由 SessionHealer 解析出「真实存在且非空」的目录；
+   * 解析不到一律中止切号——绝不新建空母体，也绝不把用户真实目录换走。
    */
-  public ensureJunction(
-    targetUid: string,
-    masterUid: string = PATHS.MASTER_SESSION_UID
-  ): JunctionResult {
+  public ensureJunction(targetUid: string, masterUid?: string): JunctionResult {
     const baseDir = PATHS.EXTENSION_DATA_DIR;
-    const masterPath = path.join(baseDir, masterUid, 'CodeBuddyIDE', masterUid);
     const targetParent = path.join(baseDir, targetUid, 'CodeBuddyIDE');
     const targetLink = path.join(targetParent, targetUid);
 
+    // 解析母体：显式指定则校验，否则走自愈中枢的登记/发现逻辑
+    let masterPath: string;
+    if (masterUid) {
+      masterPath = path.join(baseDir, masterUid, 'CodeBuddyIDE', masterUid);
+    } else {
+      const master = this.healer.resolveMasterForSwitch();
+      if (!master) {
+        return {
+          success: false,
+          masterPath: '',
+          targetPath: targetLink,
+          alreadyExisted: false,
+          message: t('sw.masterSessionUnavailable'),
+          error: 'MASTER_SESSION_DIR_MISSING'
+        };
+      }
+      masterPath = master.masterPath;
+    }
+
+    // 母体必须是真实目录且内有内容，否则拒绝建链
+    let masterUsable = false;
+    try {
+      const stat = fs.lstatSync(masterPath);
+      masterUsable = stat.isDirectory() && !stat.isSymbolicLink() && fs.readdirSync(masterPath).length > 0;
+    } catch {
+      masterUsable = false;
+    }
+    if (!masterUsable) {
+      return {
+        success: false,
+        masterPath,
+        targetPath: targetLink,
+        alreadyExisted: false,
+        message: t('sw.masterSessionUnavailable'),
+        error: 'MASTER_SESSION_DIR_MISSING'
+      };
+    }
+
     // 如果目标账号就是母账号本身，无需联结
-    if (targetLink.toLowerCase() === masterPath.toLowerCase()) {
+    if (path.resolve(targetLink).toLowerCase() === path.resolve(masterPath).toLowerCase()) {
       return {
         success: true,
         masterPath,
@@ -504,12 +546,7 @@ export class SeamlessSwitcher {
       };
     }
 
-    // 确保母体物理会话目录存在
-    if (!fs.existsSync(masterPath)) {
-      fs.mkdirSync(masterPath, { recursive: true });
-    }
-
-    // 确保目标父目录存在
+    // 确保目标父目录存在（只建父级，绝不预建 inner 空目录）
     if (!fs.existsSync(targetParent)) {
       fs.mkdirSync(targetParent, { recursive: true });
     }
@@ -524,29 +561,83 @@ export class SeamlessSwitcher {
     }
 
     if (isJunction) {
-      return {
-        success: true,
-        masterPath,
-        targetPath: targetLink,
-        alreadyExisted: true,
-        message: t('sw.junctionReady', targetLink, masterPath)
-      };
-    }
-
-    // 若存在普通物理文件夹且非软链，先安全重命名备份
-    if (fs.existsSync(targetLink)) {
+      let currentTarget = '';
       try {
-        const backupTarget = `${targetLink}.bak_${Date.now()}`;
-        fs.renameSync(targetLink, backupTarget);
+        currentTarget = fs.readlinkSync(targetLink);
+      } catch {
+        currentTarget = '';
+      }
+      const pointingHere =
+        currentTarget &&
+        normalizeLinkTarget(path.resolve(currentTarget)) === normalizeLinkTarget(path.resolve(masterPath));
+      if (pointingHere) {
+        return {
+          success: true,
+          masterPath,
+          targetPath: targetLink,
+          alreadyExisted: true,
+          message: t('sw.junctionReady', targetLink, masterPath)
+        };
+      }
+      // 指向别处（多为旧版硬编码母体留下的错误链接）：摘掉重建，不动任何真实数据
+      try {
+        try {
+          fs.unlinkSync(targetLink);
+        } catch {
+          fs.rmdirSync(targetLink);
+        }
+        this.healer.log(`drop stale link ${targetLink} (was -> ${currentTarget})`);
       } catch (err: any) {
         return {
           success: false,
           masterPath,
           targetPath: targetLink,
-          alreadyExisted: false,
-          message: t('sw.backupFailed', err.message),
+          alreadyExisted: true,
+          message: t('sw.symlinkFailed', err.message),
           error: err.message
         };
+      }
+    } else if (fs.existsSync(targetLink)) {
+      // 普通物理目录：先把内容合并进母体，再改名留底，最后才建链
+      const entries = fs.readdirSync(targetLink);
+      if (entries.length > 0) {
+        try {
+          this.healer.adoptIntoMaster(targetLink, masterPath);
+        } catch (err: any) {
+          return {
+            success: false,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: t('sw.mergeFailed', err.message),
+            error: 'ADOPT_FAILED'
+          };
+        }
+        try {
+          this.healer.backupDir(targetLink);
+        } catch (err: any) {
+          return {
+            success: false,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: t('sw.backupFailed', err.message),
+            error: err.message
+          };
+        }
+      } else {
+        try {
+          fs.rmdirSync(targetLink);
+        } catch (err: any) {
+          return {
+            success: false,
+            masterPath,
+            targetPath: targetLink,
+            alreadyExisted: false,
+            message: t('sw.backupFailed', err.message),
+            error: err.message
+          };
+        }
       }
     }
 
@@ -812,7 +903,18 @@ export class SeamlessSwitcher {
     }
 
     // 2. 确保目标 UID 的 NTFS Junction 穿透
+    // 建链失败必须中止：切过去也读不到会话，硬切只会让用户以为数据丢了
     const junctionResult = this.ensureJunction(account.uid);
+    if (!junctionResult.success) {
+      return {
+        success: false,
+        account,
+        patchResult,
+        junctionResult,
+        message: junctionResult.message,
+        error: junctionResult.error || 'JUNCTION_FAILED'
+      };
+    }
 
     // 3. 写入 byok-switch.json 指令
     let cmdTs: number;

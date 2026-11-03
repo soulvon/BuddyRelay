@@ -244,6 +244,17 @@ export const en: Record<string, string> = {
   'sw.junctionFailed': 'Failed to create junction: {0}',
   'sw.symlinkViaLn': 'Session symlink created via ln -s: {0} -> {1}',
   'sw.symlinkFailed': 'Failed to create symlink: {0}',
+  'sw.masterSessionUnavailable':
+    'Master session directory is missing or empty; switch aborted without touching any file. Run "Repair Session Data" from the sidebar and retry',
+  'sw.mergeFailed': 'Failed to merge current account session directory; switch aborted to protect your data: {0}',
+
+  // ── sessionHealer (session master self-heal) ──
+  'heal.done': 'BuddyRelay: session data healed, master registered as {0}. Misplaced history has been restored',
+  'heal.repairDone': 'BuddyRelay: session data repaired, master {0}',
+  'heal.noIssue': 'BuddyRelay: session data is healthy, nothing to repair (master {0})',
+  'heal.nothing': 'BuddyRelay: {0}',
+  'heal.running': 'BuddyRelay: repairing session data...',
+  'heal.failed': 'Session data repair failed: {0}',
   'sw.receiptSkipped': 'Host reports already on target account (same-uid skip)',
   'sw.receiptDone': 'Host confirmed the switch',
   'sw.hostSwitchFailed': 'Host switch failed: {0}',
