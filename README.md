@@ -7,7 +7,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-1.2.4-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.5-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -47,7 +47,7 @@ BuddyRelay 是一款专为**电脑桌面端 CodeBuddy IDE**（国内版 CodeBudd
 
 BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩展商店的底层市场），**在电脑 CodeBuddy IDE 里直接搜索扩展名即可一键安装，无需下载任何文件**。
 
-👉 **商店主页**：[open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay)（当前已上架 v1.2.3）
+👉 **商店主页**：[open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay)
 
 ### 方式一：扩展商店直接安装（最推荐，最快）
 
@@ -60,7 +60,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 
 ### 方式二：从 VSIX 离线安装（网络受限或需锁定旧版本时）
 
-1. 下载最新版 `buddy-relay-1.2.4.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
+1. 下载最新版 `buddy-relay-1.2.5.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
 2. 打开电脑上的 **CodeBuddy CN**（或 CodeBuddy 国际版）IDE；
 3. 进入左侧扩展面板 ➔ 点击右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
 4. 选中下载的文件，安装完成后左侧活动栏即可看到 **BuddyRelay** 图标。
@@ -72,7 +72,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 buddycn --install-extension soulvon.buddy-relay --force
 
 # 或从本地 VSIX 文件安装
-buddycn --install-extension buddy-relay-1.2.4.vsix --force
+buddycn --install-extension buddy-relay-1.2.5.vsix --force
 ```
 
 > ⚠️ **新手避坑（重要）：**  

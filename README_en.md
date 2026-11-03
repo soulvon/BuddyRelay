@@ -7,7 +7,7 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.2.4-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.5-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -46,7 +46,7 @@ BuddyRelay is a multi-account management extension (`.vsix`) specifically design
 
 BuddyRelay is officially published on the **Open VSX Registry** (the marketplace behind CodeBuddy IDE's built-in extension gallery). **Search it right inside your Desktop CodeBuddy IDE and install in one click — no downloads required.**
 
-👉 **Marketplace page**: [open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay) (v1.2.3 live)
+👉 **Marketplace page**: [open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay)
 
 ### Option 1: Install from marketplace (recommended, fastest)
 
@@ -59,7 +59,7 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 
 ### Option 2: Offline VSIX install (restricted networks or version pinning)
 
-1. Download the latest `buddy-relay-1.2.4.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.2.5.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
 3. Extensions view ➔ `...` menu ➔ **"Install from VSIX..."**;
 4. Select the file; after install the **BuddyRelay** icon appears in the activity bar.
@@ -71,7 +71,7 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 buddycn --install-extension soulvon.buddy-relay --force
 
 # Or install from a local VSIX file
-buddycn --install-extension buddy-relay-1.2.4.vsix --force
+buddycn --install-extension buddy-relay-1.2.5.vsix --force
 ```
 
 > ⚠️ **Important Notice**:  
