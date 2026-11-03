@@ -160,13 +160,46 @@ gate('G22 隐私全贯通: sidebarProvider 响应 togglePrivacyMode 消息', sid
 gate('G22 隐私全贯通: 状态栏文本与 Tooltip 支持隐私脱敏', statusBarTs.includes('isPrivacy ? maskName(rawName) : rawName') && statusBarTs.includes('isPrivacy ? maskUid(active.uid) : active.uid'));
 gate('G22 隐私全贯通: QuickPick 列表与快捷开关支持隐私模式', statusBarTs.includes('isPrivacy ? maskName(rawName) : rawName') && statusBarTs.includes('togglePrivacy'));
 
-// ── G23: Git 仓库纯净与合规门控 ──
+// ── G23: Git 仓库纯净与合规门控 (严防 docs/ 内部指南与真实凭据入库) ──
 try {
   const trackedFiles = child_process.execSync('git ls-files', { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
-  const forbiddenPatterns = [/\.vsix$/, /^docs\//, /^AGENTS\.md$/, /^CLAUDE\.md$/, /\.env/, /\.db$/, /^tmp\//, /^node_modules\//, /^out\//, /^dist\//];
-  const leaked = trackedFiles.filter(f => forbiddenPatterns.some(p => p.test(f)));
-  gate('G23 Git 纯净门控: 无敏感文件与冗余构建产物入库', leaked.length === 0, `违规跟踪文件: ${leaked.join(', ')}`);
-} catch (_) {}
+  let stagedFiles = [];
+  try {
+    stagedFiles = child_process.execSync('git diff --cached --name-only', { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  } catch (_) {}
+  const allAudited = Array.from(new Set([...trackedFiles, ...stagedFiles]));
+
+  const forbiddenPatterns = [
+    /\.vsix$/,
+    /^docs\//i,              // 内部指南/复盘/草稿等纯本地私有文档
+    /^AGENTS\.md$/i,         // 本地私有规范
+    /^CLAUDE\.md$/i,
+    /\.env(\..+)?$/i,
+    /\.db$/,
+    /^tmp\//i,
+    /^node_modules\//,
+    /^out\//,
+    /^dist\//
+  ];
+  const leaked = allAudited.filter(f => forbiddenPatterns.some(p => p.test(f)));
+  gate('G23 Git 纯净门控: 无敏感文件与冗余构建产物入库' + (leaked.length ? ` (发现: ${leaked.join(', ')})` : ''), leaked.length === 0);
+
+  // 严禁源码与文档中硬编码真实 Token
+  const tokenRegexes = [/ovsx_[A-Za-z0-9_-]{20,}/, /ghp_[A-Za-z0-9]{36}/, /github_pat_[A-Za-z0-9_]{50,}/];
+  const textTracked = trackedFiles.filter(f => !/\.(png|webp|svg|ico|vsix|wasm)$/i.test(f));
+  let tokenLeaks = [];
+  for (const f of textTracked) {
+    const fp = path.join(ROOT, f);
+    if (!fs.existsSync(fp)) continue;
+    try {
+      const c = fs.readFileSync(fp, 'utf8');
+      if (tokenRegexes.some(r => r.test(c))) tokenLeaks.push(f);
+    } catch (_) {}
+  }
+  gate('G23.1 凭据防泄露: 源码与文档无真实 Token/PAT 硬编码' + (tokenLeaks.length ? ` (泄露: ${tokenLeaks.join(', ')})` : ''), tokenLeaks.length === 0);
+} catch (_) {
+  gate('G23 Git 纯净门控: 环境自检', false);
+}
 
 // ── G24: README 核心标语与配图门控 ──
 gate(

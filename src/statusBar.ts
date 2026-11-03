@@ -4,6 +4,7 @@ import { SeamlessSwitcher } from './seamlessSwitcher';
 import { t } from './i18n';
 import { detectHostEdition } from './host';
 import { isTodayCheckedIn } from './checkinService';
+import { showFailureWithActions } from './diagnostics';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -250,7 +251,7 @@ export class StatusBarManager implements vscode.Disposable {
           this.update();
           vscode.window.showInformationMessage(t('msg.switched', target.nickname || target.email));
         } else {
-          vscode.window.showErrorMessage(t('msg.switchFailed', res.message));
+          await showFailureWithActions(t('msg.switchFailed', res.message), res.detail);
         }
       }
     );

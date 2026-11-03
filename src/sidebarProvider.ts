@@ -9,6 +9,7 @@ import { CockpitImporter } from './cockpitImporter';
 import { OAuthService } from './oauthService';
 import { GrowthTaskService, GrowthTask } from './growthTaskService';
 import { getOtherLockedUids } from './accountLock';
+import { buildDiagnostic, showFailureWithActions, copyDiagnostic, openIssueReport } from './diagnostics';
 import { checkForUpdates, getCurrentVersion } from './updater';
 import { UsageTracker } from './usageTracker';
 import { t, getLangDict } from './i18n';
@@ -197,6 +198,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           this.sendNotify('success', t('msg.usageCleared'));
           this.postStateToWebview();
           break;
+
+        case 'copyText':
+          await copyDiagnostic(String(message.text || ''));
+          break;
+
+        case 'reportIssue':
+          await openIssueReport(String(message.text || ''));
+          break;
       }
     });
 
@@ -349,10 +358,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.promptFullRestart();
           return;
         }
-        this.sendNotify('error', t('err.switchAbnormal', res.message));
+        this.notifySwitchFailure(t('err.switchAbnormal', res.message), res.detail);
       }
     } catch (err: any) {
-      this.sendNotify('error', t('err.switchFailed', err.message));
+      this.notifySwitchFailure(t('err.switchFailed', err.message));
     } finally {
       this.setOperating(false);
     }
@@ -1155,12 +1164,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * Webview 内 toast 通知（Kite 同款右下角浮层）
+   * detail 非空时，toast 会带「复制详情 / 反馈问题」两个入口——报错截图里最缺的版本与系统信息
+   * 由宿主统一拼好，用户一键带走，不再靠口头描述环境。
    */
-  public sendNotify(level: 'success' | 'error' | 'warn', message: string): void {
+  public sendNotify(level: 'success' | 'error' | 'warn', message: string, detail?: string): void {
     if (!this._view) {
       return;
     }
-    this._view.webview.postMessage({ command: 'notify', level, message });
+    this._view.webview.postMessage({ command: 'notify', level, message, detail: detail || '' });
+  }
+
+  /**
+   * 切号失败统一出口：toast 带诊断详情，用户可一键复制或上报。
+   * 侧栏未打开时退化为原生通知，避免错误被静默吞掉。
+   */
+  public notifySwitchFailure(message: string, detail?: string): void {
+    if (!this._view) {
+      void showFailureWithActions(message, detail);
+      return;
+    }
+    this.sendNotify('error', message, buildDiagnostic(message, detail));
   }
 
   /**

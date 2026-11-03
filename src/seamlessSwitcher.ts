@@ -24,6 +24,47 @@ export interface PatchApplyResult {
   repatched?: boolean;
   message: string;
   error?: string;
+  /** 技术细节（语法校验原始输出、尝试过的运行时等）；仅供复制/上报，不直接展示给用户 */
+  detail?: string;
+}
+
+/** 语法校验结论：syntax=补丁本身有问题，no_runtime=本机没有可用校验运行时，timeout=校验超时 */
+export interface SyntaxCheckResult {
+  valid: boolean;
+  error?: string;
+  reason?: 'syntax' | 'no_runtime' | 'timeout';
+}
+
+/**
+ * 子进程输出解码：优先 UTF-8；出现替换字符说明是中文 Windows 的 GBK 输出，回退 GBK 重解。
+ * 否则中文系统下的报错会整段变成乱码（历史事故：'node' 后面跟着一串问号）。
+ */
+/**
+ * 权限类失败：IDE 装在 Program Files、只读介质、安全软件占着文件都归这里。
+ * 这类错误对用户有明确解法（以管理员身份运行），必须单独翻译，不能直接甩 errno。
+ */
+function isPermissionError(err: any): boolean {
+  const code = String(err?.code || '');
+  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS' || code === 'EBUSY') {
+    return true;
+  }
+  const msg = String(err?.message || '');
+  return /operation not permitted|permission denied|拒绝访问|另一个程序正在使用/i.test(msg);
+}
+
+function decodeOutput(buf?: Buffer): string {
+  if (!buf || buf.length === 0) {
+    return '';
+  }
+  const utf8 = buf.toString('utf8');
+  if (!utf8.includes('\uFFFD')) {
+    return utf8.trim();
+  }
+  try {
+    return new TextDecoder('gbk').decode(buf).trim();
+  } catch {
+    return utf8.trim();
+  }
 }
 
 export interface JunctionResult {
@@ -76,6 +117,8 @@ export interface SwitchResult {
   needsFullRestart?: boolean;
   message: string;
   error?: string;
+  /** 技术细节（供复制/上报，不直接展示） */
+  detail?: string;
 }
 
 /**
@@ -83,9 +126,18 @@ export interface SwitchResult {
  * 负责 main.js Patch v5 检查自愈、NTFS Junction 5.7GB 物理会话文件穿透映射与 byok-switch.json 动态指令注入
  * v5 新增切换回执闭环：宿主每种结局写回执 byok-switch-result.json，扩展轮询校验后才宣布成功
  */
+/** 语法校验运行时：宿主自带 Electron 或系统 node */
+interface SyntaxRunner {
+  label: string;
+  exe: string;
+  env: NodeJS.ProcessEnv;
+}
+
 export class SeamlessSwitcher {
   private customMainJsPath?: string;
   private customCmdPath?: string;
+  // 上次校验成功的运行时：避免每次切号都先白跑一次失败分支（Electron 冷启动可达 1~2 秒）
+  private static _preferredRunner = '';
   // 窗口内切号串行队列：消除自动切号与手动切号在 2s 轮询窗口内的指令覆盖竞态
   private _switchQueue: Promise<unknown> = Promise.resolve();
 
@@ -193,29 +245,45 @@ export class SeamlessSwitcher {
     // 若已经打好补丁且语法自检正常，直接放行（运行中的 main 进程与磁盘一致，无需重启）
     if (check.isPatched) {
       const syntaxCheck = this.validateSyntax(mainPath);
-      if (syntaxCheck.valid) {
+      // 校验运行时缺失时无法校验，但补丁特征完整且本次不写盘，直接放行。
+      // 旧实现会把它当成"语法损坏"，导致没装 Node.js 的用户每次切号都被重打补丁并要求重启。
+      if (syntaxCheck.valid || syntaxCheck.reason === 'no_runtime') {
         return {
           success: true,
           mainJsPath: mainPath,
           backupCreated: check.hasOriginBackup,
           repatched: false,
-          message: t('sw.patchHealthy')
+          // 校验跑不起来时如实说明，不谎报"语法校验通过"
+          message: syntaxCheck.valid ? t('sw.patchHealthy') : t('sw.patchHealthyNoCheck'),
+          detail: syntaxCheck.valid ? undefined : syntaxCheck.error
         };
       }
-      // 语法损坏，触发自愈回滚重打
+      // 语法损坏或校验超时，触发自愈回滚重打
     }
 
     const originPath = `${mainPath}.byok-origin`;
     let backupCreated = false;
+    let src: string;
 
-    // 1. 若无 origin 备份，创建 origin 备份
-    if (!fs.existsSync(originPath)) {
-      fs.copyFileSync(mainPath, originPath);
-      backupCreated = true;
+    // 1-2. 备份原文件并从干净的 origin 读取源码
+    // 装在 Program Files 的用户没有写权限，这里会直接 EACCES；必须翻译成能照做的提示，
+    // 否则用户看到的是 "EPERM: operation not permitted, open ..."
+    try {
+      if (!fs.existsSync(originPath)) {
+        fs.copyFileSync(mainPath, originPath);
+        backupCreated = true;
+      }
+      src = fs.readFileSync(originPath, 'utf8');
+    } catch (err: any) {
+      return {
+        success: false,
+        mainJsPath: mainPath,
+        backupCreated,
+        message: isPermissionError(err) ? t('sw.writePermissionDenied') : t('sw.backupFailed', err.message),
+        detail: err.message,
+        error: err.code || 'ORIGIN_BACKUP_FAILED'
+      };
     }
-
-    // 2. 从干净的 origin 读取源码
-    let src = fs.readFileSync(originPath, 'utf8');
 
     // 3. 逐级注入 Patch v5
     const skipNotes: string[] = [];
@@ -283,7 +351,18 @@ export class SeamlessSwitcher {
 
     // 4. 原子安全写入：文件名必须以 .js 结尾，兼容现代 Node.js ESM/CJS loader 扩展名校验规范
     const tmpWritePath = `${mainPath}.tmp_${Date.now()}.js`;
-    fs.writeFileSync(tmpWritePath, src, 'utf8');
+    try {
+      fs.writeFileSync(tmpWritePath, src, 'utf8');
+    } catch (err: any) {
+      return {
+        success: false,
+        mainJsPath: mainPath,
+        backupCreated,
+        message: isPermissionError(err) ? t('sw.writePermissionDenied') : t('sw.writeFailed', err.message),
+        detail: err.message,
+        error: err.code || 'TMP_WRITE_FAILED'
+      };
+    }
 
     // 5. Node 语法自检
     const checkRes = this.validateSyntax(tmpWritePath);
@@ -295,8 +374,13 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: t('sw.syntaxCheckFailed', checkRes.error || 'syntax error'),
-        error: 'SYNTAX_CHECK_FAILED'
+        message: checkRes.reason === 'no_runtime'
+          ? t('sw.checkNoRuntime')
+          : checkRes.reason === 'timeout'
+            ? t('sw.checkTimeout')
+            : t('sw.syntaxCheckFailed'),
+        detail: checkRes.error,
+        error: checkRes.reason === 'no_runtime' ? 'CHECK_RUNTIME_MISSING' : 'SYNTAX_CHECK_FAILED'
       };
     }
 
@@ -309,8 +393,9 @@ export class SeamlessSwitcher {
         success: false,
         mainJsPath: mainPath,
         backupCreated,
-        message: t('sw.writeFailed', err.message),
-        error: err.message
+        message: isPermissionError(err) ? t('sw.writePermissionDenied') : t('sw.writeFailed', err.message),
+        detail: err.message,
+        error: err.code || 'MAIN_WRITE_FAILED'
       };
     }
 
@@ -327,36 +412,71 @@ export class SeamlessSwitcher {
 
   /**
    * 使用 node --check 验证 JS 语法合法性
-   * 优先使用全局 node，无全局 node 时回退至 CodeBuddy 内置 Electron 运行环境
+   * 首选宿主自带 Electron（ELECTRON_RUN_AS_NODE）：它永远存在，且与 main.js 同源，
+   * 不再依赖用户本机是否装了 Node.js。只有宿主运行时不可用时才回退系统 node。
+   *
+   * 历史事故：旧实现先跑系统 node，用中英文案匹配判断"没装 node"，在中文 Windows 上
+   * 该判断恒不成立（execSync 的 code 不是 ENOENT，中文原文也没有"找不到"三字），
+   * 于是把 GBK 乱码当成补丁语法错误，报"已中止写入以防损坏 IDE"。
    */
-  public validateSyntax(filePath: string): { valid: boolean; error?: string } {
-    // 1. 尝试全局 node
-    try {
-      child_process.execSync(`node --check "${filePath}"`, {
-        stdio: 'pipe',
-        timeout: 5000
+  public validateSyntax(filePath: string): SyntaxCheckResult {
+    const runners: SyntaxRunner[] = [];
+    if (process.execPath) {
+      runners.push({
+        label: '宿主运行时',
+        exe: process.execPath,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
       });
-      return { valid: true };
-    } catch (nodeErr: any) {
-      // 2. 若无系统全局 node 或未加入 PATH，回退使用宿主 process.execPath (设置 ELECTRON_RUN_AS_NODE)
-      const isMissingNode = nodeErr.code === 'ENOENT' ||
-        (nodeErr.message && (nodeErr.message.includes('not recognized') || nodeErr.message.includes('找不到')));
-      if (isMissingNode && process.execPath) {
-        try {
-          child_process.execSync(`"${process.execPath}" --check "${filePath}"`, {
-            stdio: 'pipe',
-            timeout: 5000,
-            env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
-          });
-          return { valid: true };
-        } catch (electronErr: any) {
-          const errMsg = electronErr.stderr ? electronErr.stderr.toString().trim() : electronErr.message;
-          return { valid: false, error: errMsg };
-        }
-      }
-      const errMsg = nodeErr.stderr ? nodeErr.stderr.toString().trim() : nodeErr.message;
-      return { valid: false, error: errMsg };
     }
+    runners.push({ label: '系统 node', exe: 'node', env: process.env });
+
+    // 上次成功的运行时提到最前，常见路径一次就中，不再每次白等一次失败
+    const preferred = SeamlessSwitcher._preferredRunner;
+    if (preferred) {
+      const idx = runners.findIndex(r => r.label === preferred);
+      if (idx > 0) {
+        runners.unshift(runners.splice(idx, 1)[0]);
+      }
+    }
+
+    const unavailable: string[] = [];
+    for (const runner of runners) {
+      try {
+        child_process.execFileSync(runner.exe, ['--check', filePath], {
+          stdio: 'pipe',
+          timeout: 20000,
+          env: runner.env
+        });
+        SeamlessSwitcher._preferredRunner = runner.label;
+        return { valid: true };
+      } catch (err: any) {
+        // 运行时本身没跑起来：换下一个，绝不当作语法错误
+        if (err.code === 'ENOENT' || err.code === 'EACCES') {
+          unavailable.push(`${runner.label}: ${err.code}`);
+          continue;
+        }
+        if (err.signal === 'SIGTERM') {
+          return {
+            valid: false,
+            reason: 'timeout',
+            error: `${runner.label} --check 超时（20s）`
+          };
+        }
+        const output = decodeOutput(err.stderr) || decodeOutput(err.stdout) || String(err.message || '').trim();
+        // node --check 报语法错误时必然带 SyntaxError；没有它说明是这个运行时自己出了问题
+        // （包装脚本不认 --check、被安全软件拦下等），此时换下一个运行时，别冤枉补丁
+        if (/SyntaxError|MODULE_NOT_FOUND/.test(output)) {
+          return { valid: false, reason: 'syntax', error: output };
+        }
+        unavailable.push(`${runner.label}: ${output.split('\n')[0] || '未知输出'}`);
+      }
+    }
+
+    return {
+      valid: false,
+      reason: 'no_runtime',
+      error: unavailable.join('; ') || '无可用的 JavaScript 运行时'
+    };
   }
 
   /**
@@ -686,7 +806,8 @@ export class SeamlessSwitcher {
           message: t('sw.patchHealFailed')
         },
         message: t('sw.patchInjectFailed', patchResult.message),
-        error: patchResult.error
+        error: patchResult.error,
+        detail: patchResult.detail
       };
     }
 

@@ -2121,6 +2121,48 @@
       color: var(--vscode-foreground) !important;
     }
 
+    /* 带诊断详情时的错误提示：消息一行、操作按钮一行 */
+    .toast.toast-with-actions {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 8px !important;
+    }
+
+    .toast-main {
+      display: flex !important;
+      align-items: flex-start !important;
+      gap: 8px !important;
+    }
+
+    .toast-acts {
+      display: flex !important;
+      gap: 8px !important;
+      justify-content: flex-end !important;
+    }
+
+    .toast-act {
+      min-height: 32px !important;
+      padding: 0 12px !important;
+      border-radius: var(--radius-sm, 4px) !important;
+      border: 1px solid var(--card-border, rgba(0, 0, 0, 0.14)) !important;
+      background: transparent !important;
+      color: var(--vscode-foreground) !important;
+      font-size: 12px !important;
+      line-height: 1 !important;
+      cursor: pointer !important;
+      white-space: nowrap !important;
+      transition: background 0.12s, border-color 0.12s !important;
+    }
+
+    .toast-act:hover {
+      background: var(--hover-bg, rgba(0, 0, 0, 0.06)) !important;
+    }
+
+    .toast-act:disabled {
+      opacity: 0.6 !important;
+      cursor: default !important;
+    }
+
     /* ════════════════════════════════════════════════════════════
        卡片底栏文字防折行与自然居中（保留原版色彩渐变，不强制截断）
        ════════════════════════════════════════════════════════════ */
@@ -3067,7 +3109,7 @@
         .replace(/'/g, '&#39;');
     }
 
-    function createToast(msg, type, key) {
+    function createToast(msg, type, key, detail = '') {
       const container = document.getElementById('toastContainer');
       if (!container) return null;
       if (key && _toastByKey.has(key)) {
@@ -3082,7 +3124,38 @@
         : type === 'success'
           ? '<svg class="toast-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           : '<svg class="toast-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="5" x2="8" y2="9" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.6" fill="currentColor"/></svg>';
-      toast.innerHTML = iconHtml + '<span class="toast-msg">' + escHtml(msg) + '</span><button class="toast-close" aria-label="' + escHtml(t('common.close')) + '">&times;</button>';
+      const closeBtn = '<button class="toast-close" aria-label="' + escHtml(t('common.close')) + '">&times;</button>';
+
+      if (detail) {
+        // 带诊断详情：消息占一行，操作按钮独立一行，避免长错误文本把按钮挤扁
+        toast.classList.add('toast-with-actions');
+        toast.innerHTML =
+          '<div class="toast-main">' + iconHtml + '<span class="toast-msg">' + escHtml(msg) + '</span>' + closeBtn + '</div>' +
+          '<div class="toast-acts">' +
+            '<button class="toast-act" data-act="copy">' + escHtml(t('err.copyDetail')) + '</button>' +
+            '<button class="toast-act" data-act="report">' + escHtml(t('err.reportIssue')) + '</button>' +
+          '</div>';
+        const copyBtn = toast.querySelector('.toast-act[data-act="copy"]');
+        const copyLabel = copyBtn.textContent;
+        copyBtn.addEventListener('click', () => {
+          if (copyBtn.disabled) return;
+          vscode.postMessage({ command: 'copyText', text: detail });
+          copyBtn.textContent = t('err.copied');
+          // 短暂锁一下防连点，随后恢复可再次复制（错误详情往往要贴多次）
+          copyBtn.disabled = true;
+          setTimeout(() => {
+            if (!copyBtn.isConnected) return;
+            copyBtn.textContent = copyLabel;
+            copyBtn.disabled = false;
+          }, 1500);
+        });
+        toast.querySelector('.toast-act[data-act="report"]').addEventListener('click', () => {
+          vscode.postMessage({ command: 'reportIssue', text: detail });
+        });
+      } else {
+        toast.innerHTML = iconHtml + '<span class="toast-msg">' + escHtml(msg) + '</span>' + closeBtn;
+      }
+
       toast.querySelector('.toast-close').addEventListener('click', () => removeToast(toast));
       container.appendChild(toast);
       if (key) _toastByKey.set(key, toast);
@@ -3091,8 +3164,8 @@
       return toast;
     }
 
-    function showToast(msg, type = 'success', ttl = 2200, key = '') {
-      const toast = createToast(msg, type, key);
+    function showToast(msg, type = 'success', ttl = 2200, key = '', detail = '') {
+      const toast = createToast(msg, type, key, detail);
       if (toast && ttl > 0) {
         if (toast._hideTimer) clearTimeout(toast._hideTimer);
         toast._hideTimer = setTimeout(() => removeToast(toast), ttl);
@@ -4796,7 +4869,15 @@
           if (_switchTimeout) clearTimeout(_switchTimeout);
           renderCards();
         }
-        showToast(msg.message, msg.level === 'success' ? 'success' : (msg.level === 'warn' ? 'warn' : 'error'), 3200);
+        // 带诊断详情的错误不自动消失，直到用户手动关闭：15 秒太容易错过，
+        // 错过就意味着这条错误再也没法复制出来了
+        showToast(
+          msg.message,
+          msg.level === 'success' ? 'success' : (msg.level === 'warn' ? 'warn' : 'error'),
+          msg.detail ? 0 : 3200,
+          '',
+          msg.detail || ''
+        );
       } else if (msg.command === 'taskProgress') {
         if (typeof msg.percent === 'number') {
           taskBatchProgressFill.style.width = msg.percent + '%';

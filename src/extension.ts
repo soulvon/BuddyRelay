@@ -185,7 +185,7 @@ export async function activate(context: vscode.ExtensionContext) {
               t('msg.switched', target!.nickname || target!.email)
             );
           } else {
-            sidebarProvider.sendNotify('error', t('msg.switchFailed', res.message));
+            sidebarProvider.notifySwitchFailure(t('msg.switchFailed', res.message), res.detail);
           }
         }
       );

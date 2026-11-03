@@ -197,7 +197,13 @@ async function runAudit() {
   check('分发逻辑: res.success 时必须发送 success 级别', handlerCode.includes("this.sendNotify('success',"));
   check('分发逻辑: res.success 时严禁再发送 error 级别', !handlerCode.includes("this.sendNotify('error',\n          t('msg.switched'"));
   check('分发逻辑: 纯净单重前缀，杜绝"已切换至 XXX，已切换至 XXX"重复拼接', !handlerCode.includes("，${res.message}"));
-  check('分发逻辑: 只有 catch 异常或 !res.success 才发 error', handlerCode.includes("this.sendNotify('error', t('err.switchAbnormal', res.message))"));
+  // 断言按分支结构匹配，不再锁死单行字面量：切号失败分支现在还带诊断详情参数（复制/上报用）
+  check(
+    '分发逻辑: 只有 catch 异常或 !res.success 才发 error',
+    // 失败分支是 if (res.success) 的 else 分支，error 通知必须落在其中；catch 里也必须有
+    /else\s*\{[\s\S]{0,600}?err\.switchAbnormal[\s\S]{0,200}?this\.notifySwitchFailure\(/.test(handlerCode) &&
+      /catch[\s\S]{0,300}?this\.notifySwitchFailure\(/.test(handlerCode)
+  );
 
   console.log('');
 
