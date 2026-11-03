@@ -117,13 +117,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 3.2 会话母体自愈（2026-11-03 事故）：修复旧版硬编码母体建的错误链接，
   // 把 .bak_ 备份里的会话数据合并回母体并登记正确母体。升级后用户打开 IDE 即自动修复。
+  // 全自动无感：成功只弹一句"已恢复"，警告与技术细节只进控制台，绝不要求用户手动操作。
   const sessionHealer = new SessionHealer();
   try {
     const healRes = sessionHealer.heal();
     if (healRes.healed) {
       console.log(`[BuddyRelay] ${healRes.message}`);
-      const warnText = healRes.warnings.length > 0 ? `\n${healRes.warnings.join('\n')}` : '';
-      vscode.window.showInformationMessage(t('heal.done', healRes.masterUid || '-') + warnText);
+      if (healRes.warnings.length > 0) {
+        console.warn(`[BuddyRelay] 自愈警告: ${healRes.warnings.join(' | ')}`);
+      }
+      vscode.window.showInformationMessage(t('heal.done'));
     }
   } catch (err: any) {
     console.warn(`[BuddyRelay] 会话母体自愈异常: ${err.message}`);
@@ -275,7 +278,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (res.warnings.length > 0) {
           console.warn(`[BuddyRelay] 修复警告: ${res.warnings.join(' | ')}`);
         }
-        vscode.window.showInformationMessage(t(res.healed ? 'heal.repairDone' : 'heal.noIssue', res.masterUid || '-'));
+        vscode.window.showInformationMessage(t(res.healed ? 'heal.repairDone' : 'heal.noIssue'));
       } catch (err: any) {
         vscode.window.showErrorMessage(t('heal.failed', err.message));
       }

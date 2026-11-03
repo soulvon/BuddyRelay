@@ -497,20 +497,30 @@ export class SeamlessSwitcher {
     const targetParent = path.join(baseDir, targetUid, 'CodeBuddyIDE');
     const targetLink = path.join(targetParent, targetUid);
 
-    // 解析母体：显式指定则校验，否则走自愈中枢的登记/发现逻辑
+    // 解析母体：显式指定则校验，否则走自愈中枢的登记/发现逻辑。
+    // 找不到母体时先自动自愈一次（合并 .bak_ 备份并登记母体），用户全程无感；
+    // 自愈后仍无数据（全新机器/账号）则按"无历史可共享"直接放行切号，绝不阻塞用户。
     let masterPath: string;
     if (masterUid) {
       masterPath = path.join(baseDir, masterUid, 'CodeBuddyIDE', masterUid);
     } else {
-      const master = this.healer.resolveMasterForSwitch();
+      let master = this.healer.resolveMasterForSwitch();
       if (!master) {
+        try {
+          this.healer.heal();
+        } catch (err: any) {
+          this.healer.log(`switch-time heal failed: ${err.message}`);
+        }
+        master = this.healer.resolveMasterForSwitch();
+      }
+      if (!master) {
+        // 本机确实没有任何会话数据：跳过建链，直接切号（宿主自然建新目录，无数据可丢）
         return {
-          success: false,
+          success: true,
           masterPath: '',
           targetPath: targetLink,
           alreadyExisted: false,
-          message: t('sw.masterSessionUnavailable'),
-          error: 'MASTER_SESSION_DIR_MISSING'
+          message: t('sw.junctionSkippedNoData')
         };
       }
       masterPath = master.masterPath;
