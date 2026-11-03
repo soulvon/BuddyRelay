@@ -7,13 +7,16 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.2.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.4-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
 [![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange&style=flat-square)](https://open-vsx.org/extension/soulvon/buddy-relay)
+[![Open VSX Marketplace](https://img.shields.io/badge/marketplace-search%20BuddyRelay%20to%20install-0f766e?style=flat-square)](https://open-vsx.org/extension/soulvon/buddy-relay)
 
 [English](README_en.md) • [简体中文](README.md)
+
+**Now live on the Open VSX Registry: search `BuddyRelay` in your Desktop CodeBuddy IDE extension panel to install in one click — future updates roll in automatically.**
 
 [📥 Install](#-install) •
 [💡 Family Ecosystem Guide](#-understanding-the-tencent-buddy-family-must-read) •
@@ -41,25 +44,41 @@ BuddyRelay is a multi-account management extension (`.vsix`) specifically design
 
 ## 📥 Install
 
-### Option 1: Extensions panel (recommended, inside Desktop CodeBuddy IDE)
+BuddyRelay is officially published on the **Open VSX Registry** (the marketplace behind CodeBuddy IDE's built-in extension gallery). **Search it right inside your Desktop CodeBuddy IDE and install in one click — no downloads required.**
 
-1. Download the latest `buddy-relay-1.2.3.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+👉 **Marketplace page**: [open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay) (v1.2.3 live)
+
+### Option 1: Install from marketplace (recommended, fastest)
+
+1. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
+2. Open the Extensions view (`Ctrl+Shift+X` / macOS `Cmd+Shift+X`);
+3. Search for **`BuddyRelay`** or the extension ID **`soulvon.buddy-relay`**;
+4. Click **Install** — the **BuddyRelay** icon appears in the activity bar within seconds.
+
+> 💡 Marketplace install also means **future updates are detected automatically by the IDE** — no manual VSIX re-downloads.
+
+### Option 2: Offline VSIX install (restricted networks or version pinning)
+
+1. Download the latest `buddy-relay-1.2.4.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
-3. Open the Extensions view (`Ctrl+Shift+X` / macOS `Cmd+Shift+X`);
-4. Click the `...` menu ➔ **"Install from VSIX..."**;
-5. After install, the **BuddyRelay** icon appears in the activity bar.
+3. Extensions view ➔ `...` menu ➔ **"Install from VSIX..."**;
+4. Select the file; after install the **BuddyRelay** icon appears in the activity bar.
+
+### Option 3: Command line
+
+```bash
+# Install straight from the marketplace (recommended)
+buddycn --install-extension soulvon.buddy-relay --force
+
+# Or install from a local VSIX file
+buddycn --install-extension buddy-relay-1.2.4.vsix --force
+```
 
 > ⚠️ **Important Notice**:  
 > **This extension must be installed in Desktop CodeBuddy IDE!**  
-> - ❌ **Unsupported Clients for Extension Installation**: WorkBuddy Desktop, WorkBuddy Mobile App, WorkBuddy WeChat Mini Program, and CodeBuddy CLI (none of these are IDE editors).  
+> - ❌ **Unsupported Clients for Extension Installation**: WorkBuddy Desktop, WorkBuddy Mobile App, WorkBuddy WeChat Mini Program, and CodeBuddy CLI (none of these are IDE editors, so none of them has an extension gallery).  
 > - ✅ **Target Scenario**: As long as you write code inside **Desktop CodeBuddy IDE**, install this extension to switch accounts and automate daily chores.  
 > - 💡 **For Pure WorkBuddy Users**: If you only use WorkBuddy (Desktop / Mobile App / Mini Program): Switch accounts using standalone tools like **Cockpit Tools**; or run CodeBuddy CN with BuddyRelay in the background to farm free credits for your WorkBuddy app!
-
-### Option 2: Command line
-
-```bash
-buddycn --install-extension buddy-relay-1.2.3.vsix --force
-```
 
 ---
 

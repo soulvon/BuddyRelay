@@ -7,13 +7,16 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-1.2.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.4-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
 [![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange&style=flat-square)](https://open-vsx.org/extension/soulvon/buddy-relay)
+[![Open VSX 商店](https://img.shields.io/badge/%E5%95%86%E5%BA%97-%E6%90%9C%E7%B4%A2%20BuddyRelay%20%E7%9B%B4%E8%A3%85-0f766e?style=flat-square)](https://open-vsx.org/extension/soulvon/buddy-relay)
 
 [English](README_en.md) • [简体中文](README.md)
+
+**已上架 Open VSX 扩展市场：在电脑 CodeBuddy IDE 的扩展面板搜索 `BuddyRelay` 即可一键直装，后续版本由 IDE 自动更新。**
 
 [📥 下载安装](#-下载与安装) •
 [💡 家族各端辨析](#-搞清腾讯-buddy-家族各端新手必读) •
@@ -42,30 +45,41 @@ BuddyRelay 是一款专为**电脑桌面端 CodeBuddy IDE**（国内版 CodeBudd
 
 ## 📥 下载与安装
 
-扩展包开箱即用，支持通过**电脑端 CodeBuddy IDE** 图形界面或命令行一键安装：
+BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩展商店的底层市场），**在电脑 CodeBuddy IDE 里直接搜索扩展名即可一键安装，无需下载任何文件**。
 
-👉 **[下载 BuddyRelay 最新发布包（GitHub Releases）](https://github.com/soulvon/BuddyRelay/releases/latest)**
+👉 **商店主页**：[open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay)（当前已上架 v1.2.3）
 
-### 方式一：扩展面板安装（推荐，在电脑 CodeBuddy IDE 内操作）
+### 方式一：扩展商店直接安装（最推荐，最快）
 
-1. 下载最新版 `buddy-relay-1.2.3.vsix`；
+1. 打开电脑上的 **CodeBuddy CN**（或 CodeBuddy 国际版）IDE；
+2. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
+3. 在搜索框输入 **`BuddyRelay`** 或扩展 ID **`soulvon.buddy-relay`**；
+4. 点击 **安装**，几秒后左侧活动栏即可看到 **BuddyRelay** 图标。
+
+> 💡 商店安装的最大好处：**后续新版本由 IDE 自动检测更新**，不用每次手动下载 VSIX 重装。
+
+### 方式二：从 VSIX 离线安装（网络受限或需锁定旧版本时）
+
+1. 下载最新版 `buddy-relay-1.2.4.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
 2. 打开电脑上的 **CodeBuddy CN**（或 CodeBuddy 国际版）IDE；
-3. 进入左侧扩展面板（快捷键 `Ctrl+Shift+X` / macOS `Cmd+Shift+X`）；
-4. 点击面板右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
-5. 选中下载的文件，安装完成后左侧活动栏即可看到 **BuddyRelay** 图标。
+3. 进入左侧扩展面板 ➔ 点击右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
+4. 选中下载的文件，安装完成后左侧活动栏即可看到 **BuddyRelay** 图标。
+
+### 方式三：命令行安装
+
+```bash
+# 从扩展市场直接安装（推荐）
+buddycn --install-extension soulvon.buddy-relay --force
+
+# 或从本地 VSIX 文件安装
+buddycn --install-extension buddy-relay-1.2.4.vsix --force
+```
 
 > ⚠️ **新手避坑（重要）：**  
 > **本插件必须安装在电脑桌面端 CodeBuddy IDE 内！**  
-> - ❌ **无法安装插件的客户端**：WorkBuddy 桌面端、WorkBuddy 手机 App、WorkBuddy 微信小程序、CodeBuddy CLI 命令行工具（这些都不是 IDE，没有扩展安装面板）。  
-> - ✅ **适用场景**：只要你在**电脑 CodeBuddy IDE** 里写代码，直接安装本扩展即可切号、自动签到、自动做任务。  
+> - ❌ **无法安装插件的客户端**：WorkBuddy 桌面端、WorkBuddy 手机 App、WorkBuddy 微信小程序、CodeBuddy CLI 命令行工具（这些都不是 IDE，没有扩展商店与安装面板）。  
+> - ✅ **适用场景**：只要你在**电脑 CodeBuddy IDE** 里写代码，直接搜索安装本扩展即可切号、自动签到、自动做任务。  
 > - 💡 **纯 WorkBuddy 用户怎么用？** 如果你平时只用 WorkBuddy（桌面端 / 手机 App / 微信小程序）办公：切号请使用独立桌面工具 **Cockpit Tools**；或者在电脑上装一个 CodeBuddy CN 挂着本插件自动签到/做任务，攒下的积分你的手机 App、微信小程序和桌面端都能直接用！
-
-### 方式二：命令行安装
-
-```bash
-# 在电脑终端中通过 CodeBuddy CN 命令行直接安装扩展
-buddycn --install-extension buddy-relay-1.2.3.vsix --force
-```
 
 ---
 
