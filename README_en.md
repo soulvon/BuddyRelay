@@ -2,11 +2,12 @@
 
 # 🚀 BuddyRelay
 
-### Seamless multi-account switching & account pool management for CodeBuddy / WorkBuddy
+### Seamless multi-account switching & account pool management for CodeBuddy Desktop IDE
+#### (Runs exclusively on Desktop CodeBuddy IDE · Full compatibility with Tencent Buddy AI ecosystem · 100% shared credits across all domestic clients)
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.2.2-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.2.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -15,9 +16,10 @@
 [English](README_en.md) • [简体中文](README.md)
 
 [📥 Install](#-install) •
+[💡 Family Ecosystem Guide](#-understanding-the-tencent-buddy-family-must-read) •
 [🖼️ Preview](#️-preview) •
-[⚡ What it solves](#-what-it-solves) •
 [📊 Support matrix](#-support-matrix) •
+[⚡ What it solves](#-what-it-solves) •
 [✨ Core features](#-core-features) •
 [⚙️ Settings](#️-settings) •
 [❓ FAQ](#-faq) •
@@ -27,7 +29,11 @@
 
 **No repeated QR scans, no interrupted conversations when switching accounts.**
 
-BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDEs. With in-process session updates and cross-account directory junction mapping, you get **account switching without closing windows or restarting the editor — with full session history intact** — plus one-click check-in, automated growth tasks, quota guarding and seamless auto-rotation.
+BuddyRelay is a multi-account management extension (`.vsix`) specifically designed for **Desktop CodeBuddy IDE** (CodeBuddy CN & CodeBuddy International). With in-process session updates and cross-account directory junction mapping, you get **account switching without closing windows or restarting the editor — with full session history intact** — plus one-click check-in, automated growth tasks, quota guarding and seamless auto-rotation.
+
+> 💡 **Core Points (Read First):**
+> 1. **Exclusive Host**: This extension **runs exclusively inside Desktop CodeBuddy IDE** (Windows / macOS / Linux). WorkBuddy desktop apps, mobile apps, WeChat mini programs, and CodeBuddy CLI lack VS Code extension architecture and cannot load `.vsix` packages!
+> 2. **Shared Domestic Credits**: Domestic clients (CodeBuddy CN, WorkBuddy Desktop, Mobile App, WeChat Mini Program) all share the same phone account and quota wallet. Credits farmed by BuddyRelay in your IDE are 100% usable across all these devices!
 
 </div>
 
@@ -35,21 +41,41 @@ BuddyRelay is a multi-account manager for **CodeBuddy CN** and **WorkBuddy** IDE
 
 ## 📥 Install
 
-### Option 1: Extensions panel (recommended)
+### Option 1: Extensions panel (recommended, inside Desktop CodeBuddy IDE)
 
-1. Download the latest `buddy-relay-1.2.2.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
-2. Open **CodeBuddy CN** or **WorkBuddy**;
+1. Download the latest `buddy-relay-1.2.3.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
 3. Open the Extensions view (`Ctrl+Shift+X` / macOS `Cmd+Shift+X`);
 4. Click the `...` menu ➔ **"Install from VSIX..."**;
 5. After install, the **BuddyRelay** icon appears in the activity bar.
 
+> ⚠️ **Important Notice**:  
+> **This extension must be installed in Desktop CodeBuddy IDE!**  
+> - ❌ **Unsupported Clients for Extension Installation**: WorkBuddy Desktop, WorkBuddy Mobile App, WorkBuddy WeChat Mini Program, and CodeBuddy CLI (none of these are IDE editors).  
+> - ✅ **Target Scenario**: As long as you write code inside **Desktop CodeBuddy IDE**, install this extension to switch accounts and automate daily chores.  
+> - 💡 **For Pure WorkBuddy Users**: If you only use WorkBuddy (Desktop / Mobile App / Mini Program): Switch accounts using standalone tools like **Cockpit Tools**; or run CodeBuddy CN with BuddyRelay in the background to farm free credits for your WorkBuddy app!
+
 ### Option 2: Command line
 
 ```bash
-buddycn --install-extension buddy-relay-1.2.2.vsix --force
+buddycn --install-extension buddy-relay-1.2.3.vsix --force
 ```
 
 ---
+
+## 💡 Understanding the Tencent Buddy Family: Must-Read
+
+The Tencent Buddy AI family spans **Desktop IDEs, CLI tools, standalone office apps, mobile apps, and WeChat Mini Programs**:
+
+| Client / Form | Platform | Product Form & Scenario | Account & Quota Pool | BuddyRelay Support |
+| :--- | :--- | :--- | :--- | :--- |
+| **Desktop CodeBuddy CN** | **Desktop** (Win/Mac/Linux) | **AI Coding IDE**<br>(VS Code fork with extension panel) | **Domestic Pool** (Phone/Tencent Cloud).<br>100% shared credits with domestic WorkBuddy ecosystem. | 🎯 **Sole Native Host (100% Full Support)**<br>Switch without restart, intact history, auto check-in |
+| **Desktop CodeBuddy Intl** | **Desktop** (Win/Mac/Linux) | **AI Coding IDE**<br>(VS Code fork with extension panel) | **International Pool** (Email/GitHub).<br>Shared with WorkBuddy AI, **isolated from domestic** | 🎯 **Native Host (Full switching & history)**<br>Uses **4-tier model selection**; no domestic tasks |
+| **CodeBuddy CLI** (CodeBuddy Code) | **Terminal** (Shell/CLI) | **CLI AI Coding Tool**<br>(DevOps/engineers, headless/terminal workflows) | Supports Domestic/Intl OAuth login | ➖ **Pure CLI tool, no extension system**<br>Cannot and does not need `.vsix` extensions |
+| **Desktop WorkBuddy** (CN) | **Desktop** (Win/Mac) | **Standalone Agent Workspace**<br>(Office/slides/documents/web automation) | **Domestic Pool**.<br>Shares the exact same quota pool as CodeBuddy CN. | ❌ **Standalone app, NOT an IDE**<br>Cannot install VSIX; switch via **Cockpit Tools** |
+| **Desktop WorkBuddy AI** (Intl) | **Desktop** (Win/Mac) | **Standalone Agent Workspace**<br>(Global office users, MCP skills & global models) | **International Pool**.<br>Shared with CodeBuddy Intl, **isolated from domestic** | ❌ **Standalone app, NOT an IDE**<br>Cannot install VSIX; switch via standalone tools |
+| **WorkBuddy Mobile App** | **iOS / Android** | **Mobile Office Agent**<br>(Task monitoring, voice prompts, remote execution) | **Domestic Pool**.<br>Shares the exact same quota pool via phone number. | ❌ **Mobile app, no extension system**<br>Shared credits with desktop IDE |
+| **WorkBuddy WeChat Mini Program** | **WeChat Mobile** | **Instant AI Agent**<br>(Quick Q&A, lightweight tasks within WeChat) | **Domestic Pool**.<br>Shares the exact same quota pool via WeChat binding. | ❌ **Mini program, no extension system**<br>Shared credits with desktop IDE |
 
 ## 🖼️ Preview
 
@@ -116,17 +142,20 @@ Fully graphical experience covering **account card flow**, **usage & model analy
 
 ## 📊 Support matrix
 
-BuddyRelay adapts to different branches of the Tencent ecosystem:
+BuddyRelay strictly differentiates between host IDE execution and account quota scopes:
 
-| Feature | CodeBuddy CN | WorkBuddy (CN) | CodeBuddy AI / WorkBuddy AI (Intl) |
-| :--- | :---: | :---: | :---: |
-| **Switch without restart/reload** | ✅ Full | ✅ Full | ✅ Full |
-| **Session history intact (zero-copy)** | ✅ Full | ✅ Full | ✅ Full |
-| **One-click check-in (humanized schedule)** | ✅ Full | ✅ Full | ➖ Not offered |
-| **One-click tasks (auto claim & collect)** | ✅ Full | ✅ Full | ➖ Not offered |
-| **Live quota monitor & auto-switch** | ✅ Full | ✅ Full | ✅ Full |
-| **Cockpit / JSON import** | ✅ Full | ✅ Full | ✅ Full |
-| **GitHub auto-update** | ✅ Full | ✅ Full | ✅ Full |
+| Matrix Dimension / Feature | CodeBuddy CN (IDE) | CodeBuddy (Intl IDE) | WorkBuddy (CN App) | WorkBuddy AI (Intl App) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Product Form** | AI Coding IDE | AI Coding IDE | Standalone Desktop Agent | Standalone Desktop Agent |
+| **BuddyRelay VSIX Host Support** | ✅ Native Full Support | ✅ Native Full Support | ❌ Standalone app, no VSIX engine | ❌ Standalone app, no VSIX engine |
+| **Switch without restart/reload** | ✅ In-memory hot update | ✅ In-memory hot update | ➖ Use external tools (e.g. Cockpit) | ➖ Use external tools |
+| **Account & Quota Pool** | Domestic Pool (Phone) | International Pool (Email/GitHub) | 100% Shared with CodeBuddy CN | 100% Shared with CodeBuddy Intl |
+| **One-click check-in (Scheduled)** | ✅ Full (Daily deposit) | ➖ Not offered on Intl site | ✅ Check-in credits shared | ➖ Not offered on Intl site |
+| **One-click tasks (Auto claim & collect)** | ✅ Full (Auto salvage) | ➖ Not offered on Intl site | ✅ Task rewards shared | ➖ Not offered on Intl site |
+| **Session history intact (Zero-copy)** | ✅ Directory Junction | ✅ Directory Junction | ➖ Different client architecture | ➖ Different client architecture |
+| **Live quota monitor & auto-switch** | ✅ Full support | ✅ Full support | ➖ Effective inside IDE host | ➖ Effective inside IDE host |
+| **Cockpit / JSON import** | ✅ Full support | ✅ Full support | ✅ Account pool cross-compatible | ✅ Account pool cross-compatible |
+| **Model Selection Mechanism** | Custom model selection | 4-tier routing mode | Custom model selection | Custom model selection |
 
 ---
 
@@ -247,6 +276,33 @@ International editions fully support the pool, seamless switching, session prese
 <summary><b>Q5: What does "task in progress" mean on one-click complete?</b></summary>
 <br>
 Some tasks (use a template, chat with AI, etc.) are client-behavior tasks that complete naturally as you work. The script claims them and self-heals prerequisites — once you hit the goal during normal use, rewards are collected automatically.
+</details>
+
+<details>
+<summary><b>Q6: Can I use this extension if I only use the standalone WorkBuddy desktop app?</b></summary>
+<br>
+<b>It cannot be installed directly inside WorkBuddy.</b> BuddyRelay is a <code>.vsix</code> extension designed for CodeBuddy IDE. The WorkBuddy standalone desktop application does not have an extension manager.<br>
+<b>Recommended workflow:</b>
+<ol>
+  <li><b>Switching inside WorkBuddy</b>: Use standalone external tools like <b>Cockpit Tools</b>, which switch accounts by directly accessing local storage.</li>
+  <li><b>Sharing free credits</b>: Domestic WorkBuddy and CodeBuddy CN share identical accounts and credits. You can keep CodeBuddy CN open with BuddyRelay to automatically farm daily check-in points and tasks, then consume those shared credits directly inside your WorkBuddy desktop app!</li>
+</ol>
+</details>
+
+<details>
+<summary><b>Q7: How does model selection work in CodeBuddy International?</b></summary>
+<br>
+CodeBuddy International uses Tencent's <b>4-tier routing system</b> (categorized by reasoning depth and response speed) instead of selecting exact model names directly. BuddyRelay supports seamless account switching and pool management for International accounts, but note that International accounts are physically isolated from domestic accounts and lack domestic check-in events.
+</details>
+
+<details>
+<summary><b>Q8: Can I use this extension with the WorkBuddy Mobile App, WeChat Mini Program, or CodeBuddy CLI?</b></summary>
+<br>
+<b>Extensions cannot be installed directly on these clients, but domestic credits are 100% shared:</b>
+<ul>
+  <li><b>Mobile App & WeChat Mini Program</b>: Mobile OS and WeChat environments do not support VS Code extensions and <b>cannot run <code>.vsix</code> packages</b>. However, because they are bound to the same phone number as CodeBuddy CN, credits farmed via BuddyRelay on your desktop IDE are instantly available when using the phone app or mini program!</li>
+  <li><b>CodeBuddy CLI</b>: CLI is a pure terminal command-line tool (<code>buddy</code>) designed for headless environments. It has no graphical interface or extension architecture, so <code>.vsix</code> extensions are neither needed nor supported.</li>
+</ul>
 </details>
 
 ---
