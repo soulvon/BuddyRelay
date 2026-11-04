@@ -27,6 +27,10 @@ export interface DailySummary {
   totalConsumed: number;
   totalAwarded: number;
   switchCount: number;
+  /** 单账号今日消耗 (仅当日已成功拉取的账号有值) */
+  perAccountConsumed: Record<string, number>;
+  /** 单账号今日新增 (仅当日已成功拉取的账号有值) */
+  perAccountGrants: Record<string, number>;
 }
 
 /** 单账号单日按模型聚合的消耗 */
@@ -761,6 +765,10 @@ export class UsageTracker {
     const consumed = sameDay ? this.dailyStats.consumed : 0;
     const grants = sameDay ? this.dailyStats.grants : 0;
 
+    // 单账号口径与总量同源：跨天直接清零，避免把昨日流水挂到今日卡片上
+    const perAccountConsumed = sameDay ? { ...this.dailyStats.perAccountConsumed } : {};
+    const perAccountGrants = sameDay ? { ...this.dailyStats.perAccountGrants } : {};
+
     // 每月 1 号基础体验包重置基数：每号 500
     const dayOfMonth = new Date(today).getDate();
     const isFirstDayOfMonth = dayOfMonth === 1;
@@ -771,7 +779,9 @@ export class UsageTracker {
       date: today,
       totalConsumed: sameDay ? Math.round(consumed * 100) / 100 : 0,
       totalAwarded,
-      switchCount
+      switchCount,
+      perAccountConsumed,
+      perAccountGrants
     };
   }
 

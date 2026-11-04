@@ -263,6 +263,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const enabledAccountCount = accounts.filter((a) => a.status !== 'disabled').length;
 
+    const usageSummary = this.usageTracker?.getDailySummary(enabledAccountCount);
+
     this._view.webview.postMessage({
       command: 'updateState',
       data: {
@@ -293,6 +295,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             status: acc.status,
             isActive: active ? active.id === acc.id : false,
             totalCredits: acc.totalCredits ?? 0,
+            todayConsumed: usageSummary?.perAccountConsumed[acc.id] ?? 0,
+            todayGrants: usageSummary?.perAccountGrants[acc.id] ?? 0,
             basePackage: basePkg,
             activityPackage: actPkg,
             checkinStreak: acc.checkinStreak ?? 0,
@@ -321,7 +325,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         version: getCurrentVersion(),
         hostEdition: detectHostEdition(),
         allTags: this.store.getAllTags(),
-        usageSummary: this.usageTracker?.getDailySummary(enabledAccountCount),
+        usageSummary,
         recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || [],
         modelStats: this.usageTracker?.getModelStatsSnapshot() || null
       }

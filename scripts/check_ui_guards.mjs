@@ -82,13 +82,16 @@ gate(
   'taskList 容器缺骨架屏占位'
 );
 
-// ── G7: 文案口径 — 已删除的冗余文本不得回流 (i18n 后活动来源走 zh 字典) ──
+// ── G7: 文案口径 — 已删除的冗余文本不得回流 (i18n 后活动卡片走今日消耗/获取统计行) ──
 const zhDictPath = path.join(ROOT, 'src', 'i18n', 'zh.ts');
 const zhDict = fs.existsSync(zhDictPath) ? fs.readFileSync(zhDictPath, 'utf8') : '';
 gate('G7 文案: 无「每日自动发放」', !html.includes('每日自动发放'));
 gate('G7 文案: 无「Buddy加油站活动签到获得」', !html.includes('Buddy加油站活动签到获得'));
 gate('G7 文案: 无「账号 UID」标签', !html.includes('>账号 UID<'));
-gate('G7 文案: 活动来源为「WorkBuddy加油站活动」(js.actReset 字典项)', zhDict.includes("'js.actReset': 'WorkBuddy加油站活动'") && html.includes("t('js.actReset')"));
+gate('G7 文案: 无「WorkBuddy加油站活动」活动来源行', !html.includes('WorkBuddy加油站活动') && !zhDict.includes('js.actReset'));
+gate('G7 文案: 账号卡含单号今日消耗/获取统计行 (js.todayConsumed/js.todayGained)', html.includes("t('js.todayConsumed')") && html.includes("t('js.todayGained')") && zhDict.includes("'js.todayConsumed'") && zhDict.includes("'js.todayGained'"));
+gate('G7 文案: 单号今日统计行带双色数值 (is-consumed/is-gained)', html.includes('today-val is-consumed') && html.includes('today-val is-gained'));
+gate('G7 文案: 今日统计行挂在 uid 行右侧且仅一处', (html.match(/\$\{todayStatsHtml\}/g) || []).length === 1 && html.includes('<span class="grid-extra-val" data-field="uid">${displayUid}</span>${todayStatsHtml}'));
 
 // ── G8: 总量积分走语义强调色（与汇总卡「算力」同源，禁硬编码色值） ──
 gate('G8 配色: 总量积分为 is-neutral 排版位', html.includes('grid-quota-val is-neutral'));
@@ -339,7 +342,7 @@ gate('G39 流水引擎: usageTracker 提供今日经营总账 (getDailySummary) 
 // ── G40: 侧栏【统计】抽屉面板与状态推流 门控 ──
 gate('G40 流水面板: sidebar.html 包含统计折叠抽屉与列表容器', html.includes('id="usageDetails"') && html.includes('id="usageRecordsList"') && html.includes("{{i:ui.stats}}"));
 gate('G40 流水面板: sidebar.html 包含新增与消耗双色汇总徽标', html.includes('id="usageAwardedBadge"') && html.includes('id="usageConsumedBadge"'));
-gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', sidebarProviderTs.includes('usageSummary:') && sidebarProviderTs.includes('recentRecords:'));
+gate('G40 流水面板: sidebarProvider 向 Webview 实时推送流水与总账数据', /\busageSummary\b/.test(sidebarProviderTs) && /\bperAccountConsumed\b/.test(sidebarProviderTs) && sidebarProviderTs.includes('recentRecords:'));
 
 // ── G41: 高质量字体体系与无衬线/等宽数字门控 ──
 gate('G41 字体系统: 定义全局高质量无衬线体 (--font-sans)', html.includes('--font-sans:') && html.includes('body, button, input, select, textarea, .app'));

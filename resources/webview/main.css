@@ -1713,6 +1713,11 @@ details > summary::marker { display: none; content: ''; }
 .grid-quota-val.is-warn { color: var(--muted); }
 .grid-quota-val.is-danger { color: var(--muted); }
 .grid-quota-reset { font-size: 10px; color: var(--muted); opacity: 0.8; }
+.grid-today-stats { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+.grid-today-stats .today-val { font-weight: 600; }
+.grid-today-stats .today-val.is-consumed { color: var(--tone-warn, #b8934a); }
+.grid-today-stats .today-val.is-gained { color: var(--tone-ok, #4f9d7c); }
+.grid-today-stats .today-sep { opacity: 0.6; margin: 0 1px; }
 
 .quota-bar {
     position: relative;

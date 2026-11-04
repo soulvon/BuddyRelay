@@ -4033,7 +4033,7 @@
       summaryWeeklyPct.textContent = t('js.pctRemaining', creditPct);
       summaryWeeklyBar.style.width = Math.min(100, creditPct) + '%';
       summaryWeeklyBar.className = 'summary-bar-fill ' + levelClass(creditPct, totalRemain);
-      summaryWeeklyNum.textContent = fmtNum(totalRemain);
+      summaryWeeklyNum.textContent = fmtNum(Math.round(totalRemain));
       summaryWeeklyMax.textContent = '/ ' + fmtNum(totalCap);
     }
 
@@ -4085,7 +4085,7 @@
 
         const act = acc.activityPackage || { title: t('pkg.activity'), count: 30, remain: acc.totalCredits || 0, total: 3000, percent: 50 };
         const actLevel = levelClass(act.percent, act.remain);
-        const actResetText = t('js.actReset');
+        const todayStatsHtml = `<span class="grid-today-stats" data-field="todayStats" title="${escHtml(t('js.todayStatsTitle'))}">${escHtml(t('js.todayConsumed'))}&nbsp;<span class="today-val is-consumed">${fmtNum(acc.todayConsumed || 0)}</span><span class="today-sep">·</span>${escHtml(t('js.todayGained'))}&nbsp;<span class="today-val is-gained">+${fmtNum(acc.todayGrants || 0)}</span></span>`;
 
         // 异常状态徽标：正常时一律不显示（避免冗余信息）
         const isDisabled = acc.status === 'disabled';
@@ -4159,13 +4159,12 @@
                   <span class="grid-quota-val ${actLevel}" data-field="act">${fmtNum(act.remain)} / ${fmtNum(act.total)}</span>
                 </div>
                 <div class="quota-bar"><div class="quota-bar-fill ${actLevel}" data-field="actBar" style="width:${act.percent}%"></div></div>
-                <div class="grid-quota-reset" data-field="actReset">${escHtml(actResetText)}</div>
               </div>
             </div>
 
             <div class="grid-card-extra">
               <div class="grid-extra-row"><span>${escHtml(t('js.streakLabel'))}</span><span class="grid-extra-val" data-field="streak">${t('js.streakDaysUnit', acc.checkinStreak || 0)}</span></div>
-              <div class="grid-extra-row"><span class="grid-extra-val" data-field="uid">${displayUid}</span></div>
+              <div class="grid-extra-row"><span class="grid-extra-val" data-field="uid">${displayUid}</span>${todayStatsHtml}</div>
             </div>
 
             <div class="grid-card-actions">
