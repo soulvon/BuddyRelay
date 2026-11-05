@@ -12,6 +12,7 @@ import { checkForUpdates } from './updater';
 import { initAccountLock, acquireLock, releaseLock, startHeartbeat, stopHeartbeat } from './accountLock';
 import { UsageTracker } from './usageTracker';
 import { SessionHealer } from './sessionHealer';
+import { CooldownLogWatcher } from './cooldownLogWatcher';
 import { t, initI18n, watchLocaleConfig, onLangChange } from './i18n';
 import { detectHostEdition } from './host';
 
@@ -81,6 +82,12 @@ export async function activate(context: vscode.ExtensionContext) {
     oauthService,
     usageTracker
   );
+
+  // 2.5 模型级 429 冷却：只监听宿主日志追加，撞到限流才记录并刷新侧栏
+  const cooldownWatcher = new CooldownLogWatcher();
+  cooldownWatcher.on('change', () => sidebarProvider.postStateToWebview());
+  cooldownWatcher.start();
+  context.subscriptions.push({ dispose: () => cooldownWatcher.stop() });
 
   // 注册 Webview 视图提供者
   context.subscriptions.push(

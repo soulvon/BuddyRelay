@@ -7,7 +7,7 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.2.10-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -59,7 +59,7 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 
 ### Option 2: Offline VSIX install (restricted networks or version pinning)
 
-1. Download the latest `buddy-relay-1.2.10.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.3.0.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
 3. Extensions view ➔ `...` menu ➔ **"Install from VSIX..."**;
 4. Select the file; after install the **BuddyRelay** icon appears in the activity bar.
@@ -71,7 +71,7 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 buddycn --install-extension soulvon.buddy-relay --force
 
 # Or install from a local VSIX file
-buddycn --install-extension buddy-relay-1.2.10.vsix --force
+buddycn --install-extension buddy-relay-1.3.0.vsix --force
 ```
 
 > ⚠️ **Important Notice**:  

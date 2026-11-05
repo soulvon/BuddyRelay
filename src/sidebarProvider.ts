@@ -17,6 +17,7 @@ import { detectHostEdition } from './host';
 import { isCnAccount } from './domain';
 import { readHostLoginUid } from './hostSession';
 import { PATHS } from './constants';
+import { loadCooldownEvents } from './cooldownLogWatcher';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'buddy-relay.sidebarView';
@@ -265,6 +266,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const usageSummary = this.usageTracker?.getDailySummary(enabledAccountCount);
 
+    // 模型级冷却与账号级 rateLimitUntil 是两套独立状态：某个模型撞限流不代表
+    // 账号整体不可用（宿主本身就允许切换到其他模型继续使用）。
+    let cooldownEvents: ReturnType<typeof loadCooldownEvents> | null = null;
+    let cooldownEventsError = '';
+    try {
+      cooldownEvents = loadCooldownEvents();
+    } catch (err: any) {
+      cooldownEventsError = String(err && err.message ? err.message : err);
+    }
+
     this._view.webview.postMessage({
       command: 'updateState',
       data: {
@@ -327,7 +338,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         allTags: this.store.getAllTags(),
         usageSummary,
         recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || [],
-        modelStats: this.usageTracker?.getModelStatsSnapshot() || null
+        modelStats: this.usageTracker?.getModelStatsSnapshot() || null,
+        cooldownEvents,
+        cooldownEventsError
       }
     });
   }

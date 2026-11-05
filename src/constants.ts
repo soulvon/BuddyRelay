@@ -125,11 +125,13 @@ export const PATHS = {
   BYOK_SWITCH_RESULT_FILE: path.join(APPDATA, 'CodeBuddy CN', 'byok-switch-result.json'),
   CODEBUDDY_SESSIONS_DB: path.join(APPDATA, 'CodeBuddy CN', 'codebuddy-sessions.vscdb'),
   CODEBUDDY_STORAGE_JSON: path.join(APPDATA, 'CodeBuddy CN', 'User', 'globalStorage', 'storage.json'),
+  HOST_LOGS_DIR: path.join(APPDATA, 'CodeBuddy CN', 'logs'),
 
   // BuddyRelay 跨窗口共享中枢 (号池 / 账号锁，与宿主指令同区天然多窗口共享)
   RELAY_DIR: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay'),
   POOL_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'pool.json'),
   LOCK_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'account-locks.json'),
+  COOLDOWN_EVENTS_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'cooldown-events.json'),
 
   // 会话物理存储与软链接联结点 (跨账号会话穿透)
   EXTENSION_DATA_DIR: path.join(LOCALAPPDATA, 'CodeBuddyExtension', 'Data'),

@@ -2240,6 +2240,40 @@
     #btnRefreshUsage.is-spinning svg {
       animation: spin 0.8s linear infinite;
     }
+    /* ── 模型冷却记录：固定占位，保证同排卡片等高 ── */
+    .grid-cooldown-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 2px;
+      min-height: 36px;
+      margin: 6px 0 2px;
+      padding: 5px 0 2px;
+      border-top: 1px solid var(--card-border);
+    }
+    .grid-cooldown-empty { font-size: 11px; color: var(--muted); }
+
+    .grid-cooldown-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .grid-cooldown-model {
+      color: var(--vscode-foreground);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .grid-cooldown-time {
+      flex-shrink: 0;
+      white-space: nowrap;
+      color: var(--gh-orange, #d97706);
+    }
   </style>
 </head>
 <body>
@@ -3076,6 +3110,16 @@
     let switchingId = '';
     let activeTag = 'all';
     let searchQuery = '';
+
+    // ── 模型冷却记录：后端只在宿主实际撞到 429 时写入，前端被动展示 ──
+    let lastCooldownEvents = null;
+
+    function fmtCooldownTime(ts) {
+      const d = new Date(ts);
+      const p = n => String(n).padStart(2, '0');
+      return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
 
     // ── 今日流水：最后一次推送的数据 + 各账号展开状态（重绘后保持用户手选的展开态） ──
     let lastUsageRecords = [];
@@ -4122,6 +4166,22 @@
 
         const statusToggleBtn = `<button class="status-switch ${isDisabled ? 'is-off' : 'is-on'}" onclick="onToggleStatus('${acc.id}')" title="${escHtml(isDisabled ? t('js.enableTitle') : t('js.disableTitle'))}" aria-label="${escHtml(isDisabled ? t('js.ariaEnable') : t('js.ariaDisable'))}"><span class="status-switch-thumb"></span></button>`;
 
+        const cdNameMap = (lastCooldownEvents && lastCooldownEvents.modelNames) || {};
+        const cdEvents = (lastCooldownEvents && lastCooldownEvents.byUid) ? lastCooldownEvents.byUid[acc.uid] : null;
+        const cdRows = cdEvents
+          ? Object.keys(cdEvents).filter(m => cdEvents[m] && cdEvents[m].resetAt > Date.now()).map(m => {
+              const ev = cdEvents[m];
+              const label = cdNameMap[m] || m;
+              const detail = t('cooldown.detail', fmtCooldownTime(ev.hitAt), fmtCooldownTime(ev.resetAt));
+              return '<div class="grid-cooldown-row" title="' + escHtml(label + '  ' + detail) + '">' +
+                '<span class="grid-cooldown-model">' + escHtml(label) + '</span>' +
+                '<span class="grid-cooldown-time">' + escHtml(t('cooldown.until', fmtCooldownTime(ev.resetAt))) + '</span></div>';
+            })
+          : [];
+        const cooldownHtml = '<div class="grid-cooldown-block">' +
+          (cdRows.length > 0 ? cdRows.join('') : '<span class="grid-cooldown-empty">' + escHtml(t('cooldown.normal')) + '</span>') +
+          '</div>';
+
         return `
           <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${acc.id}">
             <div class="grid-card-head">
@@ -4135,6 +4195,7 @@
               ${tagsHtml}
             </div>
             ${notesHtml}
+            ${cooldownHtml}
 
             <div class="grid-card-quotas">
               <div class="grid-quota-item" style="margin-bottom: 2px;">
@@ -4816,6 +4877,12 @@
         const { accounts, stats, isOperating, operationMessage, privacyMode: backendPrivacy, lockedUids: backendLockedUids } = msg.data;
         currentAccounts = accounts || [];
         currentLockedUids = Array.isArray(backendLockedUids) ? backendLockedUids : [];
+        if (msg.data.cooldownEvents !== undefined) {
+          lastCooldownEvents = msg.data.cooldownEvents;
+        }
+        if (msg.data.cooldownEventsError) {
+          showToast(t('cooldown.readError') + ': ' + msg.data.cooldownEventsError, 'error');
+        }
         stopUsageRefreshSpin();
         if (msg.data && msg.data.settings) {
           currentSettings = msg.data.settings;
