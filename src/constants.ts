@@ -78,7 +78,6 @@ function resolveCandidateMainJsPaths(): string[] {
   const list: string[] = [];
   if (isWin) {
     list.push(
-      'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js',
       path.join(localApp, 'Programs', 'CodeBuddy CN', 'resources', 'app', 'out', 'main.js'),
       'C:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
       'D:\\Program Files\\CodeBuddy CN\\resources\\app\\out\\main.js',
@@ -86,7 +85,9 @@ function resolveCandidateMainJsPaths(): string[] {
       // 国际版 CodeBuddy (codebuddy.ai) 安装目录不含 CN 后缀
       path.join(localApp, 'Programs', 'CodeBuddy', 'resources', 'app', 'out', 'main.js'),
       'C:\\Program Files\\CodeBuddy\\resources\\app\\out\\main.js',
-      'D:\\Program Files\\CodeBuddy\\resources\\app\\out\\main.js'
+      'D:\\Program Files\\CodeBuddy\\resources\\app\\out\\main.js',
+      // 作者本机自定义安装目录放最后：别人机器若恰好有同名目录，不应抢在标准路径前
+      'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js'
     );
   } else if (isMac) {
     list.push(

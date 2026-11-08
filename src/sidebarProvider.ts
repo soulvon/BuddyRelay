@@ -404,7 +404,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * 完全重启引导：确认/取消，确认则直接帮用户退出整个应用。
    * 仅在补丁安装/升级后需要一次；之后切号均为无感热切，不再弹出。
    */
-  private async promptFullRestart(): Promise<void> {
+  public async promptFullRestart(): Promise<void> {
     if (!this._view) {
       return;
     }

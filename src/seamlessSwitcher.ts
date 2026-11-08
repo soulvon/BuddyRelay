@@ -136,6 +136,7 @@ interface SyntaxRunner {
 
 export class SeamlessSwitcher {
   private customMainJsPath?: string;
+  private appRootPath?: string;
   private customCmdPath?: string;
   private readonly healer: SessionHealer;
   // 上次校验成功的运行时：避免每次切号都先白跑一次失败分支（Electron 冷启动可达 1~2 秒）
@@ -147,9 +148,11 @@ export class SeamlessSwitcher {
     mainJsPath?: string;
     cmdPath?: string;
     healer?: SessionHealer;
+    appRoot?: string;
   }) {
     this.customMainJsPath = options?.mainJsPath;
     this.customCmdPath = options?.cmdPath;
+    this.appRootPath = options?.appRoot;
     this.healer = options?.healer || new SessionHealer();
   }
 
@@ -161,12 +164,62 @@ export class SeamlessSwitcher {
       return this.customMainJsPath;
     }
 
+    // 当前运行宿主的安装根目录优先：机器上装了多份或装在自定义目录时，
+    // 固定候选列表可能指向没在运行的那份，补丁写对了文件却对本进程无效。
+    if (this.appRootPath) {
+      const runningMain = path.join(this.appRootPath, 'out', 'main.js');
+      if (fs.existsSync(runningMain)) {
+        return runningMain;
+      }
+    }
+
     for (const candidate of PATHS.CANDIDATE_MAIN_JS_PATHS) {
       if (fs.existsSync(candidate)) {
         return candidate;
       }
     }
     return null;
+  }
+
+  /** main.js 是否已被注入过任意版本结构（v4 / v5 各修订） */
+  private hasInjectedPatch(content: string): boolean {
+    return content.includes(PATCH_V5.PATCH_FLAG);
+  }
+
+  /**
+   * 从已注入过历史结构的主程序文件中还原干净源码。
+   * 历史结构有两类挂载位置，右边界都紧跟宿主语义方法签名，
+   * 因此还原不依赖混淆类名，也不依赖各修订注入体的具体内容。
+   * 还原结果必须不含任何注入特征且必需锚点完整，否则返回 null。
+   */
+  private stripInjectedPatch(content: string): string | null {
+    const markerIdx = content.search(/\/\*__BYOK_V5[\s\S]*?\*\//);
+    const logIdx = content.indexOf('__byokLog(m){');
+    const starts = [markerIdx, logIdx].filter(i => i >= 0);
+    if (starts.length === 0) {
+      return null;
+    }
+    const start = Math.min(...starts);
+    const tail = content.slice(start).match(/async restoreSession\(|scheduleRefresh\(e=0\)\{/);
+    if (!tail || tail.index === undefined || tail.index <= 0) {
+      return null;
+    }
+
+    let restored = content.slice(0, start) + content.slice(start + tail.index);
+    restored = restored
+      .split('globalThis.__cbSession=this;').join('')
+      .split('this.startByokWatcher();').join('');
+
+    if (this.hasInjectedPatch(restored) || !this.resolveSessionClassAnchor(restored)) {
+      return null;
+    }
+    if ((restored.match(/async restoreSession\([^)]*\)\{/g) || []).length !== 1) {
+      return null;
+    }
+    if ((restored.match(/constructor\([^)]*\)\{(?=this\.instantiationService=)/g) || []).length !== 1) {
+      return null;
+    }
+    return restored;
   }
 
   /**
@@ -187,15 +240,43 @@ export class SeamlessSwitcher {
     const originPath = `${mainPath}.byok-origin`;
     const hasOriginBackup = fs.existsSync(originPath);
 
-    const content = fs.readFileSync(mainPath, 'utf8');
-    const hasFlag = content.includes(PATCH_V5.PATCH_FLAG);
+    let content: string;
+    try {
+      content = fs.readFileSync(mainPath, 'utf8');
+    } catch (err: any) {
+      return {
+        mainJsFound: true,
+        mainJsPath: mainPath,
+        isPatched: false,
+        hasOriginBackup,
+        anchorsValid: false,
+        message: t('doctor.mainUnreadable', err.message)
+      };
+    }
+    const hasFlag = this.hasInjectedPatch(content);
     const isPatched = hasFlag && content.includes(PATCH_V5.V5_MARKER);
     const isLegacyV4 = hasFlag && !isPatched;
 
-    // 检查基础锚点
-    const checkTargetContent = hasOriginBackup
-      ? fs.readFileSync(originPath, 'utf8')
-      : content;
+    // 锚点体检必须针对本次真正会拿来重打的源码：干净的当前 main.js 就是基准，
+    // 只有已被注入过的文件才回退到 origin。origin 不可读或本身带补丁时如实标记，
+    // 绝不把"读不到"当成锚点齐全。
+    let checkTargetContent = content;
+    let originUnusable = false;
+    let originReadError = '';
+    if (hasFlag && !isPatched) {
+      try {
+        const originSrc = fs.readFileSync(originPath, 'utf8');
+        if (this.hasInjectedPatch(originSrc)) {
+          originUnusable = true;
+          originReadError = 'origin contains injected patch';
+        } else {
+          checkTargetContent = originSrc;
+        }
+      } catch (err: any) {
+        originUnusable = true;
+        originReadError = err.message;
+      }
+    }
 
     const amCount = this.resolveSessionClassAnchor(checkTargetContent) ? 1 : 0;
     const gvCount = (checkTargetContent.match(new RegExp(this.escapeRegExp(PATCH_V5.GV_OLD), 'g')) || []).length;
@@ -203,7 +284,7 @@ export class SeamlessSwitcher {
     const restoreCount = (checkTargetContent.match(/async restoreSession\([^)]*\)\{/g) || []).length;
 
     // 必需锚点 = 会话服务类头 + restoreSession 语义签名；GV/GS 为可选步骤不参与硬校验
-    const anchorsValid = isPatched || (amCount === 1 && restoreCount === 1);
+    const anchorsValid = isPatched || (!originUnusable && amCount === 1 && restoreCount === 1);
 
     return {
       mainJsFound: true,
@@ -217,7 +298,9 @@ export class SeamlessSwitcher {
         gvCount,
         gsCount,
         restoreCount,
-        isLegacyV4
+        isLegacyV4,
+        originUnusable,
+        originReadError
       },
       message: isPatched
         ? t('sw.patched', PATCH_V5.VERSION)
@@ -268,17 +351,54 @@ export class SeamlessSwitcher {
     const originPath = `${mainPath}.byok-origin`;
     let backupCreated = false;
     let src: string;
+    let originReadError = '';
 
-    // 1-2. 备份原文件并从干净的 origin 读取源码
-    // 装在 Program Files 的用户没有写权限，这里会直接 EACCES；必须翻译成能照做的提示，
-    // 否则用户看到的是 "EPERM: operation not permitted, open ..."
+    // 1-2. 逐级取得当前宿主构建的干净源码，所有路径都尝试完成后才允许中止：
+    //  a) 当前 main.js 未注入过结构：直接采用并刷新备份（全新安装 / 宿主升级覆盖 / 手动还原）；
+    //  b) 备份干净：以备份为准（历史结构升级的标准路径）；
+    //  c) 备份缺失或同样带结构：从当前 main.js 还原历史注入内容，校验通过后重建备份。
+    // 装在 Program Files 的用户没有写权限时会直接 EACCES，需翻译成可照做的提示。
+    const originExisted = fs.existsSync(originPath);
     try {
-      if (!fs.existsSync(originPath)) {
-        fs.copyFileSync(mainPath, originPath);
-        backupCreated = true;
+      const content = fs.readFileSync(mainPath, 'utf8');
+      let cleanBackup: string | null = null;
+      if (originExisted) {
+        try {
+          const candidate = fs.readFileSync(originPath, 'utf8');
+          if (!this.hasInjectedPatch(candidate)) {
+            cleanBackup = candidate;
+          }
+        } catch (err: any) {
+          originReadError = err.message;
+        }
       }
-      src = fs.readFileSync(originPath, 'utf8');
+
+      if (!this.hasInjectedPatch(content)) {
+        fs.copyFileSync(mainPath, originPath);
+        backupCreated = !originExisted;
+        src = content;
+      } else if (cleanBackup !== null) {
+        src = cleanBackup;
+      } else {
+        const restored = this.stripInjectedPatch(content);
+        if (restored === null) {
+          throw new Error('SOURCE_RESTORE_FAILED');
+        }
+        fs.writeFileSync(originPath, restored, 'utf8');
+        backupCreated = !originExisted;
+        src = restored;
+      }
     } catch (err: any) {
+      if (err.message === 'SOURCE_RESTORE_FAILED') {
+        return {
+          success: false,
+          mainJsPath: mainPath,
+          backupCreated: false,
+          message: t('sw.sourceRestoreFailed'),
+          detail: originReadError || undefined,
+          error: 'SOURCE_RESTORE_FAILED'
+        };
+      }
       return {
         success: false,
         mainJsPath: mainPath,
@@ -785,13 +905,17 @@ export class SeamlessSwitcher {
   }
 
   /**
-   * 等待宿主切换回执 (v5 补丁闭环核心)
-   * - 收到 ts 匹配的回执：按宿主真实结局返回 (成功 / skip / store失败)
-   * - 指令文件被消费但无回执：宿主为 v4 旧补丁（无回执能力），如实标注 legacyHost
-   * - 指令文件原样未动：宿主 watcher 未消费（未打补丁 / IDE 未重启），判失败
-   * 严禁读到旧回执：ts 不匹配的回执文件清除后继续等待
+   * 等待宿主切换回执
+   * - 收到 ts 匹配且账号一致的回执：按宿主真实结局返回（完成 / 本就在目标账号 / 存储失败）
+   * - 指令文件被消费但无回执：标记为需重启加载当前结构，由调用方继续完成切换
+   * - 指令文件原样未动：宿主 watcher 未消费，判失败
+   * ts 不匹配的回执文件清除后继续等待，避免读取到其他窗口的结果
    */
-  private async waitForSwitchReceipt(cmdTs: number, timeoutMs: number = 8000): Promise<SwitchReceipt> {
+  private async waitForSwitchReceipt(
+    cmdTs: number,
+    timeoutMs: number = 8000,
+    expectedUid: string = ''
+  ): Promise<SwitchReceipt> {
     const cmdFile = PATHS.BYOK_SWITCH_FILE;
     const receiptFile = PATHS.BYOK_SWITCH_RESULT_FILE;
     const start = Date.now();
@@ -800,12 +924,10 @@ export class SeamlessSwitcher {
     while (Date.now() - start < timeoutMs) {
       await new Promise(r => setTimeout(r, 400));
 
-      // 1. 检查指令文件是否已被宿主消费 (watcher unlink 即消费)
       if (!consumed && !fs.existsSync(cmdFile)) {
         consumed = true;
       }
 
-      // 2. 检查回执
       try {
         if (fs.existsSync(receiptFile)) {
           let data: any = null;
@@ -818,6 +940,16 @@ export class SeamlessSwitcher {
           if (data && Number(data.ts) === Number(cmdTs)) {
             try { fs.unlinkSync(receiptFile); } catch { /* ignore */ }
             if (data.ok) {
+              const uidMatched = Boolean(data.uid) && (!expectedUid || String(data.uid) === String(expectedUid));
+              if (!uidMatched) {
+                return {
+                  verified: false,
+                  ok: false,
+                  skipped: false,
+                  legacyHost: false,
+                  message: t('sw.receiptUidMismatch')
+                };
+              }
               return {
                 verified: true,
                 ok: true,
@@ -845,7 +977,7 @@ export class SeamlessSwitcher {
     if (consumed) {
       return {
         verified: false,
-        ok: true,
+        ok: false,
         skipped: false,
         legacyHost: true,
         message: t('sw.legacyNoReceipt')
@@ -957,27 +1089,40 @@ export class SeamlessSwitcher {
       };
     }
 
-    // 4. 等待宿主回执（v5 闭环；v4 宿主降级为消费确认）
-    const receipt = await this.waitForSwitchReceipt(cmdTs);
+    // 4. 等待宿主回执
+    const receipt = await this.waitForSwitchReceipt(cmdTs, 8000, account.uid);
 
-    // 5. 按回执真实结局更新 Store 与返回
-    if (receipt.ok && store) {
-      // ok=true 含 skipped（宿主本就在目标账号，Store 状态对齐即可）
+    // 4.5 运行中的宿主仍加载历史结构：指令重新就位，重启后由当前结构完成切换
+    if (receipt.legacyHost) {
+      await this.writeSwitchCommand(account);
+      return {
+        success: false,
+        account,
+        patchResult,
+        junctionResult,
+        receipt,
+        needsFullRestart: true,
+        message: t('sw.restartToComplete', account.nickname || account.email || account.uid),
+        error: 'NEEDS_FULL_RESTART'
+      };
+    }
+
+    // 5. 仅宿主明确确认且账号一致才更新号池与宣告完成
+    const confirmed = receipt.ok && receipt.verified;
+    if (confirmed && store) {
       await store.setActive(account.id);
     }
 
     return {
-      success: receipt.ok,
+      success: confirmed,
       account,
       patchResult,
       junctionResult,
       receipt,
-      message: receipt.ok
-        ? (receipt.verified
-            ? t('sw.switchedReceipt', account.nickname, receipt.skipped ? t('sw.receiptSkipSuffix') : '')
-            : t('sw.switchedLegacy', account.nickname))
+      message: confirmed
+        ? t('sw.switchedReceipt', account.nickname, receipt.skipped ? t('sw.receiptSkipSuffix') : '')
         : t('sw.notEffective', receipt.message),
-      error: receipt.ok ? undefined : 'HOST_RECEIPT_FAILED'
+      error: confirmed ? undefined : 'HOST_RECEIPT_UNCONFIRMED'
     };
   }
 

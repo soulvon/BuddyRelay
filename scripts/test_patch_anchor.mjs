@@ -11,7 +11,8 @@
  *   - GV/GS 会话隔离放开为可选步骤：宿主改动实现体时跳过并显式标注，
  *     由 __byokApplySwitch 的会话迁移兜底（切换时全量改写 userId）
  *   - watcher 内置诊断黑匣子 byok-watcher.log（boot/watch/cmd-in/err 埋点）
- * 验证：新/旧类名、实现体漂移降级、签名漂移、boot 锚点缺失显式失败、真实 main.js 副本端到端。
+ * 验证：新/旧类名、实现体漂移降级、签名漂移、boot 锚点缺失显式失败、真实 main.js 副本端到端、
+ *        宿主升级覆盖 main.js 后不回写旧构建、首次安装、历史补丁结构升级、切换结果确认。
  */
 import fs from 'fs';
 import os from 'os';
@@ -89,7 +90,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 1. 新版宿主（HM 类名）完整打补丁
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 1/6] 新版宿主（HM 类名）healPatch 完整注入');
+  console.log('[测试 1/9] 新版宿主（HM 类名）healPatch 完整注入');
   const f1 = path.join(tmpDir, 'main.js');
   fs.writeFileSync(f1, buildFakeHost(PATCH_V5), 'utf8');
   const r1 = sw.healPatch(f1);
@@ -111,7 +112,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 2. 旧版宿主（AM 类名）类名无关性
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 2/6] 旧版宿主（AM 类名）类名无关性');
+  console.log('[测试 2/9] 旧版宿主（AM 类名）类名无关性');
   const f2 = path.join(tmpDir, 'main_am.js');
   fs.writeFileSync(f2, buildFakeHost(PATCH_V5, { cls: 'AM' }), 'utf8');
   const r2 = sw.healPatch(f2);
@@ -121,7 +122,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 3. 锚点缺失显式失败（不静默兜底）
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 3/6] 锚点缺失显式失败');
+  console.log('[测试 3/9] 锚点缺失显式失败');
   const f3 = path.join(tmpDir, 'main_broken.js');
   fs.writeFileSync(f3, 'const a=1;' + PATCH_V5.GV_OLD, 'utf8');
   const r3 = sw.healPatch(f3);
@@ -131,7 +132,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 4. GV/GS 实现体漂移：可选降级 + 签名兜底定位
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 4/6] GV/GS 实现体漂移降级（签名兜底定位类头）');
+  console.log('[测试 4/9] GV/GS 实现体漂移降级（签名兜底定位类头）');
   const f4 = path.join(tmpDir, 'main_drift.js');
   fs.writeFileSync(f4, buildFakeHost(PATCH_V5, {
     gvBody: 'getV2ReconcileData(t){return{enabled:!0,sessions:[]}}' // 宿主改动实现体，签名保留
@@ -147,7 +148,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 5. restoreSession 签名漂移 + boot 锚点防线
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 5/6] restoreSession 签名漂移与 boot 锚点防线');
+  console.log('[测试 5/9] restoreSession 签名漂移与 boot 锚点防线');
   const f5 = path.join(tmpDir, 'main_sig.js');
   fs.writeFileSync(f5, buildFakeHost(PATCH_V5, { restoreSig: 'async restoreSession(t){' }), 'utf8');
   const r5 = sw.healPatch(f5);
@@ -192,7 +193,7 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────
   // 6. 真实宿主 main.js 副本端到端（存在才跑）
   // ──────────────────────────────────────────────────────────
-  console.log('[测试 6/6] 真实宿主 main.js 副本端到端');
+  console.log('[测试 6/9] 真实宿主 main.js 副本端到端');
   const REAL_MAIN = 'E:\\Program\\CodeBuddy CN\\resources\\app\\out\\main.js';
   if (fs.existsSync(REAL_MAIN)) {
     const f6 = path.join(tmpDir, 'real-main.js');
@@ -213,6 +214,144 @@ async function runTests() {
   } else {
     console.log('  SKIP  真实宿主 main.js 不存在（非 CodeBuddy CN 机器），跳过端到端用例');
   }
+
+  // ──────────────────────────────────────────────────────────
+  // 7. 宿主升级覆盖 main.js：旧 .byok-origin 不得成为重打基准
+  //    合成骨架即可运行，不依赖本机装了 CodeBuddy（新环境 / 全新用户）
+  // ──────────────────────────────────────────────────────────
+  console.log('[测试 7/9] 宿主升级覆盖后按当前构建重打补丁');
+  const OLD_TAG = '/*__HOST_BUILD_OLD__*/';
+  const NEW_TAG = '/*__HOST_BUILD_NEW__*/';
+  const oldClean = buildFakeHost(PATCH_V5) + '\n' + OLD_TAG;
+  const newClean = buildFakeHost(PATCH_V5) + '\n' + NEW_TAG;
+
+  // 7a 全新用户首次安装：无 origin，备份必须等于当前宿主源码
+  const f7a = path.join(tmpDir, 'main_fresh.js');
+  fs.writeFileSync(f7a, newClean, 'utf8');
+  const r7a = sw.healPatch(f7a);
+  check('首次安装打补丁成功', r7a.success === true && r7a.repatched === true, `${r7a.message} / ${r7a.error || ''}`);
+  check('首次安装备份为当前干净源码', fs.readFileSync(f7a + '.byok-origin', 'utf8') === newClean);
+
+  // 7b 升级器覆盖 main.js 但保留旧 origin：必须以新构建为准，不能写回旧版
+  const f7b = path.join(tmpDir, 'main_upgraded.js');
+  fs.writeFileSync(f7b, oldClean, 'utf8');
+  sw.healPatch(f7b);                        // 旧构建曾打过补丁，留下旧 origin
+  fs.writeFileSync(f7b, newClean, 'utf8');  // 升级覆盖为干净的新构建
+  const r7b = sw.healPatch(f7b);
+  check('升级后重打成功', r7b.success === true && r7b.repatched === true, `${r7b.message} / ${r7b.error || ''}`);
+  const patched7b = fs.readFileSync(f7b, 'utf8');
+  check('升级后保留新构建内容', patched7b.includes(NEW_TAG));
+  check('升级后不回写旧构建内容', !patched7b.includes(OLD_TAG));
+  check('升级后补丁结构完整', patched7b.includes(PATCH_V5.V5_MARKER) && patched7b.includes('this.startByokWatcher();'));
+  check('升级后 origin 已刷新为新构建', fs.readFileSync(f7b + '.byok-origin', 'utf8') === newClean);
+
+  // 7c 新构建锚点漂移：必须按新构建显式失败，不能拿旧 origin 糊弄成功
+  const f7c = path.join(tmpDir, 'main_upgraded_drift.js');
+  fs.writeFileSync(f7c, oldClean, 'utf8');
+  sw.healPatch(f7c);
+  const driftClean = buildFakeHost(PATCH_V5, { bootless: true }) + '\n' + NEW_TAG;
+  fs.writeFileSync(f7c, driftClean, 'utf8');
+  const r7c = sw.healPatch(f7c);
+  check('新构建锚点缺失显式失败', r7c.success === false && r7c.error === 'WATCHER_BOOT_ANCHOR_MISSING', `${r7c.message} / ${r7c.error || ''}`);
+  check('失败时新构建文件未被旧版覆盖', fs.readFileSync(f7c, 'utf8') === driftClean);
+
+  // 7d 历史标记且无干净备份：还原当前 main.js 后重打，不叠加第二份结构
+  const f7d = path.join(tmpDir, 'main_no_origin.js');
+  fs.writeFileSync(f7d, oldClean, 'utf8');
+  sw.healPatch(f7d);
+  const legacyPatched = fs.readFileSync(f7d, 'utf8').replace(PATCH_V5.V5_MARKER, '/*__BYOK_V5_R3__*/');
+  fs.writeFileSync(f7d, legacyPatched, 'utf8');
+  fs.unlinkSync(f7d + '.byok-origin');
+  const r7d = sw.healPatch(f7d);
+  check('历史标记且无备份时自动还原重打', r7d.success === true && r7d.repatched === true, `${r7d.message} / ${r7d.error || ''}`);
+  const patched7d = fs.readFileSync(f7d, 'utf8');
+  check('还原后仅保留一份当前补丁结构', patched7d.includes(PATCH_V5.V5_MARKER) && (patched7d.match(/__byokApplySwitch/g) || []).length === 2);
+  check('还原后备份为干净源码', fs.existsSync(f7d + '.byok-origin') && !fs.readFileSync(f7d + '.byok-origin', 'utf8').includes('__byokApplySwitch'));
+
+  // 7e 多份安装 / 自定义目录：优先锁定当前运行宿主，不靠固定候选列表碰运气
+  const fakeAppRoot = path.join(tmpDir, 'running-app');
+  fs.mkdirSync(path.join(fakeAppRoot, 'out'), { recursive: true });
+  const runningMain = path.join(fakeAppRoot, 'out', 'main.js');
+  fs.writeFileSync(runningMain, newClean, 'utf8');
+  const sw7e = new SeamlessSwitcher({ appRoot: fakeAppRoot });
+  check('appRoot 优先定位当前运行宿主', sw7e.locateMainJs() === runningMain, String(sw7e.locateMainJs()));
+
+  // ──────────────────────────────────────────────────────────
+  // 8. 历史补丁结构：v4/R3 两种注入形态都能还原为干净源码再升级
+  // ──────────────────────────────────────────────────────────
+  console.log('[测试 8/9] 历史补丁结构升级与干净源码还原');
+  const LEGACY_METHODS = '__byokLog(m){try{}catch(_){}}__byokApplySwitch(s){return s}startByokWatcher(){if(this.__byokStarted)return;this.__byokStarted=1}';
+  function buildLegacyHost(flavor) {
+    let out = buildFakeHost(PATCH_V5)
+      .replace('HM=class{constructor(t,e,i){', 'HM=class{constructor(t,e,i){globalThis.__cbSession=this;');
+    if (flavor === 'v4') {
+      out = out
+        .replace('scheduleRefresh(e=0){', LEGACY_METHODS + 'scheduleRefresh(e=0){')
+        .replace('async restoreSession(){', 'async restoreSession(){this.startByokWatcher();');
+    } else {
+      out = out
+        .replace('async restoreSession(){', '/*__BYOK_V5_R3__*/' + LEGACY_METHODS + 'async restoreSession(){')
+        .replace('constructor(e,i,s,n){this.instantiationService=', 'constructor(e,i,s,n){this.startByokWatcher();this.instantiationService=');
+    }
+    return out;
+  }
+  function assertUpgraded(title, f, r) {
+    check(`${title}: 升级成功`, r.success === true && r.repatched === true, `${r.message} / ${r.error || ''}`);
+    const patched = fs.readFileSync(f, 'utf8');
+    check(`${title}: 历史注入块已还原`, !patched.includes(LEGACY_METHODS));
+    check(`${title}: 当前补丁结构唯一`, patched.includes(PATCH_V5.V5_MARKER) && (patched.match(/__byokApplySwitch/g) || []).length === 2);
+    const originFile = f + '.byok-origin';
+    check(`${title}: 干净备份已重建`, fs.existsSync(originFile) && !fs.readFileSync(originFile, 'utf8').includes('__byokApplySwitch'));
+  }
+
+  const f8a = path.join(tmpDir, 'main_v4.js');
+  fs.writeFileSync(f8a, buildLegacyHost('v4'), 'utf8');
+  assertUpgraded('v4 结构', f8a, sw.healPatch(f8a));
+
+  const f8b = path.join(tmpDir, 'main_r3.js');
+  const r3Legacy = buildLegacyHost('r3');
+  fs.writeFileSync(f8b, r3Legacy, 'utf8');
+  fs.writeFileSync(f8b + '.byok-origin', r3Legacy, 'utf8');
+  assertUpgraded('R3 且备份带历史结构', f8b, sw.healPatch(f8b));
+
+  // ──────────────────────────────────────────────────────────
+  // 9. 切换结果：只有账号一致且宿主明确确认才算完成
+  //    通过临时改写 PATHS 指向 tmp，完全不接触真实用户目录
+  // ──────────────────────────────────────────────────────────
+  console.log('[测试 9/9] 切换结果需宿主确认');
+  const { PATHS } = require(path.join(ROOT, 'out', 'constants.js'));
+  const savedCmd = PATHS.BYOK_SWITCH_FILE;
+  const savedResult = PATHS.BYOK_SWITCH_RESULT_FILE;
+  async function receiptCase(name, setup, expectedUid = 'u1') {
+    const dir = path.join(tmpDir, 'receipt_' + name);
+    fs.mkdirSync(dir, { recursive: true });
+    const cmdFile = path.join(dir, 'byok-switch.json');
+    const receiptFile = path.join(dir, 'byok-switch-result.json');
+    PATHS.BYOK_SWITCH_FILE = cmdFile;
+    PATHS.BYOK_SWITCH_RESULT_FILE = receiptFile;
+    setup(cmdFile, receiptFile);
+    try {
+      return await sw.waitForSwitchReceipt(12345, 60, expectedUid);
+    } finally {
+      PATHS.BYOK_SWITCH_FILE = savedCmd;
+      PATHS.BYOK_SWITCH_RESULT_FILE = savedResult;
+    }
+  }
+
+  const r9a = await receiptCase('consumed', () => {});
+  check('指令已消费但无确认时不宣告完成', r9a.ok === false && r9a.legacyHost === true, JSON.stringify(r9a));
+  const r9b = await receiptCase('uid_mismatch', (_c, rf) => fs.writeFileSync(rf, JSON.stringify({ ok: true, uid: 'u2', ts: 12345 }), 'utf8'));
+  check('回执账号与目标不一致时不宣告完成', r9b.ok === false, JSON.stringify(r9b));
+  const r9c = await receiptCase('uid_match', (c, rf) => {
+    fs.writeFileSync(c, '{}', 'utf8');
+    fs.writeFileSync(rf, JSON.stringify({ ok: true, uid: 'u1', ts: 12345 }), 'utf8');
+  });
+  check('账号一致回执确认完成', r9c.ok === true && r9c.verified === true, JSON.stringify(r9c));
+  const r9d = await receiptCase('host_fail', (c, rf) => {
+    fs.writeFileSync(c, '{}', 'utf8');
+    fs.writeFileSync(rf, JSON.stringify({ ok: false, uid: 'u1', ts: 12345, err: 'store_fail' }), 'utf8');
+  });
+  check('宿主明确失败时判失败', r9d.ok === false && r9d.verified === true, JSON.stringify(r9d));
 
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* 清理失败不影响结论 */ }
 

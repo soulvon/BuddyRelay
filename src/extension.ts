@@ -33,7 +33,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const store = new AccountStore(context);
   context.subscriptions.push({ dispose: () => store.dispose() });
   const switcher = new SeamlessSwitcher({
-    mainJsPath: vscode.workspace.getConfiguration('buddyRelay').get<string>('mainJsPath', '').trim() || undefined
+    mainJsPath: vscode.workspace.getConfiguration('buddyRelay').get<string>('mainJsPath', '').trim() || undefined,
+    // 优先锁定当前正在运行的宿主安装目录，避免多份安装时把补丁打进没运行的那份
+    appRoot: vscode.env.appRoot
   });
   const oauthService = new OAuthService();
   const checkinService = new CheckinService();
@@ -204,6 +206,10 @@ export async function activate(context: vscode.ExtensionContext) {
         async (progress) => {
           progress.report({ message: t('msg.progressPatch') });
           const res = await switcher.switchAccount(target!, store);
+          if (res.needsFullRestart) {
+            await sidebarProvider.promptFullRestart();
+            return;
+          }
           if (res.success) {
             sidebarProvider.sendNotify(
               'success',

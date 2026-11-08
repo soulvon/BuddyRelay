@@ -239,6 +239,7 @@ export const en: Record<string, string> = {
   'sw.junctionMaster': 'Current account is the master storage node; no junction needed',
   'sw.junctionReady': 'NTFS junction ready: {0} -> {1}',
   'sw.backupFailed': 'Failed to back up existing non-junction dir: {0}',
+  'sw.sourceRestoreFailed': 'Tried to restore and upgrade the CodeBuddy main program, but its structure is still unrecognizable; switch aborted (no file changed). Reinstall CodeBuddy and retry',
   'sw.symlinkCreated': 'Session directory symlink created: {0} -> {1}',
   'sw.junctionViaMklink': 'Session junction created via mklink /J: {0} -> {1}',
   'sw.junctionFailed': 'Failed to create junction: {0}',
@@ -258,9 +259,11 @@ export const en: Record<string, string> = {
   'sw.receiptSkipped': 'Host reports already on target account (same-uid skip)',
   'sw.receiptDone': 'Host confirmed the switch',
   'sw.hostSwitchFailed': 'Host switch failed: {0}',
-  'sw.legacyNoReceipt': 'Command consumed by a legacy v4 host without receipt; restart CodeBuddy and retry if unchanged',
+  'sw.legacyNoReceipt': 'The switch command was consumed but no confirmation was received. Fully quit CodeBuddy (all windows) and reopen',
   'sw.noReceipt': 'Host did not consume the switch command: watcher not running. Fully quit CodeBuddy (all windows) and reopen, then retry',
   'sw.repatchPending': 'Patch updated, the switch will complete automatically after restart (target: {0})',
+  'sw.receiptUidMismatch': 'The account in the host receipt does not match this target; switch aborted',
+  'sw.restartToComplete': 'The host is running an earlier switch component; the command is ready again. Fully quit CodeBuddy (all windows) and reopen to complete the switch (target: {0})',
   'ui.restartModalTitle': 'Restart CodeBuddy',
   'ui.restartModalBody': 'Patch updated. The first activation needs one restart; later switches need none.\nRestarting closes all windows and interrupts running tasks. Save your work first.\nThe switch completes automatically after restart.',
   'ui.restartNow': 'Restart Now',
@@ -285,7 +288,6 @@ export const en: Record<string, string> = {
   'sw.cmdWriteFailed': 'Failed to write switch command: {0}',
   'sw.switchedReceipt': 'Switched to {0} (receipt confirmed{1})',
   'sw.receiptSkipSuffix': ', already on target',
-  'sw.switchedLegacy': 'Switched to {0} (consumed; legacy v4 host has no receipt, restart IDE to verify)',
   'sw.notEffective': 'Switch not effective: {0}',
 
   // ── checkinService ──

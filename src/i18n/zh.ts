@@ -242,6 +242,7 @@ export const zh: Record<string, string> = {
   'sw.junctionMaster': '当前账号为母号实体存储节点，无需创建 Junction',
   'sw.junctionReady': 'NTFS Junction 已就绪: {0} -> {1}',
   'sw.backupFailed': '已有非 Junction 目录备份失败: {0}',
+  'sw.sourceRestoreFailed': '已尝试还原并升级 CodeBuddy 主程序，当前文件结构仍无法识别，本次切换已中止（文件未改动）。请重新安装 CodeBuddy 后重试',
   'sw.symlinkCreated': '成功建立会话目录软链接: {0} -> {1}',
   'sw.junctionViaMklink': '通过 mklink /J 建立会话穿透 Junction: {0} -> {1}',
   'sw.junctionFailed': '建立 Junction 联结失败: {0}',
@@ -261,9 +262,11 @@ export const zh: Record<string, string> = {
   'sw.receiptSkipped': '宿主报告本就已在目标账号 (same-uid skip)',
   'sw.receiptDone': '宿主已确认完成切换',
   'sw.hostSwitchFailed': '宿主切换失败: {0}',
-  'sw.legacyNoReceipt': '切换指令已被宿主消费，但当前宿主为 v4 旧补丁无回执能力；若界面账号未变更请重启 CodeBuddy 后重试',
+  'sw.legacyNoReceipt': '切换指令已被宿主消费，但未收到本次切换的确认。请完全退出 CodeBuddy（所有窗口）后重新打开',
   'sw.noReceipt': '宿主未消费切换指令：watcher 未运行。请完全退出 CodeBuddy（所有窗口）后重新打开，再试一次',
   'sw.repatchPending': '补丁已更新，重启后自动完成切号（目标: {0}）',
+  'sw.receiptUidMismatch': '宿主回执的账号与本次目标不一致，已中止本次切换',
+  'sw.restartToComplete': '宿主正在运行上一版切换组件，指令已重新就位。完全退出 CodeBuddy（所有窗口）后重新打开即可完成切换（目标: {0}）',
   'ui.restartModalTitle': '重启 CodeBuddy',
   'ui.restartModalBody': '补丁已更新，首次需要重启一次，此后切号无需重启。\n重启将关闭所有窗口并中断运行中的任务，请先保存。\n重启后自动完成切号。',
   'ui.restartNow': '立即重启',
@@ -288,7 +291,6 @@ export const zh: Record<string, string> = {
   'sw.cmdWriteFailed': '写入热切指令失败: {0}',
   'sw.switchedReceipt': '已切换至 {0} (宿主回执确认{1})',
   'sw.receiptSkipSuffix': '，本就在目标账号',
-  'sw.switchedLegacy': '已切换至 {0} (指令已消费，v4 宿主无回执，建议重启 IDE 以获得回执确认)',
   'sw.notEffective': '热切未生效: {0}',
 
   // ── checkinService ──

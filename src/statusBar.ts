@@ -247,6 +247,10 @@ export class StatusBarManager implements vscode.Disposable {
       async (progress) => {
         progress.report({ message: t('msg.progressPatch') });
         const res = await this.switcher.switchAccount(target, this.store);
+        if (res.needsFullRestart) {
+          await vscode.window.showInformationMessage(res.message);
+          return;
+        }
         if (res.success) {
           this.update();
           vscode.window.showInformationMessage(t('msg.switched', target.nickname || target.email));
