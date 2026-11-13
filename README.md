@@ -3,11 +3,11 @@
 # 🚀 BuddyRelay
 
 ### 电脑 CodeBuddy IDE 多账号管理与无感切号扩展
-#### （仅运行于电脑桌面端 IDE · 深度打通腾讯 Buddy AI 生态 · 国内版全端账号与积分完全互通）
+#### （仅运行于电脑桌面端 CodeBuddy IDE · 多账号池与会话管理 · WorkBuddy 等各端共享同一账号与积分）
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-1.3.2-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -37,7 +37,7 @@ BuddyRelay 是一款专为**电脑桌面端 CodeBuddy IDE**（国内版 CodeBudd
 
 > 💡 **核心须知（先看这两点）：**
 > 1. **唯一运行宿主**：本扩展**必须且只能运行在电脑桌面端的 CodeBuddy IDE 编辑器中**（Windows / macOS / Linux）。WorkBuddy 桌面客户端、WorkBuddy 手机 App、微信小程序以及 CodeBuddy CLI 命令行均无 VS Code 扩展系统，无法直接安装 `.vsix` 插件！
-> 2. **国内全端积分共享**：腾讯国内版（CodeBuddy CN、WorkBuddy 桌面端、手机 App、微信小程序）底层全部绑定同一个手机号。在电脑 IDE 中通过本插件代领的签到奖励和任务积分，全端 100% 共享互通！
+> 2. **国内全端积分共享**：国内版（CodeBuddy CN、WorkBuddy 桌面端、手机 App、微信小程序）底层绑定同一个手机号，账号与积分归属同一账号体系。
 
 </div>
 
@@ -60,7 +60,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 
 ### 方式二：从 VSIX 离线安装（网络受限或需锁定旧版本时）
 
-1. 下载最新版 `buddy-relay-1.3.2.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
+1. 下载最新版 `buddy-relay-1.3.3.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
 2. 打开电脑上的 **CodeBuddy CN**（或 CodeBuddy 国际版）IDE；
 3. 进入左侧扩展面板 ➔ 点击右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
 4. 选中下载的文件，安装完成后左侧活动栏即可看到 **BuddyRelay** 图标。
@@ -72,7 +72,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 buddycn --install-extension soulvon.buddy-relay --force
 
 # 或从本地 VSIX 文件安装
-buddycn --install-extension buddy-relay-1.3.2.vsix --force
+buddycn --install-extension buddy-relay-1.3.3.vsix --force
 ```
 
 > ⚠️ **新手避坑（重要）：**  
@@ -100,8 +100,8 @@ buddycn --install-extension buddy-relay-1.3.2.vsix --force
 ### 五大核心认知：
 1. **铁律一：BuddyRelay 唯一宿主是电脑 CodeBuddy IDE**  
    本扩展是 `.vsix` 文件，只能安装在电脑端的 CodeBuddy IDE（国内版或国际版）中。手机 App、小程序、CLI 命令行和 WorkBuddy 桌面端都无法安装插件。
-2. **铁律二：国内版 4 端积分 100% 互通（羊毛通吃）**  
-   电脑 CodeBuddy CN、电脑 WorkBuddy 桌面端、WorkBuddy 手机 App、WorkBuddy 微信小程序，底层认的是**同一个手机号**。在电脑 IDE 里用 BuddyRelay 挂着每天自动签到、出游打工做任务攒下的积分，你掏出手机打开 App 或小程序，积分都在同一个钱包里，全端通吃！
+2. **铁律二：国内版 4 端积分互通**  
+   电脑 CodeBuddy CN、电脑 WorkBuddy 桌面端、WorkBuddy 手机 App、WorkBuddy 微信小程序，底层认的是**同一个手机号**，账号与积分归属同一账号体系，各端通用。
 3. **铁律三：CodeBuddy CLI 是免图形界面的终端独立工具**  
    CLI 是在终端中直接运行的命令，服务于无头服务器或纯终端开发，没有图形界面与插件生态，切号通常走命令行配置或环境变量。
 4. **铁律四：国内版与国际版完全物理隔离**  
@@ -165,7 +165,7 @@ buddycn --install-extension buddy-relay-1.3.2.vsix --force
 ---
 
 ### 6. 规则与智能调度设置
-> 核心特性：**定点拟人签到 · 429 速率限制自动无感切号 · 满额度优先策略**  
+> 核心特性：**定时签到 · 429 速率限制自动无感切号 · 满额度优先策略**  
 > 支持自定义定时签到时间与随机抖动窗口、成长任务联动执行、额度耗尽或遭遇 429 速率限制时自动平滑切至备用账号。
 
 <div align="center">
@@ -184,7 +184,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 | **BuddyRelay 插件安装宿主 (.vsix)** | ✅ 原生完整支持 | ✅ 原生完整支持 | ❌ 独立软件，无扩展系统 | ❌ 独立软件，无扩展系统 |
 | **切号不关窗口、不重启** | ✅ 内存热更无感生效 | ✅ 内存热更无感生效 | ➖ 需用独立桌面工具 (如 Cockpit) | ➖ 需用独立桌面工具 |
 | **账号池与算力积分通用性** | 国内账号池（手机号） | 国际账号池（邮箱/GitHub） | 与 CodeBuddy CN 积分完全共享 | 与 CodeBuddy 国际版完全共享 |
-| **一键签到 (定点拟人化调度)** | ✅ 完整支持（每日到账） | ➖ 官方国际版未上线该活动 | ✅ 签到积分两端通算共享 | ➖ 官方国际版未上线该活动 |
+| **一键签到 (定时调度)** | ✅ 完整支持（每日到账） | ➖ 官方国际版未上线该活动 | ✅ 签到积分两端通算共享 | ➖ 官方国际版未上线该活动 |
 | **一键做任务 (全自动接单与打捞)** | ✅ 完整支持（自动打捞） | ➖ 官方国际版未上线该活动 | ✅ 任务奖励两端通算共享 | ➖ 官方国际版未上线该活动 |
 | **历史会话完全互通 (零拷贝穿透)** | ✅ 软链接穿透 | ✅ 软链接穿透 | ➖ 独立工作台机制不同 | ➖ 独立工作台机制不同 |
 | **额度实时监控与自动切号** | ✅ 完整支持 | ✅ 完整支持 | ➖ 仅在 IDE 宿主内生效 | ➖ 仅在 IDE 宿主内生效 |
@@ -199,7 +199,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 | :--- | :--- | :--- |
 | **配额耗尽换号中断** | 官方换号需退出、关闭窗口、重启 IDE，当前长会话直接丢失 | **切号不关窗口、不重启编辑器**：内存更新会话状态，无需重绘窗口，上下文完好保留 |
 | **历史记录跨号隔离** | 会话按 UID 独立分目录存储，换号后无法查看上一个号的历史 | **历史会话完全互通**：底层自动建立数据目录链接，历史会话跨号实时零拷贝互通 |
-| **日常重复人工维护** | 每天要挨个账号登录去签到、接单、领奖、派宠物打工 | **一键签到、一键做任务**：后台定时拟人化签到，全自动接单、出游打工、连登兑换 |
+| **日常重复人工维护** | 每天要挨个账号登录去签到、接单、领奖、派宠物打工 | **一键签到、一键做任务**：后台定时签到，自动接单、出游打工、连登兑换 |
 | **额度何时耗尽未知** | 每次需手动打开网页后台查算力，写着写着突然撞上额度断点 | **实时双模看板**：状态栏与侧栏卡片直读实时算力余额，额度见底自动切号 |
 | **手动发版更新繁琐** | 每次出新版本都要重新手动去网页翻找下载 | **自动更新检查**：后台静默检测 GitHub Release，弹窗一键下载安装并重载 |
 | **直播录屏泄露隐私** | 账号名称、邮箱与 UID 完整暴露在屏幕上 | **全链路隐私脱敏**：侧栏、状态栏与切号菜单敏感信息瞬间星号脱敏掩蔽 |
@@ -239,7 +239,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 - **侧栏今日流水面板**：侧栏底部常驻展开收起流水抽屉，今日新增、净消耗与切号明细清晰可视。
 
 ### 🎁 6. 每日任务自动化（一键签到 · 一键做任务）
-- **一键签到**：支持每日定点自动签到（带随机抖动与拟人化账号间隔），杜绝断签；
+- **一键签到**：支持每日定时自动签到（带随机间隔），避免漏签；
 - **一键做任务**：自动双源任务接单、前置依赖自动自愈、宠物出游打工、连登礼包兑换与达标奖励自动打捞；
 - **状态全景看板**：任务中心顶部直观展示宠物打工地点、出游倒计时、连签进度条与盲盒能量。
 
@@ -319,7 +319,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 <b>但你可以这样搭配使用：</b>
 <ol>
   <li><b>在客户端切号</b>：如果你需要在 WorkBuddy 桌面客户端独立切号，建议使用外部独立桌面工具 <b>Cockpit Tools</b>（通过直接读写持久化凭据实现外部切号）；</li>
-  <li><b>共享白嫖算力</b>：国内版 WorkBuddy 与 CodeBuddy CN 的账号与积分是完全互通的。你可以在电脑上装一个 CodeBuddy CN 挂着本插件，让它每天自动签到、做任务、派宠物打工赚积分。你在 WorkBuddy 桌面端打开时，就能直接消耗这些免费额度！</li>
+  <li><b>共享账号积分</b>：国内版 WorkBuddy 与 CodeBuddy CN 的账号与积分归属同一账号体系，在电脑端维护的账号状态各端通用。</li>
 </ol>
 </details>
 
@@ -334,7 +334,7 @@ CodeBuddy 国际版采用官方的 <b>4 档位模型选择机制</b>（按推理
 <br>
 <b>均无法直接安装插件，但国内端算力积分 100% 共享：</b>
 <ul>
-  <li><b>手机 App 与微信小程序</b>：移动端和微信没有 VS Code 扩展运行环境，<b>无法安装 <code>.vsix</code> 插件</b>。但因为它们与 CodeBuddy CN 绑定的是同一个手机号，你在电脑 CodeBuddy IDE 里通过 BuddyRelay 挂机领取的签到算力与打工任务积分，掏出手机在 App 或小程序里可以直接消耗使用！</li>
+  <li><b>手机 App 与微信小程序</b>：移动端和微信没有 VS Code 扩展运行环境，<b>无法安装 <code>.vsix</code> 插件</b>。但因为它们与 CodeBuddy CN 绑定的是同一个手机号，账号与积分归属同一账号体系，各端通用。</li>
   <li><b>CodeBuddy CLI (命令行)</b>：CLI 是纯终端轻量化工具（<code>buddy</code> 命令），用于终端自动化开发，本身无图形界面与插件系统，不需要也无法加载 <code>.vsix</code> 插件。</li>
 </ul>
 </details>

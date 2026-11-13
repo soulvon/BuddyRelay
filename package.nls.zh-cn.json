@@ -1,6 +1,6 @@
 {
   "extension.displayName": "BuddyRelay - CodeBuddy/WorkBuddy 多账号切换器",
-  "extension.description": "CodeBuddy / WorkBuddy AI IDE 无缝多账号管理与热切工具。免重启切号、会话完全互通、额度守护、自动签到与任务、算力对账。",
+  "extension.description": "面向 CodeBuddy / WorkBuddy 桌面端 IDE 的第三方多账号管理工具。免重启切号、会话互通、额度查看，以及本地定时签到与任务。",
   "viewsContainers.activitybar": "BuddyRelay",
   "views.sidebarView.name": "BuddyRelay",
   "command.quickPick.title": "快速切号菜单",

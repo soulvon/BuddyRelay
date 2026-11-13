@@ -1,6 +1,6 @@
 {
   "extension.displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
-  "extension.description": "Seamless multi-account manager & hot account switcher for CodeBuddy / WorkBuddy AI IDEs. Switch without restart, keep all sessions, quota guard, auto check-in & tasks, usage audit.",
+  "extension.description": "A third-party multi-account manager & hot account switcher for CodeBuddy / WorkBuddy desktop IDEs. Switch accounts without restart, keep session history, monitor quota, and run scheduled check-in & tasks locally.",
   "viewsContainers.activitybar": "BuddyRelay",
   "views.sidebarView.name": "BuddyRelay",
   "command.quickPick.title": "Quick Switch Menu",

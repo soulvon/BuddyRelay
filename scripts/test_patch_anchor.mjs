@@ -190,6 +190,17 @@ async function runTests() {
   check('补丁缺失 → 自动重打并引导重启', dC.status === 'repaired_needs_full_restart', `${dC.status} / ${dC.message}`);
   check('重打后文件含 R3 标记', fs.readFileSync(fD2, 'utf8').includes(PATCH_V5.V5_MARKER));
 
+  // 用例 D：活性判定抽出后单独校验（切号主链路复用同一实现）
+  const waMain = path.join(tmpDir, 'wa_main.js');
+  const waLog = path.join(tmpDir, 'wa_watcher.log');
+  fs.writeFileSync(waMain, 'const a=1;', 'utf8');
+  check('无诊断日志 → watcher 未运行', sw.isWatcherAlive(waMain, waLog) === false);
+  fs.writeFileSync(waLog, `${Date.now()} boot\n`, 'utf8');
+  fs.utimesSync(waLog, new Date(Date.now() - 60000), new Date(Date.now() - 60000));
+  check('日志早于 main.js → watcher 未运行', sw.isWatcherAlive(waMain, waLog) === false);
+  fs.utimesSync(waMain, new Date(Date.now() - 120000), new Date(Date.now() - 120000));
+  check('日志晚于 main.js → watcher 运行中', sw.isWatcherAlive(waMain, waLog) === true);
+
   // ──────────────────────────────────────────────────────────
   // 6. 真实宿主 main.js 副本端到端（存在才跑）
   // ──────────────────────────────────────────────────────────
@@ -352,6 +363,61 @@ async function runTests() {
     fs.writeFileSync(rf, JSON.stringify({ ok: false, uid: 'u1', ts: 12345, err: 'store_fail' }), 'utf8');
   });
   check('宿主明确失败时判失败', r9d.ok === false && r9d.verified === true, JSON.stringify(r9d));
+  const r9e = await receiptCase('not_consumed', (c) => {
+    fs.writeFileSync(c, JSON.stringify({ ts: 12345, session: {} }), 'utf8');
+  });
+  check('指令原样未动 → 标记 notConsumed', r9e.notConsumed === true && r9e.legacyHost === false, JSON.stringify(r9e));
+
+  // ──────────────────────────────────────────────────────────
+  // 10. 端到端回归（#1/#2）：补丁已就位但 watcher 未运行 → 必须判需完全重启
+  //     旧实现落到 sw.noReceipt 普通失败；新实现转 needsFullRestart 并保留指令
+  // ──────────────────────────────────────────────────────────
+  console.log('[测试 10] watcher 未运行时切号必须判需重启');
+  const e2eDir = path.join(tmpDir, 'e2e');
+  const fakeRoot = path.join(e2eDir, 'app');
+  fs.mkdirSync(path.join(fakeRoot, 'out'), { recursive: true });
+  fs.writeFileSync(path.join(fakeRoot, 'out', 'main.js'), buildFakeHost(PATCH_V5), 'utf8');
+
+  const savedPaths = {
+    EXTENSION_DATA_DIR: PATHS.EXTENSION_DATA_DIR,
+    CODEBUDDY_APPDATA_DIR: PATHS.CODEBUDDY_APPDATA_DIR,
+    BYOK_SWITCH_FILE: PATHS.BYOK_SWITCH_FILE,
+    BYOK_SWITCH_RESULT_FILE: PATHS.BYOK_SWITCH_RESULT_FILE,
+    SESSION_MASTER_FILE: PATHS.SESSION_MASTER_FILE,
+    SESSION_HEAL_LOG: PATHS.SESSION_HEAL_LOG
+  };
+  PATHS.EXTENSION_DATA_DIR = path.join(e2eDir, 'ext-data');
+  PATHS.CODEBUDDY_APPDATA_DIR = path.join(e2eDir, 'appdata');
+  PATHS.BYOK_SWITCH_FILE = path.join(e2eDir, 'byok-switch.json');
+  PATHS.BYOK_SWITCH_RESULT_FILE = path.join(e2eDir, 'byok-switch-result.json');
+  PATHS.SESSION_MASTER_FILE = path.join(e2eDir, 'session-master.json');
+  PATHS.SESSION_HEAL_LOG = path.join(e2eDir, 'session-heal.log');
+  fs.mkdirSync(PATHS.EXTENSION_DATA_DIR, { recursive: true });
+  fs.mkdirSync(PATHS.CODEBUDDY_APPDATA_DIR, { recursive: true });
+
+  try {
+    const swE2e = new SeamlessSwitcher({ appRoot: fakeRoot });
+    const firstPatch = swE2e.healPatch();
+    check(
+      '端到端前置: 首次打补丁 repatched=true',
+      firstPatch.success === true && firstPatch.repatched === true,
+      `${firstPatch.message} / ${firstPatch.error || ''}`
+    );
+
+    // 无 byok-watcher.log：运行中的宿主没加载 watcher；指令写入后无人消费
+    const r10 = await swE2e.switchAccount({
+      id: 'e2e', uid: 'u-e2e', nickname: 'e2e', email: 'e2e@local', accessToken: 'tok-e2e'
+    });
+    check(
+      'watcher 未运行时判需完全重启',
+      r10.needsFullRestart === true && r10.error === 'NEEDS_FULL_RESTART',
+      `${r10.message} / ${r10.error || ''}`
+    );
+    check('回执标记指令未被消费', Boolean(r10.receipt && r10.receipt.notConsumed === true), JSON.stringify(r10.receipt || {}));
+    check('指令仍留在磁盘等待重启后消费', fs.existsSync(PATHS.BYOK_SWITCH_FILE));
+  } finally {
+    Object.assign(PATHS, savedPaths);
+  }
 
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* 清理失败不影响结论 */ }
 

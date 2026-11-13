@@ -49,13 +49,17 @@ console.log('=== 开始成长任务全链路真实校验 ===\n');
 // 1. 测试各账号 listTasks 能够拉取到合并的双源任务
 for (const acc of accounts) {
   const name = acc.nickname || acc.email;
-  const tasks = await service.listTasks(acc);
+  const sourceErrors = [];
+  const tasks = await service.listTasks(acc, sourceErrors);
   const hasDesktop = tasks.some(t => t.source === 'desktop');
   const hasMp = tasks.some(t => t.source === 'mp');
   assertGate(
     `[${name}] 任务列表拉取`,
     tasks.length >= 10 && hasDesktop && hasMp,
-    `任务数: ${tasks.length}, desktop: ${hasDesktop}, mp: ${hasMp}`
+    `任务数: ${tasks.length}, desktop: ${hasDesktop}, mp: ${hasMp}, ` +
+    (sourceErrors.length > 0
+      ? `单源错误: ${sourceErrors.join(' | ')}`
+      : '双源均成功响应（上游未下发任务）')
   );
 }
 

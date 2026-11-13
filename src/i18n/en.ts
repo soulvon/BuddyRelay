@@ -264,6 +264,8 @@ export const en: Record<string, string> = {
   'sw.hostSwitchFailed': 'Host switch failed: {0}',
   'sw.legacyNoReceipt': 'The switch command was consumed but no confirmation was received. Fully quit CodeBuddy (all windows) and reopen',
   'sw.noReceipt': 'Host did not consume the switch command: watcher not running. Fully quit CodeBuddy (all windows) and reopen, then retry',
+  'sw.watcherDownRestart': 'The switch component is not loaded yet; the command is in place. Fully quit CodeBuddy (all windows) and reopen to complete the switch (target: {0})',
+  'sw.restartHint': 'The switch component is ready. Fully quit CodeBuddy (all windows) and reopen once; later switches need no restart',
   'sw.repatchPending': 'Patch updated, the switch will complete automatically after restart (target: {0})',
   'sw.receiptUidMismatch': 'The account in the host receipt does not match this target; switch aborted',
   'sw.restartToComplete': 'The host is running an earlier switch component; the command is ready again. Fully quit CodeBuddy (all windows) and reopen to complete the switch (target: {0})',

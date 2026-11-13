@@ -3,11 +3,11 @@
 # 🚀 BuddyRelay
 
 ### Seamless multi-account switching & account pool management for CodeBuddy Desktop IDE
-#### (Runs exclusively on Desktop CodeBuddy IDE · Full compatibility with Tencent Buddy AI ecosystem · 100% shared credits across all domestic clients)
+#### (Runs exclusively on Desktop CodeBuddy IDE · Multi-account pool and session management · Shared account and quota with WorkBuddy and other domestic clients)
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.3.2-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.3-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -36,7 +36,7 @@ BuddyRelay is a multi-account management extension (`.vsix`) specifically design
 
 > 💡 **Core Points (Read First):**
 > 1. **Exclusive Host**: This extension **runs exclusively inside Desktop CodeBuddy IDE** (Windows / macOS / Linux). WorkBuddy desktop apps, mobile apps, WeChat mini programs, and CodeBuddy CLI lack VS Code extension architecture and cannot load `.vsix` packages!
-> 2. **Shared Domestic Credits**: Domestic clients (CodeBuddy CN, WorkBuddy Desktop, Mobile App, WeChat Mini Program) all share the same phone account and quota wallet. Credits farmed by BuddyRelay in your IDE are 100% usable across all these devices!
+> 2. **Shared Domestic Credits**: Domestic clients (CodeBuddy CN, WorkBuddy Desktop, Mobile App, WeChat Mini Program) all share the same phone account and quota wallet.
 
 </div>
 
@@ -44,7 +44,7 @@ BuddyRelay is a multi-account management extension (`.vsix`) specifically design
 
 ## 📥 Install
 
-BuddyRelay is officially published on the **Open VSX Registry** (the marketplace behind CodeBuddy IDE's built-in extension gallery). **Search it right inside your Desktop CodeBuddy IDE and install in one click — no downloads required.**
+BuddyRelay is published on the **Open VSX Registry** (the marketplace behind CodeBuddy IDE's built-in extension gallery). **Search it right inside your Desktop CodeBuddy IDE and install in one click — no downloads required.**
 
 👉 **Marketplace page**: [open-vsx.org/extension/soulvon/buddy-relay](https://open-vsx.org/extension/soulvon/buddy-relay)
 
@@ -59,7 +59,7 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 
 ### Option 2: Offline VSIX install (restricted networks or version pinning)
 
-1. Download the latest `buddy-relay-1.3.2.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.3.3.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
 3. Extensions view ➔ `...` menu ➔ **"Install from VSIX..."**;
 4. Select the file; after install the **BuddyRelay** icon appears in the activity bar.
@@ -71,14 +71,14 @@ BuddyRelay is officially published on the **Open VSX Registry** (the marketplace
 buddycn --install-extension soulvon.buddy-relay --force
 
 # Or install from a local VSIX file
-buddycn --install-extension buddy-relay-1.3.2.vsix --force
+buddycn --install-extension buddy-relay-1.3.3.vsix --force
 ```
 
 > ⚠️ **Important Notice**:  
 > **This extension must be installed in Desktop CodeBuddy IDE!**  
 > - ❌ **Unsupported Clients for Extension Installation**: WorkBuddy Desktop, WorkBuddy Mobile App, WorkBuddy WeChat Mini Program, and CodeBuddy CLI (none of these are IDE editors, so none of them has an extension gallery).  
 > - ✅ **Target Scenario**: As long as you write code inside **Desktop CodeBuddy IDE**, install this extension to switch accounts and automate daily chores.  
-> - 💡 **For Pure WorkBuddy Users**: If you only use WorkBuddy (Desktop / Mobile App / Mini Program): Switch accounts using standalone tools like **Cockpit Tools**; or run CodeBuddy CN with BuddyRelay in the background to farm free credits for your WorkBuddy app!
+> - 💡 **For Pure WorkBuddy Users**: If you only use WorkBuddy (Desktop / Mobile App / Mini Program): Switch accounts using standalone tools like **Cockpit Tools**; or use CodeBuddy CN with BuddyRelay on desktop, where the same account and quota apply.
 
 ---
 
@@ -150,7 +150,7 @@ Fully graphical experience covering **account card flow**, **usage & model analy
 ---
 
 ### 6. Rules & smart scheduling settings
-> Core: **scheduled humanized check-in · 429 rate limit seamless auto-switch · max-quota priority strategy**
+> Core: **scheduled check-in · 429 rate limit seamless auto-switch · max-quota priority strategy**
 > Custom daily check-in time with jitter window, linked task execution, and automatic smooth fallback to standby accounts on quota exhaustion or 429 rate limits.
 
 <div align="center">
@@ -184,7 +184,7 @@ BuddyRelay strictly differentiates between host IDE execution and account quota 
 | :--- | :--- | :--- |
 | **Quota exhausted, painful switching** | Official flow: sign out, close window, restart IDE — long conversations lost | **Seamless switch**: in-memory session update, no window redraw, context fully preserved |
 | **History locked per account** | Sessions stored per UID — previous account's history invisible | **History fully intact**: automatic directory junctions across UIDs, zero-copy real-time access |
-| **Daily manual chores** | Sign in, claim tasks, collect rewards, send pets to work — every account, every day | **One-click check-in & tasks**: scheduled humanized check-in, fully automated claiming and collection |
+| **Daily manual chores** | Sign in, claim tasks, collect rewards, send pets to work — every account, every day | **One-click check-in & tasks**: scheduled check-in, fully automated claiming and collection |
 | **Quota expiry unknown** | Manual web dashboard checks, quota wall hits mid-coding | **Dual-mode live dashboard**: status bar & sidebar cards read real-time credits, auto-switch on exhaustion |
 | **Manual release hunting** | Hunt downloads on every release | **Auto-update check**: silent GitHub release check, one-click download-install-reload |
 | **Privacy leaks on stream** | Account names, emails and UIDs fully exposed | **End-to-end masking**: sidebar, status bar and switch menus masked instantly |
@@ -304,7 +304,7 @@ Some tasks (use a template, chat with AI, etc.) are client-behavior tasks that c
 <b>Recommended workflow:</b>
 <ol>
   <li><b>Switching inside WorkBuddy</b>: Use standalone external tools like <b>Cockpit Tools</b>, which switch accounts by directly accessing local storage.</li>
-  <li><b>Sharing free credits</b>: Domestic WorkBuddy and CodeBuddy CN share identical accounts and credits. You can keep CodeBuddy CN open with BuddyRelay to automatically farm daily check-in points and tasks, then consume those shared credits directly inside your WorkBuddy desktop app!</li>
+  <li><b>Shared account and quota</b>: Domestic WorkBuddy and CodeBuddy CN share identical accounts and credits. You can keep CodeBuddy CN open with BuddyRelay on desktop, where the same account and quota are available.</li>
 </ol>
 </details>
 
@@ -319,7 +319,7 @@ CodeBuddy International uses Tencent's <b>4-tier routing system</b> (categorized
 <br>
 <b>Extensions cannot be installed directly on these clients, but domestic credits are 100% shared:</b>
 <ul>
-  <li><b>Mobile App & WeChat Mini Program</b>: Mobile OS and WeChat environments do not support VS Code extensions and <b>cannot run <code>.vsix</code> packages</b>. However, because they are bound to the same phone number as CodeBuddy CN, credits farmed via BuddyRelay on your desktop IDE are instantly available when using the phone app or mini program!</li>
+  <li><b>Mobile App & WeChat Mini Program</b>: Mobile OS and WeChat environments do not support VS Code extensions and <b>cannot run <code>.vsix</code> packages</b>. However, because they are bound to the same phone number as CodeBuddy CN, the account and quota are shared across these clients.</li>
   <li><b>CodeBuddy CLI</b>: CLI is a pure terminal command-line tool (<code>buddy</code>) designed for headless environments. It has no graphical interface or extension architecture, so <code>.vsix</code> extensions are neither needed nor supported.</li>
 </ul>
 </details>

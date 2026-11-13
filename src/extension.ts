@@ -73,8 +73,7 @@ export async function activate(context: vscode.ExtensionContext) {
     store.setPrivacyMode(true).catch(() => {});
   }
 
-  // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
-  statusBarManager = new StatusBarManager(store, switcher, usageTracker);
+  // 2. 初始化界面体系：侧栏 Webview 与左下角常驻状态栏
   const sidebarProvider = new SidebarProvider(
     context.extensionUri,
     store,
@@ -82,6 +81,12 @@ export async function activate(context: vscode.ExtensionContext) {
     checkinService,
     importer,
     oauthService,
+    usageTracker
+  );
+  statusBarManager = new StatusBarManager(
+    store,
+    switcher,
+    () => sidebarProvider.promptFullRestart(),
     usageTracker
   );
 
@@ -115,16 +120,21 @@ export async function activate(context: vscode.ExtensionContext) {
     sidebarProvider.reloadWebview();
   });
 
-  // 3. 自愈检查 main.js Patch v4
+  // 3. 自愈检查 main.js Patch v5
   try {
     const patchRes = switcher.healPatch();
     if (patchRes.success) {
       console.log(`[BuddyRelay] ${patchRes.message}`);
+      // 本次实际重打了磁盘补丁：运行中的主进程仍是旧代码。主动告知一次，
+      // 避免用户第一次切号白等 8 秒回执才拿到重启引导。
+      if (patchRes.repatched) {
+        vscode.window.showInformationMessage(t('sw.restartHint'));
+      }
     } else {
       console.warn(`[BuddyRelay] Patch 自愈提示: ${patchRes.message}`);
     }
   } catch (err: any) {
-    console.warn(`[BuddyRelay] Patch v4 自检异常: ${err.message}`);
+    console.warn(`[BuddyRelay] Patch v5 自检异常: ${err.message}`);
   }
 
   // 3.2 会话母体自愈（2026-11-03 事故）：修复旧版硬编码母体建的错误链接，

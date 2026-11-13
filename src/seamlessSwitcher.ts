@@ -86,6 +86,8 @@ export interface SwitchReceipt {
   skipped: boolean;
   /** 宿主是否为 v4 旧补丁 (消费了指令但无回执能力) */
   legacyHost: boolean;
+  /** 指令文件原样未动：watcher 未消费（运行中的宿主尚未加载当前补丁） */
+  notConsumed?: boolean;
   message: string;
 }
 
@@ -988,6 +990,7 @@ export class SeamlessSwitcher {
       ok: false,
       skipped: false,
       legacyHost: false,
+      notConsumed: true,
       message: t('sw.noReceipt')
     };
   }
@@ -1107,6 +1110,23 @@ export class SeamlessSwitcher {
       };
     }
 
+    // 4.6 指令原样未动且 watcher 未运行：宿主主进程仍是未加载补丁的旧代码
+    // （首次安装或宿主升级后，扩展激活时已把补丁写入磁盘，但尚未完全重启过）。
+    // 指令留在原地，完全重启后 watcher 会自动消费完成切换，无需重写。
+    // watcher 确实在跑却没消费属于异常，保持原样报错，不用"重启"掩盖。
+    if (receipt.notConsumed && !this.isWatcherAlive(patchResult.mainJsPath)) {
+      return {
+        success: false,
+        account,
+        patchResult,
+        junctionResult,
+        receipt,
+        needsFullRestart: true,
+        message: t('sw.watcherDownRestart', account.nickname || account.email || account.uid),
+        error: 'NEEDS_FULL_RESTART'
+      };
+    }
+
     // 5. 仅宿主明确确认且账号一致才更新号池与宣告完成
     const confirmed = receipt.ok && receipt.verified;
     if (confirmed && store) {
@@ -1156,9 +1176,23 @@ export class SeamlessSwitcher {
   }
 
   /**
+   * watcher 活性判定（纯读）：诊断日志 mtime 必须不早于 main.js mtime。
+   * 日志不存在或比补丁旧，说明运行中的 main 进程没有加载当前补丁。
+   */
+  private isWatcherAlive(mainPath: string, logOverridePath?: string): boolean {
+    const logPath = logOverridePath || path.join(PATHS.CODEBUDDY_APPDATA_DIR, 'byok-watcher.log');
+    try {
+      const logMtime = fs.statSync(logPath).mtimeMs;
+      const mainMtime = fs.statSync(mainPath).mtimeMs;
+      // 1s 容差：吸收打补丁与重启之间秒级时钟/写入顺序抖动
+      return logMtime >= mainMtime - 1000;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
    * 切号链路自检：main.js 定位 → 磁盘补丁 → watcher 运行痕迹 → 指令状态
-   * watcher 活性判定：诊断日志 mtime 必须不早于 main.js mtime——
-   * 日志不存在或比补丁旧，说明运行中的 main 进程没有加载当前补丁（需完全重启一次）
    */
   public runDoctor(targetPath?: string, logOverridePath?: string): DoctorReport {
     const checks: DoctorCheck[] = [];
@@ -1179,17 +1213,7 @@ export class SeamlessSwitcher {
     const hasR3 = src.includes(PATCH_V5.V5_MARKER);
     checks.push({ id: 'patch', ok: hasR3, detail: hasR3 ? t('doctor.patchOk') : t('doctor.patchMissing') });
 
-    let watcherAlive = false;
-    let logMtime = 0;
-    const logPath = logOverridePath || path.join(PATHS.CODEBUDDY_APPDATA_DIR, 'byok-watcher.log');
-    try {
-      logMtime = fs.statSync(logPath).mtimeMs;
-      const mainMtime = fs.statSync(mainPath).mtimeMs;
-      // 1s 容差：吸收打补丁与重启之间秒级时钟/写入顺序抖动
-      watcherAlive = logMtime >= mainMtime - 1000;
-    } catch (_) {
-      watcherAlive = false;
-    }
+    const watcherAlive = this.isWatcherAlive(mainPath, logOverridePath);
     checks.push({
       id: 'watcher',
       ok: watcherAlive,

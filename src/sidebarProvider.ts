@@ -406,6 +406,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   public async promptFullRestart(): Promise<void> {
     if (!this._view) {
+      // 侧栏从未展开过时 webview 承载不了模态框，用原生通知给出同样可照做的指引
+      await vscode.window.showInformationMessage(t('sw.restartHint'));
       return;
     }
     this._view.webview.postMessage({ command: 'showRestartModal' });

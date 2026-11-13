@@ -267,6 +267,8 @@ export const zh: Record<string, string> = {
   'sw.hostSwitchFailed': '宿主切换失败: {0}',
   'sw.legacyNoReceipt': '切换指令已被宿主消费，但未收到本次切换的确认。请完全退出 CodeBuddy（所有窗口）后重新打开',
   'sw.noReceipt': '宿主未消费切换指令：watcher 未运行。请完全退出 CodeBuddy（所有窗口）后重新打开，再试一次',
+  'sw.watcherDownRestart': '切换组件尚未加载，切换指令已就位。完全退出 CodeBuddy（所有窗口）后重新打开即可完成切换（目标: {0}）',
+  'sw.restartHint': '切换组件已就绪，完全退出 CodeBuddy（所有窗口）并重新打开一次即可生效，之后切号无需再重启',
   'sw.repatchPending': '补丁已更新，重启后自动完成切号（目标: {0}）',
   'sw.receiptUidMismatch': '宿主回执的账号与本次目标不一致，已中止本次切换',
   'sw.restartToComplete': '宿主正在运行上一版切换组件，指令已重新就位。完全退出 CodeBuddy（所有窗口）后重新打开即可完成切换（目标: {0}）',

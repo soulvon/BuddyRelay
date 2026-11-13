@@ -33,12 +33,19 @@ export class StatusBarManager implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private store: AccountStore;
   private switcher: SeamlessSwitcher;
+  private restartPrompt: () => Promise<void>;
   private usageTracker?: UsageTracker;
   private disposables: vscode.Disposable[] = [];
 
-  constructor(store: AccountStore, switcher: SeamlessSwitcher, usageTracker?: UsageTracker) {
+  constructor(
+    store: AccountStore,
+    switcher: SeamlessSwitcher,
+    restartPrompt: () => Promise<void>,
+    usageTracker?: UsageTracker
+  ) {
     this.store = store;
     this.switcher = switcher;
+    this.restartPrompt = restartPrompt;
     this.usageTracker = usageTracker;
 
     // 右下角常驻 (vscode.StatusBarAlignment.Right, 优先级 100)
@@ -289,7 +296,7 @@ export class StatusBarManager implements vscode.Disposable {
         progress.report({ message: t('msg.progressPatch') });
         const res = await this.switcher.switchAccount(target, this.store);
         if (res.needsFullRestart) {
-          await vscode.window.showInformationMessage(res.message);
+          await this.restartPrompt();
           return;
         }
         if (res.success) {
