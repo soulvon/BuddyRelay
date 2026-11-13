@@ -74,7 +74,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   // 2. 初始化界面体系：左下角常驻状态栏与侧栏 Webview
-  statusBarManager = new StatusBarManager(store, switcher);
+  statusBarManager = new StatusBarManager(store, switcher, usageTracker);
   const sidebarProvider = new SidebarProvider(
     context.extensionUri,
     store,
@@ -85,9 +85,12 @@ export async function activate(context: vscode.ExtensionContext) {
     usageTracker
   );
 
-  // 2.5 模型级 429 冷却：只监听宿主日志追加，撞到限流才记录并刷新侧栏
+  // 2.5 模型级 429 冷却：只监听宿主日志追加，撞到限流才记录并刷新侧栏与状态栏
   const cooldownWatcher = new CooldownLogWatcher();
-  cooldownWatcher.on('change', () => sidebarProvider.postStateToWebview());
+  cooldownWatcher.on('change', () => {
+    sidebarProvider.postStateToWebview();
+    statusBarManager?.update();
+  });
   cooldownWatcher.start();
   context.subscriptions.push({ dispose: () => cooldownWatcher.stop() });
 

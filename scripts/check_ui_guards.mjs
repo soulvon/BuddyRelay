@@ -136,10 +136,11 @@ gate('G17 确认模态框: onDelete 使用 showConfirm 确认', html.includes('a
 gate('G18 Toast 悬浮通知: fixed 定位与浮层层级存在', /\.toast-container\s*\{[^}]*position:\s*fixed !important[^}]*z-index:\s*99999 !important/.test(html));
 gate('G18 Toast 悬浮通知: 卡片阴影与圆角存在', /\.toast\s*\{[^}]*border-radius:\s*var\(--radius-md[^}]*box-shadow:\s*0 4px 18px/.test(html));
 
-// ── G19: 状态栏点数/卡片图标与数字无逗号 ──
+// ── G19: 状态栏金币图标、数字无逗号与悬浮提示 ──
 const statusBarTs = fs.readFileSync(path.join(ROOT, 'src', 'statusBar.ts'), 'utf8');
-gate('G19 状态栏: 使用点数/卡片图标 $(credit-card)', statusBarTs.includes('$(credit-card) Buddy:'));
+gate('G19 状态栏: 使用金币图标 🪙', statusBarTs.includes('🪙 Buddy:'));
 gate('G19 状态栏: 彻底禁用 toLocaleString 千分位逗号', !statusBarTs.includes('toLocaleString'));
+gate('G19 状态栏: 悬浮提示包含今日消耗/获取与模型冷却状态', statusBarTs.includes('status.tooltipTodayStats') && statusBarTs.includes('status.tooltipModelCooldown'));
 
 // ── G20: README 社区图链与合规门控 ──
 const readmeMd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');

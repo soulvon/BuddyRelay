@@ -5,6 +5,8 @@ import { t } from './i18n';
 import { detectHostEdition } from './host';
 import { isTodayCheckedIn } from './checkinService';
 import { showFailureWithActions } from './diagnostics';
+import { UsageTracker } from './usageTracker';
+import { loadCooldownEvents } from './cooldownLogWatcher';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -17,6 +19,12 @@ function fmtNum(n: any): string {
   return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
 }
 
+function fmtCooldownTime(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /**
  * BuddyRelay 左下角常驻状态栏管理器
  * 遵循克制扁平、自然中文原则，展示当前账号名称与额度积分，点击唤起切号下拉菜单
@@ -25,11 +33,13 @@ export class StatusBarManager implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private store: AccountStore;
   private switcher: SeamlessSwitcher;
+  private usageTracker?: UsageTracker;
   private disposables: vscode.Disposable[] = [];
 
-  constructor(store: AccountStore, switcher: SeamlessSwitcher) {
+  constructor(store: AccountStore, switcher: SeamlessSwitcher, usageTracker?: UsageTracker) {
     this.store = store;
     this.switcher = switcher;
+    this.usageTracker = usageTracker;
 
     // 右下角常驻 (vscode.StatusBarAlignment.Right, 优先级 100)
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -38,14 +48,16 @@ export class StatusBarManager implements vscode.Disposable {
     );
     this.statusBarItem.command = 'buddy-relay.showAccountQuickPick';
 
-    // 监听号池状态变化自动更新
+    // 监听号池状态与今日统计变化自动更新
     const storeChangeListener = () => this.update();
     this.store.on('change', storeChangeListener);
     this.store.on('privacyChange', storeChangeListener);
+    const unsubUsage = this.usageTracker?.onChange(storeChangeListener);
     this.disposables.push({
       dispose: () => {
         this.store.removeListener('change', storeChangeListener);
         this.store.removeListener('privacyChange', storeChangeListener);
+        unsubUsage?.();
       }
     });
 
@@ -61,7 +73,7 @@ export class StatusBarManager implements vscode.Disposable {
     const isPrivacy = this.store.getPrivacyMode();
 
     if (!active) {
-      this.statusBarItem.text = `$(credit-card) Buddy: ${t('status.notLoggedIn')}`;
+      this.statusBarItem.text = `🪙 Buddy: ${t('status.notLoggedIn')}`;
       const emptyMd = new vscode.MarkdownString(t('status.tooltipNone'));
       emptyMd.supportThemeIcons = true;
       this.statusBarItem.tooltip = emptyMd;
@@ -82,7 +94,7 @@ export class StatusBarManager implements vscode.Disposable {
       this.statusBarItem.text = `$(warning) Buddy: ${name} (${t('status.rateLimited')})`;
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
-      this.statusBarItem.text = `$(credit-card) Buddy: ${name} (${creditsText})`;
+      this.statusBarItem.text = `🪙 Buddy: ${name} (${creditsText})`;
       this.statusBarItem.backgroundColor = undefined;
     }
 
@@ -90,11 +102,40 @@ export class StatusBarManager implements vscode.Disposable {
     md.isTrusted = true;
     md.supportThemeIcons = true;
 
+    const summary = this.usageTracker?.getDailySummary();
+    const todayConsumed = summary?.perAccountConsumed[active.id] ?? 0;
+    const todayGrants = summary?.perAccountGrants[active.id] ?? 0;
+
+    let cooldownText = t('cooldown.normal');
+    try {
+      const cdFile = loadCooldownEvents();
+      const byModel = cdFile.byUid[active.uid];
+      if (byModel) {
+        const now = Date.now();
+        const activeCooldowns = Object.keys(byModel)
+          .map((m) => byModel[m])
+          .filter((ev) => ev && ev.resetAt > now)
+          .sort((a, b) => a.resetAt - b.resetAt);
+        if (activeCooldowns.length > 0) {
+          cooldownText = activeCooldowns
+            .map((ev) => {
+              const label = cdFile.modelNames[ev.modelId] || ev.modelId;
+              return t('status.tooltipModelCooldownItem', label, t('cooldown.until', fmtCooldownTime(ev.resetAt)));
+            })
+            .join('、');
+        }
+      }
+    } catch {
+      // 冷却记录读取失败不阻塞状态栏渲染
+    }
+
     md.appendMarkdown(t('status.tooltipHeader', isPrivacy ? t('status.privacyOn') : ''));
     md.appendMarkdown(t('status.tooltipAccount', name));
     md.appendMarkdown(t('status.tooltipUid', isPrivacy ? maskUid(active.uid) : active.uid));
     md.appendMarkdown(t('status.tooltipCredits', typeof active.totalCredits === 'number' ? t('status.creditsReady', fmtNum(active.totalCredits)) : t('status.ready')));
+    md.appendMarkdown(t('status.tooltipTodayStats', fmtNum(todayConsumed), fmtNum(todayGrants)));
     md.appendMarkdown(t('status.tooltipCheckin', isTodayCheckedIn(active) ? t('status.checked') : t('status.unchecked'), active.checkinStreak || 0));
+    md.appendMarkdown(t('status.tooltipModelCooldown', cooldownText));
     md.appendMarkdown('---\n\n');
     md.appendMarkdown(`$(arrow-swap) ${t('status.tooltipClick')}`);
 

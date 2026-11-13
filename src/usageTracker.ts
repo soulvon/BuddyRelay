@@ -118,6 +118,21 @@ export class UsageTracker {
   /** 同进程内的在途请求：防连续推送导致同一账号并发重复拉取 */
   private inFlight: Set<string> = new Set();
   private lastBalances: Map<string, number> = new Map();
+  private changeListeners: Array<() => void> = [];
+
+  /** 注册今日统计变更回调，返回取消订阅函数 */
+  public onChange(listener: () => void): () => void {
+    this.changeListeners.push(listener);
+    return () => {
+      this.changeListeners = this.changeListeners.filter((fn) => fn !== listener);
+    };
+  }
+
+  private notifyChange(): void {
+    for (const fn of this.changeListeners) {
+      try { fn(); } catch { /* ignore */ }
+    }
+  }
 
   constructor(customFilePath?: string) {
     this.filePath = customFilePath || path.join(PATHS.RELAY_DIR, 'usage-records.json');
@@ -190,6 +205,7 @@ export class UsageTracker {
         fs.writeFileSync(this.dailyStatsPath, payload, 'utf8');
         try { fs.unlinkSync(tmp); } catch { /* ignore */ }
       }
+      this.notifyChange();
     } catch (err: any) {
       console.warn('[UsageTracker] 保存今日统计失败:', err.message);
     }
