@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * BuddyRelay webview 注入冒烟门禁
- * 模拟 sidebarProvider.getHtmlForWebview 的 zh/en 双语替换产物, 对内联 <script> 做语法校验:
- * - {{I18N_JSON}} 必须全部注入 (残留即 FAIL — 曾因注释撞名只替换到第一个导致运行时白屏)
- * - {{i:key}} 占位符 key 必须全部存在于字典 (缺失即 FAIL)
- * - 替换后内联脚本必须通过 vm.Script 语法解析 (破坏即 FAIL)
+ * 模拟 sidebarProvider.getHtmlForWebview 的 zh/en 双语替换产物，校验 HTML 与 JS 三件套注入与语法：
+ * - 模拟注入 {{NONCE}}、{{CSP_SOURCE}}、{{STYLE_URI}}、{{SCRIPT_URI}}、{{I18N_JSON}} 及 {{i:key}}
+ * - 断言替换后 HTML 与 JS 无任何 {{...}} 模板占位符残留
+ * - {{i:key}} 占位符 key 必须全部存在于字典
+ * - 用 new vm.Script 分别校验 HTML 内联 <script nonce="..."> 块与外部 resources/webview/sidebar.js 语法 100% 合法
  * 用法: node scripts/check_webview_injection.mjs
  */
 import fs from 'node:fs';
@@ -24,6 +25,7 @@ if (!zh || !en) {
 }
 
 const html = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.html'), 'utf8');
+const js = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.js'), 'utf8');
 let failed = 0;
 
 function gate(name, ok, detail) {
@@ -31,25 +33,67 @@ function gate(name, ok, detail) {
   else { failed++; console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
 }
 
+const TEST_NONCE = 'dGVzdC1ub25jZS0xMjM0NTY=';
+const TEST_CSP_SOURCE = 'vscode-webview://test-origin';
+const TEST_STYLE_URI = 'vscode-webview://test-origin/resources/webview/main.css?v=1';
+const TEST_SCRIPT_URI = 'vscode-webview://test-origin/resources/webview/sidebar.js?v=1';
+
 for (const [tag, dict] of [['zh', zh], ['en', en]]) {
-  // 与 sidebarProvider 相同的注入方式
-  let content = html.replaceAll('{{I18N_JSON}}', () => JSON.stringify(dict).replace(/<\//g, '<\\/'));
+  const dictJson = JSON.stringify(dict).replace(/<\//g, '<\\/');
   const missing = [];
-  content = content.replace(/\{\{i:([\w.]+)\}\}/g, (full, key) => {
-    if (!(key in dict)) missing.push(key);
-    return dict[key] !== undefined ? dict[key] : full;
-  });
+  const replaceTemplates = (raw) => raw
+    .replaceAll('{{NONCE}}', () => TEST_NONCE)
+    .replaceAll('{{CSP_SOURCE}}', () => TEST_CSP_SOURCE)
+    .replaceAll('{{STYLE_URI}}', () => TEST_STYLE_URI)
+    .replaceAll('{{SCRIPT_URI}}', () => TEST_SCRIPT_URI)
+    .replaceAll('{{I18N_JSON}}', () => dictJson)
+    .replace(/\{\{i:([\w.]+)\}\}/g, (full, key) => {
+      if (!(key in dict)) missing.push(key);
+      return dict[key] !== undefined ? dict[key] : full;
+    });
 
-  gate(`${tag}: {{I18N_JSON}} 全部注入`, !content.includes('{{I18N_JSON}}'));
+  const htmlContent = replaceTemplates(html);
+  const jsContent = replaceTemplates(js);
+
+  const htmlLeftover = htmlContent.match(/\{\{[^}]+\}\}/g) || [];
+  const jsLeftover = jsContent.match(/\{\{[^}]+\}\}/g) || [];
+  gate(`${tag}: HTML 无模板占位符残留`, htmlLeftover.length === 0, htmlLeftover.slice(0, 5).join(', '));
+  gate(`${tag}: JS 无模板占位符残留`, jsLeftover.length === 0, jsLeftover.slice(0, 5).join(', '));
   gate(`${tag}: {{i:}} 占位符 key 均存在`, missing.length === 0, missing.join(', '));
+  gate(
+    `${tag}: 外链 <script nonce="..." src="..."> 注入完整`,
+    htmlContent.includes(`<script nonce="${TEST_NONCE}" src="${TEST_SCRIPT_URI}"></script>`)
+  );
 
-  const m = content.match(/<script>([\s\S]*?)<\/script>/);
-  if (!m) { gate(`${tag}: 内联脚本存在`, false); continue; }
+  // 校验 HTML 中所有内联 <script nonce="..."> 块（无 src 属性）
+  const scriptTagRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const inlineBlocks = [];
+  let match;
+  while ((match = scriptTagRe.exec(htmlContent)) !== null) {
+    const attrs = match[1] || '';
+    if (/\bsrc\s*=/.test(attrs)) continue;
+    inlineBlocks.push({ attrs, code: match[2] });
+  }
+  gate(
+    `${tag}: HTML 内联 <script nonce="..."> 块存在且全部携带 nonce`,
+    inlineBlocks.length > 0 && inlineBlocks.every((b) => b.attrs.includes(`nonce="${TEST_NONCE}"`)),
+    `count=${inlineBlocks.length}`
+  );
+  for (let i = 0; i < inlineBlocks.length; i++) {
+    try {
+      new vm.Script(inlineBlocks[i].code, { filename: `sidebar-${tag}-inline-${i}.js` });
+      gate(`${tag}: HTML 内联脚本 #${i + 1} 语法解析`, true);
+    } catch (e) {
+      gate(`${tag}: HTML 内联脚本 #${i + 1} 语法解析`, false, e.message.split('\n').slice(0, 4).join(' | '));
+    }
+  }
+
+  // 校验整个外部 sidebar.js 语法
   try {
-    new vm.Script(m[1], { filename: `sidebar-${tag}.js` });
-    gate(`${tag}: 内联脚本语法解析`, true);
+    new vm.Script(jsContent, { filename: `sidebar-${tag}.js` });
+    gate(`${tag}: 外部 sidebar.js 语法解析`, true);
   } catch (e) {
-    gate(`${tag}: 内联脚本语法解析`, false, e.message.split('\n').slice(0, 4).join(' | '));
+    gate(`${tag}: 外部 sidebar.js 语法解析`, false, e.message.split('\n').slice(0, 4).join(' | '));
   }
 }
 

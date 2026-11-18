@@ -183,8 +183,13 @@ export class CockpitImporter {
       lastUsed *= 1000;
     }
 
+    const safeRawId =
+      typeof raw.id === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(raw.id)
+        ? raw.id
+        : '';
+
     return {
-      id: raw.id || `codebuddy_cn_${uid.replace(/-/g, '')}`,
+      id: safeRawId || `codebuddy_cn_${uid.replace(/-/g, '')}`,
       uid,
       email,
       nickname,

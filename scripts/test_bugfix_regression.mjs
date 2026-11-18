@@ -306,18 +306,18 @@ async function run() {
       !utSrc.includes('new Date(today).getDate()') && /today\.slice\(8,\s*10\)/.test(utSrc)
     );
 
-    const html = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.html'), 'utf8');
+    const js = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.js'), 'utf8');
     check(
       'renderFilterDropdown 对自定义 def.label 使用 escHtml 转义',
-      html.includes('escHtml(def.label)')
+      js.includes('escHtml(def.label)')
     );
     check(
       '卡片显示名称 displayName 与标签使用 escHtml 转义，标签不使用带引号风险的内联 onclick 拼串',
-      html.includes('>${escHtml(displayName)}</div>') && !html.includes("onFilterByTag('${escHtml(tag)}')")
+      js.includes('>${escHtml(displayName)}</div>') && !js.includes("onFilterByTag('${escHtml(tag)}')")
     );
     check(
       '#btnResetFilter 清除筛选后同步调用 renderTagBar() 重置顶部标签高亮',
-      /resetBtn[\s\S]{0,400}renderTagBar\(\)/.test(html)
+      /resetBtn[\s\S]{0,400}renderTagBar\(\)/.test(js)
     );
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}

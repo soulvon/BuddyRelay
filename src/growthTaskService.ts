@@ -1,6 +1,17 @@
 import { CodeBuddyAccount } from './accountStore';
-import { httpRequest } from './oauthService';
-import { t } from './i18n';
+import { httpRequest } from './httpClient';
+import { t, getLang } from './i18n';
+import { isCnAccount } from './domain';
+
+function readAutoUseMakeupCardConfig(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const vs = require('vscode');
+    return Boolean(vs?.workspace?.getConfiguration('buddyRelay')?.get('growthTasks.autoUseMakeupCard', true));
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Buddy 成长中心任务模型（来源：/v2/activity/growth/tasks）
@@ -62,6 +73,8 @@ export interface TaskAutoReport {
   lotteryDraws: number;
   /** 进行中任务数 */
   inProgressTasks: number;
+  /** 是否因设置关闭而跳过自动使用补签卡 */
+  makeupCardSkipped?: boolean;
   /** 跳过说明 */
   skipped: string[];
   /** 失败明细 */
@@ -317,6 +330,122 @@ export class GrowthTaskService {
   }
 
   /**
+   * 单个任务精准报名（「接受」）：支持指定来源，并在缺少前置或未知来源时自动补全
+   */
+  public async acceptSingleTask(
+    account: CodeBuddyAccount,
+    taskCode: string,
+    preferredSource?: 'desktop' | 'mp'
+  ): Promise<{ success: boolean; alreadyAccepted?: boolean; message: string }> {
+    const code = String(taskCode || '').trim();
+    if (!code || !account?.accessToken || !account?.uid) {
+      return { success: false, message: t('err.acceptFailedShort') };
+    }
+    if (!isCnAccount(account.domain)) {
+      return { success: false, message: t('intl.cnOnlyDetail') };
+    }
+
+    let source: 'desktop' | 'mp' = preferredSource || 'desktop';
+    let cachedTasks: GrowthTask[] | null = null;
+    if (!preferredSource) {
+      try {
+        cachedTasks = await this.listTasks(account);
+        const found = cachedTasks.find(x => x.taskCode === code);
+        if (found) {
+          if (found.manualOnly) {
+            return { success: false, message: found.title + t('task.wechatOnly') };
+          }
+          if (found.locked) {
+            return { success: false, message: found.title + t('task.lockedSuffix') };
+          }
+          if (
+            found.claimed ||
+            found.acceptStatus === 'accepted' ||
+            found.acceptStatus === 'in_progress' ||
+            found.acceptStatus === 'claimed' ||
+            found.acceptStatus === 'completed'
+          ) {
+            return { success: true, alreadyAccepted: true, message: t('msg.nothingToAccept') };
+          }
+          source = found.source;
+        }
+        const firstBuddy = cachedTasks.find(x => x.taskCode === 'first_buddy');
+        if (firstBuddy && !firstBuddy.claimed && firstBuddy.acceptStatus !== 'claimed') {
+          const buddyRes = await this.adoptBuddyIfNeeded(account, cachedTasks);
+          if (code === 'first_buddy' && buddyRes.adopted) {
+            return { success: true, message: t('act.buddyAdopted') };
+          }
+        }
+      } catch {
+        // 拉列表失败不阻塞直接发起单任务报名请求
+      }
+    }
+
+    const sendSingle = async (src: 'desktop' | 'mp') => {
+      const extra = src === 'mp' ? { 'X-Client-Platform': 'miniprogram' } : undefined;
+      return httpRequest<any>(`${this.baseUrl}/v2/activity/growth/tasks/accept`, {
+        method: 'POST',
+        headers: this.headers(account, extra),
+        body: { task_codes: [code] },
+        timeout: 20000
+      });
+    };
+
+    const parseResp = (res: { status: number; data: any }) => {
+      if (res.status === 200 && res.data?.code === 0) {
+        const results: any[] = res.data?.data?.results || [];
+        const item = results.find(r => r?.task_code === code) || results[0];
+        if (!item || item.status === 'accepted') {
+          return { ok: true, already: false, errMsg: '' };
+        }
+        if (item.status === 'already_accepted') {
+          return { ok: true, already: true, errMsg: '' };
+        }
+        return { ok: false, already: false, errMsg: String(item.message || item.status || t('err.acceptFailedShort')) };
+      }
+      return {
+        ok: false,
+        already: false,
+        errMsg: t('err.acceptApiError', res.status, res.data?.msg || t('err.unknownError'))
+      };
+    };
+
+    try {
+      let res = await sendSingle(source);
+      let parsed = parseResp(res);
+
+      // 未显式指定来源且提示任务不存在时，尝试另一个源
+      if (!parsed.ok && !preferredSource && /not found|不存在/i.test(parsed.errMsg)) {
+        const altSource: 'desktop' | 'mp' = source === 'desktop' ? 'mp' : 'desktop';
+        res = await sendSingle(altSource);
+        parsed = parseResp(res);
+        source = altSource;
+      }
+
+      // 遇前置 first_buddy 未领养报错时尝试自动领养后重试一次
+      if (!parsed.ok && /first_buddy|prerequisite/i.test(parsed.errMsg)) {
+        const tasksForAdopt = cachedTasks || (await this.listTasks(account).catch(() => []));
+        const adopt = await this.adoptBuddyIfNeeded(account, tasksForAdopt);
+        if (adopt.adopted) {
+          res = await sendSingle(source);
+          parsed = parseResp(res);
+        }
+      }
+
+      if (parsed.ok) {
+        return {
+          success: true,
+          alreadyAccepted: parsed.already,
+          message: parsed.already ? t('msg.nothingToAccept') : t('msg.acceptedN', 1)
+        };
+      }
+      return { success: false, message: parsed.errMsg };
+    } catch (err: any) {
+      return { success: false, message: t('err.networkError', err?.message || String(err)) };
+    }
+  }
+
+  /**
    * 领取单个达标任务奖励（chat 域 400 时自动降级 web 域）
    * 返回 { ok, credit, energy, already }
    */
@@ -558,7 +687,10 @@ export class GrowthTaskService {
   /**
    * 一键自动化流水线：领养Buddy → 批量双源报名 → 游历收成与派遣 → 连登兑换与补登 → 盲盒/抽奖 → 达标任务领奖
    */
-  public async runAutoComplete(account: CodeBuddyAccount): Promise<TaskAutoReport> {
+  public async runAutoComplete(
+    account: CodeBuddyAccount,
+    options?: { autoUseMakeupCard?: boolean }
+  ): Promise<TaskAutoReport> {
     const report: TaskAutoReport = {
       buddyAttempted: false,
       buddyAdopted: false,
@@ -631,8 +763,15 @@ export class GrowthTaskService {
       report.claimedCredits += redeemGained;
     }
 
-    // 7. 漏签自动补登卡
-    report.madeUpDays = await this.useMakeupCardsIfNeeded(account);
+    // 7. 漏签自动补登卡（遵循 buddyRelay.growthTasks.autoUseMakeupCard 配置）
+    const shouldUseMakeupCard = options?.autoUseMakeupCard ?? readAutoUseMakeupCardConfig();
+    if (shouldUseMakeupCard) {
+      report.madeUpDays = await this.useMakeupCardsIfNeeded(account);
+    } else {
+      report.madeUpDays = 0;
+      report.makeupCardSkipped = true;
+      report.skipped.push(getLang() === 'en' ? 'Auto makeup card (disabled by setting)' : '自动补签卡（设置已关闭）');
+    }
 
     // 8. 能量开盲盒
     const boxRes = await this.openBuddyBoxIfNeeded(account);

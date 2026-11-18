@@ -7,7 +7,7 @@
 
 **Switch without restart · No editor reload · Full session history intact · One-click check-in · One-click tasks**
 
-[![Version](https://img.shields.io/badge/version-1.3.6-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.8-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -59,7 +59,7 @@ BuddyRelay is published on the **Open VSX Registry** (the marketplace behind Cod
 
 ### Option 2: Offline VSIX install (restricted networks or version pinning)
 
-1. Download the latest `buddy-relay-1.3.6.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
+1. Download the latest `buddy-relay-1.3.8.vsix` ([GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest));
 2. Open **CodeBuddy CN** (or CodeBuddy International) Desktop IDE;
 3. Extensions view ➔ `...` menu ➔ **"Install from VSIX..."**;
 4. Select the file; after install the **BuddyRelay** icon appears in the activity bar.
@@ -71,7 +71,7 @@ BuddyRelay is published on the **Open VSX Registry** (the marketplace behind Cod
 buddycn --install-extension soulvon.buddy-relay --force
 
 # Or install from a local VSIX file
-buddycn --install-extension buddy-relay-1.3.6.vsix --force
+buddycn --install-extension buddy-relay-1.3.8.vsix --force
 ```
 
 > ⚠️ **Important Notice**:  
@@ -257,11 +257,11 @@ Fine-tune in CodeBuddy's `settings.json`:
 | `buddyRelay.autoCheckin.perAccountDelaySeconds` | `number` | `15` | Max random delay between accounts (seconds) |
 | `buddyRelay.autoSwitch.enabled` | `boolean` | `true` | Enable auto-switch on quota exhaustion |
 | `buddyRelay.autoSwitch.quotaThresholdPercent` | `number` | `10` | Remaining-percent threshold to trigger auto-switch |
-| `buddyRelay.autoSwitch.strategy` | `string` | `"highest_quota"` | Strategy: `highest_quota` / `lru` / `round_robin` |
+| `buddyRelay.autoSwitch.strategy` | `string` | `"highest_quota"` | Strategy: `highest_quota` (most remaining credits) / `lru` (least recently used) / `round_robin` (pool order) / `health_priority` (longest check-in streak) |
 | `buddyRelay.autoSwitch.cooldownMinutes` | `number` | `5` | Debounce cooldown after a switch (minutes) |
 | `buddyRelay.growthTasks.autoAfterCheckin` | `boolean` | `true` | Run the growth task pipeline after daily check-in |
 | `buddyRelay.update.autoCheck` | `boolean` | `true` | Check GitHub latest release on startup |
-| `buddyRelay.update.autoInstall` | `boolean` | `false` | Silently install new versions when found |
+| `buddyRelay.update.autoInstall` | `boolean` | `true` | Silently install new versions when found |
 
 ---
 
@@ -288,7 +288,7 @@ International editions fully support the pool, seamless switching, session prese
 <details>
 <summary><b>Q4: How are tokens stored? Is it safe?</b></summary>
 <br>
-<b>Completely safe.</b> Credentials live in VS Code's isolated <code>globalState</code> on your disk; all network requests go only to official Tencent domains (<code>codebuddy.cn</code> / <code>copilot.tencent.com</code>) — nothing is uploaded to third parties.
+<b>Completely safe.</b> Account credentials are encrypted at rest with local <code>AES-256-GCM</code> (a 32-byte random <code>master.key</code> with <code>0o600</code> permissions) inside the cross-window shared pool file <code>pool.json</code> (<code>enc:v1:...</code> ciphertext), protected by cross-process file locks and corruption guards. All network requests go only to official Tencent domains (<code>codebuddy.cn</code> / <code>codebuddy.ai</code> / <code>copilot.tencent.com</code>) — nothing is uploaded to third parties.
 </details>
 
 <details>
@@ -368,7 +368,7 @@ If BuddyRelay saves you switching and account-maintenance effort, join the group
 
 **如果这个工具帮到了你，点一个 Star 让更多开发者看到它 · If this project helps you, a star means a lot.**
 
-[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/soulvon/BuddyRelay&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/BuddyRelay&Date)
 
 ---
 

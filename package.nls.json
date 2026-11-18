@@ -19,7 +19,6 @@
   "config.locale.en": "English",
   "config.autoCheckin": "Enable scheduled daily check-in & credit claiming",
   "config.refreshIntervalMinutes": "Account status & quota auto-refresh interval (minutes)",
-  "config.cockpitEndpoint": "Cockpit external environment import source endpoint",
   "config.autoCheckin.dailyTime": "Daily auto check-in time (HH:mm, 24-hour)",
   "config.autoCheckin.randomJitterMinutes": "Random check-in jitter window (minutes) to mimic human behavior",
   "config.autoCheckin.perAccountDelaySeconds": "Max random delay between per-account check-ins (seconds)",

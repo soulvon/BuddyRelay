@@ -1,7 +1,9 @@
 import { EventEmitter } from 'events';
+import type * as vscode from 'vscode';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
-import { OAuthService, httpRequest } from './oauthService';
+import { OAuthService } from './oauthService';
+import { httpRequest } from './httpClient';
 import { getOtherLockedUids } from './accountLock';
 import { API_ENDPOINTS } from './constants';
 import { UsageTracker } from './usageTracker';
@@ -10,10 +12,17 @@ import { isCnAccount } from './domain';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
-/**
- * 合计剩余算力占比（基础体验包 + 活动赠送包），与侧栏总账口径一致。
- * 仅活动包有数据时回退活动包占比；两者皆缺返回 null（数据不足不做配额决策）。
- */
+const VALID_STRATEGIES = new Set<RotationStrategy>(['highest_quota', 'lru', 'round_robin', 'health_priority']);
+
+function getVscodeSafe(): typeof vscode | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('vscode') as typeof vscode;
+  } catch {
+    return undefined;
+  }
+}
+
 function combinedQuotaPercent(acc: CodeBuddyAccount): number | null {
   const base = acc.basePackage;
   const act = acc.activityPackage;
@@ -39,21 +48,21 @@ export interface RotationEvent {
 
 export interface AutoSwitcherOptions {
   strategy?: RotationStrategy;
-  defaultCooldownMs?: number; // 429 默认冷却时间 (默认 5 分钟)
+  defaultCooldownMs?: number;
   autoRefreshTokens?: boolean;
   usageTracker?: UsageTracker;
 }
 
 /**
  * 额度见底 / 429 速率限制自动轮换调度器
- * 负责号池健康度监控、智能轮换与平滑调度
  */
 export class AutoSwitcher extends EventEmitter {
   private store: AccountStore;
   private switcher: SeamlessSwitcher;
   private oauthService: OAuthService;
   private usageTracker?: UsageTracker;
-  private strategy: RotationStrategy;
+  private lockedStrategy?: RotationStrategy;
+  private _lastRoundRobinId: string | null = null;
   private defaultCooldownMs: number;
   private autoRefreshTokens: boolean;
   private monitorTimer: NodeJS.Timeout | null = null;
@@ -61,8 +70,8 @@ export class AutoSwitcher extends EventEmitter {
   private isRotating: boolean = false;
   private lastAutoSwitchAt: number = 0;
   private getConfig: (() => { enabled: boolean; thresholdPercent: number; cooldownMinutes: number } | null) | null = null;
+  private tokenRefreshLeaderCheck: (() => boolean) | null = null;
 
-  // 熔断保护器状态（60秒内连续切号上限 5 次，超限熔断 2 分钟）
   private breakerTrippedUntil: number = 0;
   private switchTimestamps: number[] = [];
 
@@ -77,21 +86,42 @@ export class AutoSwitcher extends EventEmitter {
     this.switcher = switcher || new SeamlessSwitcher();
     this.oauthService = oauthService || new OAuthService();
     this.usageTracker = options?.usageTracker;
-    this.strategy = options?.strategy || 'lru';
+    this.lockedStrategy = options?.strategy;
     this.defaultCooldownMs = options?.defaultCooldownMs || 5 * 60 * 1000;
     this.autoRefreshTokens = options?.autoRefreshTokens ?? true;
   }
 
-  /**
-   * 检查切号频率熔断器
-   */
+  /** 显式设定或解除策略锁定；传 undefined 恢复跟随设置 */
+  public setStrategy(strategy?: RotationStrategy): void {
+    this.lockedStrategy = strategy;
+  }
+
+  /** 获取当前生效的轮换策略（显式锁定优先，否则实时读配置，默认 highest_quota） */
+  public getEffectiveStrategy(): RotationStrategy {
+    if (this.lockedStrategy && VALID_STRATEGIES.has(this.lockedStrategy)) {
+      return this.lockedStrategy;
+    }
+    const vs = getVscodeSafe();
+    if (vs) {
+      const configured = vs.workspace
+        .getConfiguration('buddyRelay')
+        .get<RotationStrategy>('autoSwitch.strategy', 'highest_quota');
+      if (configured && VALID_STRATEGIES.has(configured)) {
+        return configured;
+      }
+    }
+    return 'highest_quota';
+  }
+
+  /** 设置多窗口 Token 全局刷新 Leader 检查回调 */
+  public setTokenRefreshLeaderCheck(check: (() => boolean) | null): void {
+    this.tokenRefreshLeaderCheck = check;
+  }
+
   public isCircuitBreakerTripped(): boolean {
     return Date.now() < this.breakerTrippedUntil;
   }
 
-  /**
-   * 熔断拦截检测并记录本次切号
-   */
   public checkCircuitBreaker(): void {
     const now = Date.now();
     if (now < this.breakerTrippedUntil) {
@@ -99,9 +129,9 @@ export class AutoSwitcher extends EventEmitter {
       throw new Error(`[AutoSwitcher] ${t('act.breakerTripped')} (剩余冷却 ${remainSec} 秒)`);
     }
 
-    this.switchTimestamps = this.switchTimestamps.filter(t => now - t <= 60_000);
+    this.switchTimestamps = this.switchTimestamps.filter(ts => now - ts <= 60_000);
     if (this.switchTimestamps.length >= 5) {
-      this.breakerTrippedUntil = now + 120_000; // 熔断 2 分钟
+      this.breakerTrippedUntil = now + 120_000;
       if (this.usageTracker) {
         this.usageTracker.recordAction({
           type: 'warn',
@@ -118,11 +148,8 @@ export class AutoSwitcher extends EventEmitter {
     this.switchTimestamps.push(now);
   }
 
-  /**
-   * 候选账号轻量探针预检（Tencent API 连通性与 Token 有效性检查）
-   */
+  /** 候选账号轻量探针预检（国际版 codebuddy.ai 不走国内接口，不误判 401） */
   public async probeAccount(account: CodeBuddyAccount): Promise<{ valid: boolean; reason?: string }> {
-    // 国际账号 (codebuddy.ai) 无国内签到/计费活动接口，严禁发往 codebuddy.cn 导致误判 401 失效
     if (!isCnAccount(account.domain)) {
       return { valid: true, reason: 'intl_skip_probe' };
     }
@@ -138,92 +165,108 @@ export class AutoSwitcher extends EventEmitter {
         body: {},
         timeout: 6000
       });
-
-      if (res.status === 401 || (res.data && res.data.code === 401)) {
+      if (res.status === 401 || res.data?.code === 401) {
         await this.store.updateStatus(account.id, 'expired');
         return { valid: false, reason: t('err.probeUnauthorized') };
       }
-      if (res.status === 429 || (res.data && res.data.code === 429)) {
+      if (res.status === 429 || res.data?.code === 429) {
         await this.store.markRateLimited(account.id, this.defaultCooldownMs);
         return { valid: false, reason: t('err.probeRateLimited') };
       }
-      if (res.status === 200 && res.data && res.data.code === 0) {
+      if (res.status === 200 && res.data?.code === 0) {
         return { valid: true };
       }
       return { valid: true, reason: `HTTP ${res.status}` };
-    } catch (err: any) {
-      // 探针网络波动或超时，保守放行避免误伤
+    } catch {
       return { valid: true, reason: 'network_warn' };
     }
   }
 
-  /**
-   * 筛选并排序候选账号列表
-   */
+  private sortCandidates(
+    candidates: CodeBuddyAccount[],
+    all: CodeBuddyAccount[],
+    anchorUid?: string
+  ): void {
+    const strategy = this.getEffectiveStrategy();
+    if (strategy === 'highest_quota') {
+      candidates.sort((a, b) => {
+        const aPct = combinedQuotaPercent(a) ?? (a.totalCredits != null ? -1 : -2);
+        const bPct = combinedQuotaPercent(b) ?? (b.totalCredits != null ? -1 : -2);
+        return bPct !== aPct ? bPct - aPct : (a.lastUsed || 0) - (b.lastUsed || 0);
+      });
+      return;
+    }
+    if (strategy === 'health_priority') {
+      candidates.sort((a, b) => {
+        const streakDiff = (b.checkinStreak || 0) - (a.checkinStreak || 0);
+        if (streakDiff !== 0) return streakDiff;
+        const aPct = combinedQuotaPercent(a) ?? -1;
+        const bPct = combinedQuotaPercent(b) ?? -1;
+        return bPct !== aPct ? bPct - aPct : (a.lastUsed || 0) - (b.lastUsed || 0);
+      });
+      return;
+    }
+    if (strategy === 'round_robin') {
+      const byStableOrder = (a: CodeBuddyAccount, b: CodeBuddyAccount) =>
+        (a.createdAt || 0) - (b.createdAt || 0) || a.id.localeCompare(b.id);
+      candidates.sort(byStableOrder);
+      if (candidates.length <= 1) return;
+      const anchor = this._lastRoundRobinId || anchorUid;
+      if (!anchor) return;
+
+      const candIdx = candidates.findIndex(c => c.id === anchor || c.uid === anchor);
+      if (candIdx >= 0) {
+        candidates.splice(0, candidates.length, ...candidates.slice(candIdx + 1), ...candidates.slice(0, candIdx + 1));
+        return;
+      }
+      const orderedAll = [...all].sort(byStableOrder);
+      const anchorIdx = orderedAll.findIndex(c => c.id === anchor || c.uid === anchor);
+      if (anchorIdx >= 0) {
+        const rank = new Map<string, number>();
+        orderedAll.forEach((item, idx) => {
+          rank.set(item.id, idx > anchorIdx ? idx - anchorIdx : orderedAll.length + idx - anchorIdx);
+        });
+        candidates.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+      }
+      return;
+    }
+    candidates.sort((a, b) => (a.lastUsed || 0) - (b.lastUsed || 0));
+  }
+
   public getCandidateAccounts(currentUid?: string): CodeBuddyAccount[] {
     const all = this.store.getAll();
     const now = Date.now();
     const otherLocked = getOtherLockedUids();
-
     const activeId = this.store.getActive()?.id;
     const candidates: CodeBuddyAccount[] = [];
+
     for (const acc of all) {
       if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil <= now) {
         acc.status = activeId === acc.id ? 'active' : 'idle';
         delete acc.rateLimitUntil;
         this.store.clearRateLimit(acc.id).catch(() => {});
       }
-
-      if (acc.status === 'disabled' || acc.status === 'expired') {
-        continue;
-      }
-      if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil > now) {
-        continue;
-      }
-      if (currentUid && (acc.uid === currentUid || acc.id === currentUid)) {
-        continue;
-      }
-      if (otherLocked.has(acc.uid)) {
-        continue;
-      }
-
+      if (acc.status === 'disabled' || acc.status === 'expired') continue;
+      if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil > now) continue;
+      if (currentUid && (acc.uid === currentUid || acc.id === currentUid)) continue;
+      if (otherLocked.has(acc.uid)) continue;
       candidates.push(acc);
     }
 
-    if (this.strategy === 'highest_quota') {
-      candidates.sort((a, b) => {
-        const aPct = combinedQuotaPercent(a) ?? (a.totalCredits != null ? -1 : -2);
-        const bPct = combinedQuotaPercent(b) ?? (b.totalCredits != null ? -1 : -2);
-        if (bPct !== aPct) return bPct - aPct;
-        return (a.lastUsed || 0) - (b.lastUsed || 0);
-      });
-    } else if (this.strategy === 'health_priority') {
-      candidates.sort((a, b) => (b.checkinStreak || 0) - (a.checkinStreak || 0));
-    } else if (this.strategy === 'lru') {
-      candidates.sort((a, b) => (a.lastUsed || 0) - (b.lastUsed || 0));
-    }
-
+    this.sortCandidates(candidates, all, currentUid || activeId);
     return candidates;
   }
 
-  /**
-   * 筛选并获取下一个可用账号 (同步挑选首个)
-   */
   public getNextAvailableAccount(currentUid?: string): CodeBuddyAccount | null {
     const cands = this.getCandidateAccounts(currentUid);
     return cands.length > 0 ? cands[0] : null;
   }
 
-  /**
-   * 智能预检筛选：通过轻量探针逐个检验候选账号，找到首个真实可用的健康账号
-   */
   public async findAndVerifyNextAccount(currentUid?: string): Promise<CodeBuddyAccount | null> {
     const candidates = this.getCandidateAccounts(currentUid);
     for (const cand of candidates) {
       const probe = await this.probeAccount(cand);
-      if (probe.valid) {
-        return cand;
-      }
+      if (probe.valid) return cand;
       console.log(`[AutoSwitcher][Probe] 候选 ${cand.nickname || cand.email} 未通过预检: ${probe.reason}，顺延下一位`);
     }
     return null;
@@ -235,9 +278,19 @@ export class AutoSwitcher extends EventEmitter {
     reason: RotationEvent['reason'],
     res: SwitchResult
   ): void {
+    const baseEv = { fromUid, toUid: next.uid, targetAccount: next, reason, timestamp: Date.now() };
+    if (res.needsElevation) {
+      this.emit('needs_elevation', { ...baseEv, res });
+      return;
+    }
+    if (res.needsFullRestart) {
+      this.emit('needs_restart', { ...baseEv, res });
+      return;
+    }
     if (res.success) {
+      this._lastRoundRobinId = next.id;
       if (this.usageTracker) {
-        const current = this.store.get(fromUid);
+        const current = this.store.get(fromUid) || this.store.find(fromUid);
         const is429 = reason === 'rate_limited_429';
         this.usageTracker.recordAction({
           type: 'switch',
@@ -249,138 +302,108 @@ export class AutoSwitcher extends EventEmitter {
             : t('act.autoSwitchQuotaDetail', current?.nickname || fromUid, next.nickname || next.email)
         });
       }
-      this.emit('rotation', {
-        fromUid,
-        toUid: next.uid,
-        targetAccount: next,
-        reason,
-        timestamp: Date.now()
-      } as RotationEvent);
+      this.emit('rotation', baseEv as RotationEvent);
       return;
     }
-
-    if (res.needsElevation) {
-      this.emit('needs_elevation', {
-        fromUid,
-        toUid: next.uid,
-        targetAccount: next,
-        reason,
-        res,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    if (res.needsFullRestart) {
-      this.emit('needs_restart', {
-        fromUid,
-        toUid: next.uid,
-        targetAccount: next,
-        reason,
-        res,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    this.emit('rotation_failed', {
-      fromUid,
-      toUid: next.uid,
-      targetAccount: next,
-      reason,
-      res,
-      timestamp: Date.now()
-    });
+    this.emit('rotation_failed', { ...baseEv, res });
   }
 
-  /**
-   * 触发因额度耗尽引起的平滑热切（带熔断保护与候选预检）
-   */
-  public async handleQuotaExhausted(
+  private async executeRotation(
     currentUid: string,
-    reasonMessage: string = t('err.quotaExhausted')
+    reason: 'quota_exhausted' | 'rate_limited_429',
+    emptyMsg: string,
+    beforePick?: () => Promise<void>
   ): Promise<SwitchResult> {
     if (this.isRotating) {
       throw new Error(t('err.concurrentSwitch'));
     }
-
-    // 1. 频率熔断检测
     this.checkCircuitBreaker();
     this.isRotating = true;
-
     try {
-      // 2. 候选探针预检（跳过坏号；不在切号确认前提前篡改当前账号状态）
+      if (beforePick) await beforePick();
       const next = await this.findAndVerifyNextAccount(currentUid);
       if (!next) {
-        throw new Error(t('err.noHealthyBackup'));
+        throw new Error(emptyMsg);
       }
-
-      // 3. 执行底层热切
       const res = await this.switcher.switchAccount(next, this.store);
-      this.recordAndEmitSwitchResult(currentUid, next, 'quota_exhausted', res);
-
+      this.recordAndEmitSwitchResult(currentUid, next, reason, res);
       return res;
     } finally {
       this.isRotating = false;
     }
   }
 
-  /**
-   * 触发因 429 速率限制引起的自动轮换（带熔断保护与候选预检）
-   */
+  public async handleQuotaExhausted(
+    currentUid: string,
+    _reasonMessage: string = t('err.quotaExhausted')
+  ): Promise<SwitchResult> {
+    return this.executeRotation(currentUid, 'quota_exhausted', t('err.noHealthyBackup'));
+  }
+
   public async handleRateLimit429(
     currentUid: string,
     cooldownMs?: number,
-    reasonMessage: string = t('err.upstream429')
+    _reasonMessage: string = t('err.upstream429')
   ): Promise<SwitchResult> {
-    if (this.isRotating) {
-      throw new Error(t('err.concurrentSwitch'));
+    const cooldown = cooldownMs || this.defaultCooldownMs;
+    return this.executeRotation(
+      currentUid,
+      'rate_limited_429',
+      t('err.noBackupOn429', Math.round(cooldown / 1000)),
+      () => this.store.markRateLimited(currentUid, cooldown)
+    );
+  }
+
+  /** 响应宿主日志被动捕获的 6004 限流事件（校验开关、活跃账号与防抖冷却） */
+  public async handlePassiveRateLimit(uid: string, model: string, resetAt: number): Promise<void> {
+    const vs = getVscodeSafe();
+    let enabled = true;
+    let on429 = true;
+    let cooldownMinutes = 5;
+    if (vs) {
+      const cfg = vs.workspace.getConfiguration('buddyRelay');
+      enabled = cfg.get<boolean>('autoSwitch.enabled', true);
+      on429 = cfg.get<boolean>('autoSwitch.on429', true);
+      cooldownMinutes = Math.max(1, cfg.get<number>('autoSwitch.cooldownMinutes', 5));
+    }
+    if (!enabled || !on429) return;
+
+    const active = this.store.getActive();
+    if (!active || active.uid !== uid) return;
+    if (this.lastAutoSwitchAt && Date.now() - this.lastAutoSwitchAt < cooldownMinutes * 60_000) return;
+    if (this.isRotating || this.isCircuitBreakerTripped()) return;
+
+    if (this.usageTracker) {
+      this.usageTracker.recordAction({
+        type: 'warn',
+        accountId: active.id,
+        accountName: active.nickname || active.email,
+        title: t('act.autoSwitch429'),
+        detail: `${model || 'unknown'} (${t('status.rateLimited')})`
+      });
     }
 
-    // 1. 频率熔断检测
-    this.checkCircuitBreaker();
-    this.isRotating = true;
-
     try {
-      const cooldown = cooldownMs || this.defaultCooldownMs;
-      await this.store.markRateLimited(currentUid, cooldown);
-
-      // 2. 候选探针预检
-      const next = await this.findAndVerifyNextAccount(currentUid);
-      if (!next) {
-        throw new Error(t('err.noBackupOn429', cooldown / 1000));
+      const res = await this.handleRateLimit429(uid, Math.max(60_000, resetAt - Date.now()), model);
+      if (res.success && !res.needsElevation && !res.needsFullRestart) {
+        this.lastAutoSwitchAt = Date.now();
       }
-
-      // 3. 执行底层热切
-      const res = await this.switcher.switchAccount(next, this.store);
-      this.recordAndEmitSwitchResult(currentUid, next, 'rate_limited_429', res);
-
-      return res;
-    } finally {
-      this.isRotating = false;
+    } catch (err: any) {
+      console.warn(`[AutoSwitcher][429] 被动限流自动切换失败: ${err?.message || err}`);
     }
   }
 
-  /**
-   * 启动后台状态监视器 (检查 429 冷却恢复与 Token 即将过期自动续期)
-   */
   public startMonitor(intervalMs: number = 60 * 1000): void {
-    if (this.monitorTimer) {
-      return;
-    }
-
+    if (this.monitorTimer) return;
     this.monitorTimer = setInterval(async () => {
       try {
         await this.runHealthCycle();
-      } catch (err) {
+      } catch {
         // 监控异常静默防护
       }
     }, intervalMs);
   }
 
-  /**
-   * 停止后台监视器
-   */
   public stopMonitor(): void {
     if (this.monitorTimer) {
       clearInterval(this.monitorTimer);
@@ -389,53 +412,28 @@ export class AutoSwitcher extends EventEmitter {
     this.stopQuotaGuard();
   }
 
-  /**
-   * 主动额度守卫：周期性检查当前账号剩余算力，低于阈值自动无感切换
-   * 条件可通过 VS Code 设置自定义（buddyRelay.autoSwitch.*）
-   */
   public startQuotaGuard(getConfig: () => { enabled: boolean; thresholdPercent: number; cooldownMinutes: number } | null): void {
-    if (this.quotaGuardTimer) {
-      return;
-    }
+    if (this.quotaGuardTimer) return;
     this.getConfig = getConfig;
 
     this.quotaGuardTimer = setInterval(async () => {
       try {
         const cfg = this.getConfig ? this.getConfig() : null;
-        if (!cfg || !cfg.enabled) {
-          return;
-        }
-
-        // 冷却期防抖
-        if (this.lastAutoSwitchAt && Date.now() - this.lastAutoSwitchAt < cfg.cooldownMinutes * 60 * 1000) {
-          return;
-        }
-
+        if (!cfg || !cfg.enabled) return;
+        if (this.lastAutoSwitchAt && Date.now() - this.lastAutoSwitchAt < cfg.cooldownMinutes * 60 * 1000) return;
         const active = this.store.getActive();
-        if (!active || !active.uid) {
-          return;
-        }
-
-        // 计算当前账号剩余算力占比（基础包+活动包合计，与侧栏总账口径一致）
+        if (!active || !active.uid) return;
         const pct = combinedQuotaPercent(active);
-        if (pct == null || isNaN(pct)) {
-          return;
-        }
+        if (pct == null || isNaN(pct) || pct > cfg.thresholdPercent) return;
 
-        if (pct <= cfg.thresholdPercent) {
-          console.log(
-            `[BuddyRelay][QuotaGuard] 账号 ${active.nickname || active.email} 剩余 ${pct}% ≤ 阈值 ${cfg.thresholdPercent}%，触发自动无感切换`
-          );
-          const res = await this.handleQuotaExhausted(
-            active.uid,
-            `剩余算力 ${pct}% 低于阈值 ${cfg.thresholdPercent}%`
-          );
-          if (res.success) {
-            this.lastAutoSwitchAt = Date.now();
-          }
+        console.log(
+          `[BuddyRelay][QuotaGuard] 账号 ${active.nickname || active.email} 剩余 ${pct}% ≤ 阈值 ${cfg.thresholdPercent}%，触发自动无感切换`
+        );
+        const res = await this.handleQuotaExhausted(active.uid, `剩余算力 ${pct}% 低于阈值 ${cfg.thresholdPercent}%`);
+        if (res.success && !res.needsElevation && !res.needsFullRestart) {
+          this.lastAutoSwitchAt = Date.now();
         }
       } catch (err: any) {
-        // 号池告急等错误静默记录，等待下轮
         console.warn(`[BuddyRelay][QuotaGuard] 巡检异常: ${err.message}`);
       }
     }, 60 * 1000);
@@ -448,54 +446,39 @@ export class AutoSwitcher extends EventEmitter {
     }
   }
 
-  /**
-   * 手动/外部触发 429 轮换的便捷入口
-   */
   public async autoSwitchOn429(cooldownMs?: number): Promise<SwitchResult | null> {
-    try {
-      const vscode = await import('vscode');
-      const on429 = vscode.workspace.getConfiguration('buddyRelay').get<boolean>('autoSwitch.on429', true);
-      if (!on429) {
-        return null;
-      }
-    } catch (_) {}
-    const active = this.store.getActive();
-    if (!active || !active.uid) {
+    const vs = getVscodeSafe();
+    if (vs && !vs.workspace.getConfiguration('buddyRelay').get<boolean>('autoSwitch.on429', true)) {
       return null;
     }
-    return await this.handleRateLimit429(active.uid, cooldownMs);
+    const active = this.store.getActive();
+    if (!active || !active.uid) return null;
+    return this.handleRateLimit429(active.uid, cooldownMs);
   }
 
-  /**
-   * 单次健康巡检周期
-   */
   public async runHealthCycle(): Promise<{ recoveredCount: number; refreshedCount: number }> {
     const all = this.store.getAll();
     const now = Date.now();
     let recoveredCount = 0;
     let refreshedCount = 0;
+    const canRefreshNetwork = !this.tokenRefreshLeaderCheck || this.tokenRefreshLeaderCheck();
 
     for (const acc of all) {
-      // 1. 恢复 429 到期账号
       if (acc.status === 'rate_limited' && acc.rateLimitUntil && acc.rateLimitUntil <= now) {
         await this.store.clearRateLimit(acc.id);
         recoveredCount++;
       }
-
-      // 2. 检查 Token 过期并在临近过期时（剩余小于 1 小时）自动刷新
-      if (this.autoRefreshTokens && acc.refreshToken && acc.expiresAt) {
+      if (canRefreshNetwork && this.autoRefreshTokens && acc.refreshToken && acc.expiresAt) {
         const remainingMs = acc.expiresAt - now;
         if (remainingMs > 0 && remainingMs < 60 * 60 * 1000) {
           try {
             const refreshed = await this.oauthService.refreshAccessToken(acc.refreshToken, acc.domain);
             acc.accessToken = refreshed.accessToken;
-            if (refreshed.refreshToken) {
-              acc.refreshToken = refreshed.refreshToken;
-            }
+            if (refreshed.refreshToken) acc.refreshToken = refreshed.refreshToken;
             acc.expiresAt = now + (refreshed.expiresIn || 7200) * 1000;
             await this.store.upsert(acc);
             refreshedCount++;
-          } catch (_) {
+          } catch {
             // 刷新失败待下次重试
           }
         }

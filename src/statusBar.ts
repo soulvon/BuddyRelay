@@ -7,7 +7,7 @@ import { isTodayCheckedIn } from './checkinService';
 import { showFailureWithActions } from './diagnostics';
 import { UsageTracker } from './usageTracker';
 import { loadCooldownEvents } from './cooldownLogWatcher';
-import { getOtherLockedUids } from './accountLock';
+import { acquireLock, getOtherLockedUids } from './accountLock';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -314,6 +314,7 @@ export class StatusBarManager implements vscode.Disposable {
           return;
         }
         if (res.success) {
+          acquireLock(target.uid);
           this.update();
           vscode.window.showInformationMessage(t('msg.switched', target.nickname || target.email));
         } else {

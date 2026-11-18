@@ -1,9 +1,10 @@
-import * as https from 'https';
-import * as http from 'http';
 import { URL } from 'url';
-import { API_ENDPOINTS, DEFAULT_HEADERS } from './constants';
+import { API_ENDPOINTS, DEFAULT_HEADERS, getCodeBuddyBaseUrl } from './constants';
+import { httpRequest } from './httpClient';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { t } from './i18n';
+
+export { httpRequest } from './httpClient';
 
 export interface OAuthStateResult {
   state: string;
@@ -33,102 +34,48 @@ export interface OAuthAccountProfile {
 }
 
 /**
- * 原生通用 HTTP/HTTPS JSON 请求助手
- */
-export function httpRequest<T = any>(
-  targetUrl: string,
-  options: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    headers?: Record<string, string>;
-    body?: any;
-    timeout?: number;
-  } = {}
-): Promise<{ status: number; data: T; headers: http.IncomingHttpHeaders }> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(targetUrl);
-    const client = parsed.protocol === 'http:' ? http : https;
-
-    const reqHeaders: Record<string, string | number> = {
-      'User-Agent': DEFAULT_HEADERS.USER_AGENT,
-      'Accept': 'application/json, text/plain, */*',
-      ...(options.headers || {})
-    };
-
-    let bodyData: string | Buffer | undefined;
-    if (options.body !== undefined) {
-      if (typeof options.body === 'string' || Buffer.isBuffer(options.body)) {
-        bodyData = options.body;
-      } else {
-        bodyData = JSON.stringify(options.body);
-        if (!reqHeaders['Content-Type']) {
-          reqHeaders['Content-Type'] = 'application/json';
-        }
-      }
-      reqHeaders['Content-Length'] = Buffer.byteLength(bodyData);
-    }
-
-    const reqOptions: https.RequestOptions = {
-      protocol: parsed.protocol,
-      hostname: parsed.hostname,
-      port: parsed.port || (parsed.protocol === 'http:' ? 80 : 443),
-      path: parsed.pathname + parsed.search,
-      method: options.method || 'GET',
-      headers: reqHeaders,
-      timeout: options.timeout || 15000
-    };
-
-    const req = client.request(reqOptions, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', chunk => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      res.on('end', () => {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        let parsedData: any = raw;
-        try {
-          parsedData = JSON.parse(raw);
-        } catch (_) {
-          // 非 JSON 原样返回
-        }
-        resolve({
-          status: res.statusCode || 200,
-          data: parsedData,
-          headers: res.headers
-        });
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error(t('err.oauthTimeout', options.timeout || 15000, targetUrl)));
-    });
-
-    req.on('error', err => {
-      reject(err);
-    });
-
-    if (bodyData) {
-      req.write(bodyData);
-    }
-    req.end();
-  });
-}
-
-/**
- * CodeBuddy 官方 OAuth 认证服务
+ * CodeBuddy 官方 OAuth 认证服务（支持国内版 codebuddy.cn 与国际版 codebuddy.ai）
  */
 export class OAuthService {
   private baseUrl: string;
 
   constructor(baseUrl: string = API_ENDPOINTS.CODEBUDDY_CN_BASE) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = this.normalizeBase(baseUrl);
+  }
+
+  private normalizeBase(domainOrBaseUrl: string): string {
+    if (/^https?:\/\//i.test(domainOrBaseUrl)) {
+      return domainOrBaseUrl.replace(/\/+$/, '');
+    }
+    return getCodeBuddyBaseUrl(domainOrBaseUrl).replace(/\/+$/, '');
+  }
+
+  private resolveBaseUrl(domainOrBaseUrl?: string): string {
+    if (!domainOrBaseUrl) {
+      return this.baseUrl;
+    }
+    return this.normalizeBase(domainOrBaseUrl);
+  }
+
+  private resolveDomainHeader(baseUrl: string, domainOrEdition?: string): string {
+    const resolvedHost = new URL(baseUrl).hostname;
+    if (
+      domainOrEdition &&
+      !/^https?:\/\//i.test(domainOrEdition) &&
+      domainOrEdition !== 'cn' &&
+      domainOrEdition !== 'intl'
+    ) {
+      return domainOrEdition;
+    }
+    return resolvedHost;
   }
 
   /**
    * 1. 发起 OAuth 授权流程，获取 state 和授权登录 URL (支持生成二维码或在浏览器中打开)
    */
-  public async createAuthState(platform: string = 'ide'): Promise<OAuthStateResult> {
-    const url = `${this.baseUrl}${API_ENDPOINTS.OAUTH_STATE}?platform=${encodeURIComponent(platform)}`;
+  public async createAuthState(platform: string = 'ide', domain?: string): Promise<OAuthStateResult> {
+    const base = this.resolveBaseUrl(domain);
+    const url = `${base}${API_ENDPOINTS.OAUTH_STATE}?platform=${encodeURIComponent(platform)}`;
     const res = await httpRequest<{
       code: number;
       msg: string;
@@ -162,12 +109,14 @@ export class OAuthService {
       timeoutMs?: number;
       intervalMs?: number;
       abortSignal?: AbortSignal;
+      domain?: string;
     }
   ): Promise<OAuthTokenData> {
     const timeout = options?.timeoutMs || 120000; // 默认 2 分钟
     const interval = options?.intervalMs || 1500;
     const startTime = Date.now();
-    const tokenUrl = `${this.baseUrl}${API_ENDPOINTS.OAUTH_TOKEN}?state=${encodeURIComponent(state)}`;
+    const base = this.resolveBaseUrl(options?.domain);
+    const tokenUrl = `${base}${API_ENDPOINTS.OAUTH_TOKEN}?state=${encodeURIComponent(state)}`;
 
     while (Date.now() - startTime < timeout) {
       if (options?.abortSignal?.aborted) {
@@ -196,7 +145,7 @@ export class OAuthService {
             tokenType: d.tokenType || d.token_type || 'Bearer',
             expiresIn: d.expiresIn || d.expires_in || 7200,
             refreshExpiresIn: d.refreshExpiresIn || d.refresh_expires_in,
-            domain: d.domain || new URL(this.baseUrl).hostname,
+            domain: d.domain || new URL(base).hostname,
             scope: d.scope,
             sessionState: d.sessionState,
             ...d
@@ -228,8 +177,9 @@ export class OAuthService {
   /**
    * 3. 根据 state 与 accessToken 获取用户 Profile 详情
    */
-  public async fetchAccountProfile(state: string, accessToken: string): Promise<OAuthAccountProfile> {
-    const url = `${this.baseUrl}${API_ENDPOINTS.OAUTH_ACCOUNT}?state=${encodeURIComponent(state)}`;
+  public async fetchAccountProfile(state: string, accessToken: string, domain?: string): Promise<OAuthAccountProfile> {
+    const base = this.resolveBaseUrl(domain);
+    const url = `${base}${API_ENDPOINTS.OAUTH_ACCOUNT}?state=${encodeURIComponent(state)}`;
     const res = await httpRequest<{
       code: number;
       msg: string;
@@ -238,7 +188,7 @@ export class OAuthService {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'X-Domain': new URL(this.baseUrl).hostname
+        'X-Domain': this.resolveDomainHeader(base, domain)
       }
     });
 
@@ -259,11 +209,12 @@ export class OAuthService {
   }
 
   /**
-   * 4. 刷新 Access Token
+   * 4. 刷新 Access Token（按账号 domain 自动路由国内/国际端点）
    */
   public async refreshAccessToken(refreshToken: string, domain?: string): Promise<OAuthTokenData> {
-    const url = `${this.baseUrl}${API_ENDPOINTS.OAUTH_REFRESH}`;
-    const dom = domain || new URL(this.baseUrl).hostname;
+    const base = this.resolveBaseUrl(domain);
+    const url = `${base}${API_ENDPOINTS.OAUTH_REFRESH}`;
+    const dom = this.resolveDomainHeader(base, domain);
 
     const res = await httpRequest<{
       code: number;
@@ -290,7 +241,7 @@ export class OAuthService {
       refreshToken: d.refreshToken || d.refresh_token || refreshToken,
       tokenType: d.tokenType || 'Bearer',
       expiresIn: d.expiresIn || 7200,
-      domain: dom,
+      domain: d.domain || dom,
       ...d
     };
   }
@@ -302,13 +253,16 @@ export class OAuthService {
     store: AccountStore,
     options?: {
       platform?: string;
+      domain?: string;
       onAuthUrl?: (url: string, state: string) => void;
       timeoutMs?: number;
       abortSignal?: AbortSignal;
     }
   ): Promise<CodeBuddyAccount> {
+    const base = this.resolveBaseUrl(options?.domain);
+
     // 1. 获取 state 与登录链接
-    const { state, authUrl } = await this.createAuthState(options?.platform || 'ide');
+    const { state, authUrl } = await this.createAuthState(options?.platform || 'ide', options?.domain);
     if (options?.onAuthUrl) {
       options.onAuthUrl(authUrl, state);
     }
@@ -316,17 +270,22 @@ export class OAuthService {
     // 2. 轮询直到扫码或网页确认
     const tokenData = await this.pollToken(state, {
       timeoutMs: options?.timeoutMs,
-      abortSignal: options?.abortSignal
+      abortSignal: options?.abortSignal,
+      domain: options?.domain
     });
 
+    const resolvedDomain = tokenData.domain || this.resolveDomainHeader(base, options?.domain);
+
     // 3. 获取用户基本信息
-    const profile = await this.fetchAccountProfile(state, tokenData.accessToken);
+    const profile = await this.fetchAccountProfile(state, tokenData.accessToken, resolvedDomain);
 
     // 4. 组装 CodeBuddyAccount 模型
     const now = Date.now();
     const expiresAt = now + (tokenData.expiresIn || 7200) * 1000;
+    const isIntl = resolvedDomain.includes('codebuddy.ai') || resolvedDomain.includes('workbuddy.ai');
+    const idPrefix = isIntl ? 'codebuddy_ai' : 'codebuddy_cn';
     const account: CodeBuddyAccount = {
-      id: `codebuddy_cn_${profile.uid.replace(/-/g, '')}`,
+      id: `${idPrefix}_${profile.uid.replace(/-/g, '')}`,
       uid: profile.uid,
       email: profile.email || profile.phoneNumber || profile.nickname,
       nickname: profile.nickname,
@@ -334,7 +293,7 @@ export class OAuthService {
       refreshToken: tokenData.refreshToken,
       tokenType: tokenData.tokenType || 'Bearer',
       expiresAt,
-      domain: tokenData.domain || new URL(this.baseUrl).hostname,
+      domain: resolvedDomain,
       paymentType: 'free',
       authRaw: tokenData,
       profileRaw: profile,

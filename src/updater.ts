@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import * as https from 'https';
-import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { t } from './i18n';
+import { httpJsonRequest, httpRequestRaw, downloadToFile } from './httpClient';
 
 interface GitHubRelease {
   tag_name: string;
@@ -39,121 +38,52 @@ export function getCurrentVersion(): string {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
     );
-    return packageJson.version || "1.1.0";
+    return packageJson.version || '1.1.0';
   } catch (_) {
-    return "1.1.0";
+    return '1.1.0';
   }
 }
 
-function fetchGitHubApi(url: string, token: string = ''): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http;
-    const headers: Record<string, string> = {
-      'User-Agent': 'BuddyRelay-Updater',
-      'Accept': 'application/vnd.github.v3+json'
-    };
-    if (token) {
-      headers['Authorization'] = `token ${token}`;
-    }
-
-    const req = protocol.get(url, { headers }, res => {
-      let data = '';
-      res.on('data', chunk => (data += chunk));
-      res.on('end', () => {
-        try {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(JSON.parse(data));
-          } else {
-            reject(new Error(`GitHub API HTTP ${res.statusCode}: ${data}`));
-          }
-        } catch (e: any) {
-          reject(e);
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.setTimeout(12000, () => {
-      req.destroy();
-      reject(new Error(t('upd.githubTimeout')));
-    });
-  });
+async function fetchGitHubApi(url: string, token: string = ''): Promise<any> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'BuddyRelay-Updater',
+    'Accept': 'application/vnd.github.v3+json'
+  };
+  if (token) {
+    headers['Authorization'] = `token ${token}`;
+  }
+  return httpJsonRequest<any>(url, { method: 'GET', headers, timeout: 12000 });
 }
 
-function downloadFile(
+async function downloadFile(
   url: string,
   destPath: string,
   token: string = '',
   maxRedirects: number = 5
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (maxRedirects <= 0) {
-      reject(new Error(t('upd.tooManyRedirects')));
-      return;
-    }
-
-    const protocol = url.startsWith('https') ? https : http;
-    const headers: Record<string, string> = {
-      'User-Agent': 'BuddyRelay-Updater'
-    };
-    if (token) {
-      headers['Authorization'] = `token ${token}`;
-    }
-
-    const req = protocol.get(url, { headers }, res => {
-      if (
-        res.statusCode &&
-        [301, 302, 303, 307, 308].includes(res.statusCode) &&
-        res.headers.location
-      ) {
-        res.resume();
-        downloadFile(res.headers.location, destPath, token, maxRedirects - 1).then(
-          resolve,
-          reject
-        );
-        return;
-      }
-
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(t('upd.downloadFailed', res.statusCode ?? 0)));
-        return;
-      }
-
-      const file = fs.createWriteStream(destPath);
-      res.on('error', err => {
-        file.destroy();
-        fs.unlink(destPath, () => {});
-        reject(err);
-      });
-      res.pipe(file);
-
-      file.on('finish', () => {
-        file.close();
-        resolve();
-      });
-
-      file.on('error', err => {
-        res.destroy();
-        fs.unlink(destPath, () => {});
-        reject(err);
-      });
-    });
-
-    req.on('error', reject);
-    req.setTimeout(60000, () => {
-      req.destroy();
-      reject(new Error(t('upd.downloadTimeout')));
-    });
+  const headers: Record<string, string> = {
+    'User-Agent': 'BuddyRelay-Updater'
+  };
+  if (token) {
+    headers['Authorization'] = `token ${token}`;
+  }
+  await downloadToFile(url, destPath, {
+    headers,
+    timeout: 60000,
+    maxRedirects
   });
 }
 
-function compareVersions(a: string, b: string): number {
+/**
+ * SemVer 版本比较（支持预发布标签：1.4.0 > 1.4.0-beta.10 > 1.4.0-beta.2）
+ */
+export function compareVersions(a: string, b: string): number {
   const splitVer = (v: string) => {
-    const dashIdx = v.indexOf('-');
+    const clean = String(v || '').trim().replace(/^v/i, '').split('+')[0];
+    const dashIdx = clean.indexOf('-');
     return {
-      core: dashIdx >= 0 ? v.slice(0, dashIdx) : v,
-      pre: dashIdx >= 0 ? v.slice(dashIdx + 1) : ''
+      core: dashIdx >= 0 ? clean.slice(0, dashIdx) : clean,
+      pre: dashIdx >= 0 ? clean.slice(dashIdx + 1) : ''
     };
   };
   const { core: coreA, pre: preA } = splitVer(a);
@@ -170,7 +100,28 @@ function compareVersions(a: string, b: string): number {
   if (preA === '' && preB === '') return 0;
   if (preA === '') return 1;
   if (preB === '') return -1;
-  return preA < preB ? -1 : preA > preB ? 1 : 0;
+
+  const segsA = preA.split('.');
+  const segsB = preB.split('.');
+  const isDigits = (s: string) => /^\d+$/.test(s);
+  const len = Math.max(segsA.length, segsB.length);
+  for (let i = 0; i < len; i++) {
+    if (i >= segsA.length) return -1;
+    if (i >= segsB.length) return 1;
+    const sa = segsA[i];
+    const sb = segsB[i];
+    const numA = isDigits(sa);
+    const numB = isDigits(sb);
+    if (numA && numB) {
+      const diff = Number(sa) - Number(sb);
+      if (diff !== 0) return diff;
+    } else if (numA !== numB) {
+      return numA ? -1 : 1;
+    } else if (sa !== sb) {
+      return sa < sb ? -1 : 1;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -182,7 +133,6 @@ export function formatChangelogSummary(rawBody: string, maxItems: number = 5): s
     .split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    // 过滤噪音行（如 Full Changelog 链接与空分隔线）
     .filter(l => !l.toLowerCase().includes('full changelog') && !l.startsWith('**Full Changelog**'));
 
   const items: string[] = [];
@@ -232,7 +182,7 @@ export async function showFullChangelog(version: string, body: string, releaseUr
 }
 
 /**
- * 仅下载安装包到临时文件夹（方便留底或分发，Kite 同款）
+ * 仅下载安装包到临时文件夹
  */
 export async function downloadOnly(downloadUrl: string, version: string): Promise<void> {
   const tempDir = os.tmpdir();
@@ -268,93 +218,74 @@ interface UnifiedReleaseInfo {
   source: 'github-api' | 'open-vsx' | 'github-web';
 }
 
-function fetchOpenVsx(): Promise<UnifiedReleaseInfo> {
-  return new Promise((resolve, reject) => {
-    const url = 'https://open-vsx.org/api/soulvon/buddy-relay';
-    const req = https.get(url, { headers: { 'User-Agent': 'BuddyRelay-Updater' } }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            const json = JSON.parse(data);
-            const ver = String(json.version || '').trim();
-            const dl = json.downloads?.universal || json.files?.download || '';
-            if (ver && dl) {
-              resolve({
-                version: ver,
-                downloadUrl: dl,
-                releaseUrl: 'https://open-vsx.org/extension/soulvon/buddy-relay',
-                body: json.description || '',
-                source: 'open-vsx'
-              });
-              return;
-            }
-          }
-          reject(new Error(`Open VSX HTTP ${res.statusCode}`));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(12000, () => {
-      req.destroy();
-      reject(new Error('Open VSX timeout'));
-    });
+async function fetchOpenVsx(): Promise<UnifiedReleaseInfo> {
+  const url = 'https://open-vsx.org/api/soulvon/buddy-relay';
+  const json = await httpJsonRequest<any>(url, {
+    method: 'GET',
+    headers: { 'User-Agent': 'BuddyRelay-Updater' },
+    timeout: 12000
   });
+  const ver = String(json?.version || '').trim();
+  const dl = json?.downloads?.universal || json?.files?.download || '';
+  if (!ver || !dl) {
+    throw new Error('Open VSX missing version or download url');
+  }
+  return {
+    version: ver,
+    downloadUrl: dl,
+    releaseUrl: 'https://open-vsx.org/extension/soulvon/buddy-relay',
+    body: json.description || '',
+    source: 'open-vsx'
+  };
 }
 
-function fetchGitHubWebRedirect(): Promise<UnifiedReleaseInfo> {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'github.com',
-      path: `/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
-      method: 'HEAD',
-      headers: { 'User-Agent': 'BuddyRelay-Updater' }
-    }, (res) => {
-      res.resume();
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const m = res.headers.location.match(/\/tag\/v?([^\/]+)$/);
-        if (m) {
-          const ver = m[1];
-          resolve({
-            version: ver,
-            downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${ver}/buddy-relay-${ver}.vsix`,
-            releaseUrl: res.headers.location,
-            body: '',
-            source: 'github-web'
-          });
-          return;
-        }
-      }
-      reject(new Error(`GitHub Web redirect HTTP ${res.statusCode}`));
-    });
-    req.on('error', reject);
-    req.setTimeout(12000, () => {
-      req.destroy();
-      reject(new Error('GitHub Web redirect timeout'));
-    });
-    req.end();
+async function fetchGitHubWebRedirect(): Promise<UnifiedReleaseInfo> {
+  const latestUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
+  const res = await httpRequestRaw(latestUrl, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'BuddyRelay-Updater',
+      'Accept': 'text/html,application/xhtml+xml'
+    },
+    timeout: 12000
   });
+  if (res.statusCode < 200 || res.statusCode >= 400) {
+    throw new Error(`GitHub Web HTTP ${res.statusCode}`);
+  }
+  const loc = String(res.headers.location || '');
+  const fromLoc = loc.match(/\/releases\/tag\/v?([^\/?#]+)/);
+  const fromBody =
+    res.body.match(/<link[^>]+rel="canonical"[^>]+href="[^"]*\/releases\/tag\/v?([^"\/?#]+)"/i) ||
+    res.body.match(new RegExp(`/${REPO_OWNER}/${REPO_NAME}/releases/tag/v?([0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)`));
+  const ver = String(fromLoc?.[1] || fromBody?.[1] || '').trim();
+  if (!ver) {
+    throw new Error('GitHub Web release tag not found');
+  }
+  return {
+    version: ver,
+    downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${ver}/buddy-relay-${ver}.vsix`,
+    releaseUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${ver}`,
+    body: '',
+    source: 'github-web'
+  };
 }
 
 async function getLatestReleaseWithFallback(): Promise<UnifiedReleaseInfo> {
-  // 1. 首选通道: Open VSX 官方市场（CodeBuddy 内置市场源，全站 CDN 缓存，无 60次/小时限频）
+  // 1. 首选通道: Open VSX 官方市场（无 60 次/小时限频）
   try {
     return await fetchOpenVsx();
-  } catch (_err) {
+  } catch {
     // 静默降级
   }
 
-  // 2. 备用通道: GitHub Web Releases 302 重定向（网页路由，不计入 REST API 配额）
+  // 2. 备用通道: GitHub Web Releases 网页路由（不计入 REST API 配额）
   try {
     return await fetchGitHubWebRedirect();
-  } catch (_err) {
+  } catch {
     // 继续降级
   }
 
-  // 3. 末级兜底: GitHub REST API（限频最严，仅在前两级全部异常时使用）
+  // 3. 末级兜底: GitHub REST API
   const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
   const release: GitHubRelease = await fetchGitHubApi(url);
   const latestVersion = release.tag_name.startsWith('v')
@@ -373,9 +304,6 @@ async function getLatestReleaseWithFallback(): Promise<UnifiedReleaseInfo> {
   };
 }
 
-/**
- * 尽力而为地从 GitHub API 补全更新日志正文（失败静默，不影响更新主流程）
- */
 async function enrichChangelog(info: UnifiedReleaseInfo): Promise<UnifiedReleaseInfo> {
   if (info.body || info.source === 'github-api') {
     return info;
@@ -386,21 +314,17 @@ async function enrichChangelog(info: UnifiedReleaseInfo): Promise<UnifiedRelease
     if (release.body) {
       info.body = release.body;
     }
-  } catch (_err) {
-    // 限频或超时直接放弃，changelog 留空即可
+  } catch {
+    // 限频或超时直接放弃
   }
   return info;
 }
 
-/**
- * 报错脱敏：剥离 GitHub 原始 JSON 噪音，只保留可读的关键词
- */
 function sanitizeErrMessage(msg: string): string {
   const raw = String(msg || '');
   if (/rate limit/i.test(raw)) {
     return 'GitHub rate limited (fallback channels all failed)';
   }
-  // 去掉原始 JSON 载荷，仅保留 HTTP 状态码与首行可读信息
   return raw.replace(/\{[\s\S]*\}/g, '').trim() || raw.slice(0, 120);
 }
 
@@ -438,16 +362,13 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
       return false;
     }
 
-    // 非 GitHub API 渠道命中时，尽力补全 changelog 正文（失败不影响主流程）
     release = await enrichChangelog(release);
 
-    // 若开启了免确认静默安装且处于后台检查场景，直接静默更新
     if (config.autoInstall && silent) {
       await downloadAndInstall(release.downloadUrl, latestVersion, true);
       return true;
     }
 
-    // 格式化更新日志摘要，直观告诉用户更新了什么
     const summary = formatChangelogSummary(release.body);
     const changelogBlock = summary ? '\n\n' + t('upd.whatsNew', summary) : '';
     const message = t('upd.newVersionFound', latestVersion, currentVersion) + changelogBlock;
@@ -470,7 +391,6 @@ export async function checkForUpdates(silent: boolean = false): Promise<boolean>
       await downloadOnly(release.downloadUrl, latestVersion);
     } else if (choice === viewLogLabel) {
       await showFullChangelog(latestVersion, release.body, release.releaseUrl);
-      // 日志打开后提示是否进一步更新
       const nextChoice = await vscode.window.showInformationMessage(
         t('upd.fullLogOpened', latestVersion),
         installLabel,

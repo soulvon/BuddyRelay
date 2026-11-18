@@ -7,5 +7,5 @@ export function isCnAccount(domain?: string): boolean {
   if (!domain) {
     return true;
   }
-  return !domain.includes('codebuddy.ai');
+  return !domain.includes('codebuddy.ai') && !domain.includes('workbuddy.ai');
 }

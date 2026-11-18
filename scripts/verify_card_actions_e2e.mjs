@@ -35,11 +35,11 @@ async function runAudit() {
   // 维度一：CSS 尺寸死锁与防折行审查（杜绝任何情况下的按钮撑大变高）
   // ──────────────────────────────────────────────────────────
   console.log('[审查 1/3] 卡片底栏与按钮 CSS 尺寸死锁审查');
-  const htmlPath = path.join(ROOT, 'resources', 'webview', 'sidebar.html');
-  const html = fs.readFileSync(htmlPath, 'utf8');
+  const cssPath = path.join(ROOT, 'resources', 'webview', 'main.css');
+  const mainCss = fs.readFileSync(cssPath, 'utf8');
 
   // 1. .grid-card-actions 容器防折行与防截断
-  const cardActionsRuleMatch = html.match(/\.grid-card-actions\s*\{([^}]+)\}/g);
+  const cardActionsRuleMatch = mainCss.match(/\.grid-card-actions\s*\{([^}]+)\}/g);
   const cardActionsCss = cardActionsRuleMatch ? cardActionsRuleMatch.join('\n') : '';
   check('底栏容器: 包含 flex-wrap: nowrap !important 防折行', cardActionsCss.includes('flex-wrap: nowrap !important'));
   check('底栏容器: 包含 white-space: nowrap !important 防折行', cardActionsCss.includes('white-space: nowrap !important'));
@@ -47,7 +47,7 @@ async function runAudit() {
   check('底栏容器: 不设硬编码死高度避免截断', !cardActionsCss.includes('height: 26px !important'));
 
   // 2. .grid-switch-btn 切换按钮防折行与保留原版色彩
-  const switchBtnRuleMatch = html.match(/\.grid-switch-btn\s*\{([^}]+)\}/g);
+  const switchBtnRuleMatch = mainCss.match(/\.grid-switch-btn\s*\{([^}]+)\}/g);
   const switchBtnCss = switchBtnRuleMatch ? switchBtnRuleMatch.join('\n') : '';
   check('切换按钮: 不覆盖纯色实底 (完整保留 main.css 原版渐变与阴影)', !switchBtnCss.includes('background: var(--ac-emerald, #10b981) !important;'));
   check('切换按钮: 不设硬编码死高度避免文字截断', !switchBtnCss.includes('height: 22px !important'));
@@ -56,13 +56,13 @@ async function runAudit() {
   check('切换按钮: 包含 inline-flex 对齐', switchBtnCss.includes('display: inline-flex !important'));
 
   // 3. .btn-mini-spinner 转圈动画
-  const spinnerRuleMatch = html.match(/\.btn-mini-spinner\s*\{([^}]+)\}/g);
+  const spinnerRuleMatch = mainCss.match(/\.btn-mini-spinner\s*\{([^}]+)\}/g);
   const spinnerCss = spinnerRuleMatch ? spinnerRuleMatch.join('\n') : '';
   check('小菊花动画: 宽高固定为 10px !important', spinnerCss.includes('width: 10px !important') && spinnerCss.includes('height: 10px !important'));
   check('小菊花动画: 包含 flex-shrink: 0 !important', spinnerCss.includes('flex-shrink: 0 !important'));
 
   // 4. .status-toggle-btn 状态按钮防截断
-  const statusToggleMatch = html.match(/\.status-toggle-btn\s*\{([^}]+)\}/g);
+  const statusToggleMatch = mainCss.match(/\.status-toggle-btn\s*\{([^}]+)\}/g);
   const statusToggleCss = statusToggleMatch ? statusToggleMatch.join('\n') : '';
   check('启停/已签按钮: 不设硬编码死高度避免上下截断', !statusToggleCss.includes('height: 20px !important'));
   check('启停/已签按钮: 包含 white-space: nowrap !important', statusToggleCss.includes('white-space: nowrap !important'));
@@ -70,7 +70,7 @@ async function runAudit() {
   check('启停/已签按钮: 包含 inline-flex 居中', statusToggleCss.includes('display: inline-flex !important'));
 
   // 5. .icon-btn 图标按钮
-  const iconBtnMatch = html.match(/\.icon-btn\s*\{([^}]+)\}/g);
+  const iconBtnMatch = mainCss.match(/\.icon-btn\s*\{([^}]+)\}/g);
   const iconBtnCss = iconBtnMatch ? iconBtnMatch.join('\n') : '';
   check('小图标按钮: 包含 flex-shrink: 0 !important', iconBtnCss.includes('flex-shrink: 0 !important'));
   check('小图标按钮: 包含 inline-flex 居中', iconBtnCss.includes('display: inline-flex !important'));
@@ -113,7 +113,7 @@ async function runAudit() {
     if (isActive) {
       return '<span class="grid-current-label">● 使用中</span>';
     }
-    return `<button class="grid-switch-btn" onclick="onSwitch('${acc.id}')" ${switchingId === acc.id || isDisabled ? 'disabled' : ''}>${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`;
+    return `<button type="button" class="grid-switch-btn" data-action="switch" data-id="${acc.id}" ${switchingId === acc.id || isDisabled ? 'disabled' : ''}>${switchingId === acc.id ? '<span class="btn-mini-spinner"></span>切换中' : '切换'}</button>`;
   }
 
   function onSwitch(id) {
@@ -151,6 +151,7 @@ async function runAudit() {
   // 初始状态
   lastRenderedBtnHtml = renderCardBtn(testAccount);
   check('状态机初始: switchingId 为空字符串', switchingId === '');
+  check('状态机初始: 按钮无内联 onclick 且使用 data-action="switch" 委托', lastRenderedBtnHtml.includes('data-action="switch"') && !lastRenderedBtnHtml.includes('onclick='));
   check('状态机初始: 按钮渲染为普通"切换"且可点击', lastRenderedBtnHtml.includes('切换') && !lastRenderedBtnHtml.includes('disabled') && !lastRenderedBtnHtml.includes('btn-mini-spinner'));
 
   // 触发点击切换
@@ -201,7 +202,7 @@ async function runAudit() {
   check(
     '分发逻辑: 只有 catch 异常或 !res.success 才发 error',
     // 失败分支是 if (res.success) 的 else 分支，error 通知必须落在其中；catch 里也必须有
-    /else\s*\{[\s\S]{0,600}?err\.switchAbnormal[\s\S]{0,200}?this\.notifySwitchFailure\(/.test(handlerCode) &&
+    /else\s*\{[\s\S]{0,600}?(?:this\.notifySwitchFailure\([^)]*err\.switchAbnormal|err\.switchAbnormal[\s\S]{0,200}?this\.notifySwitchFailure\()/.test(handlerCode) &&
       /catch[\s\S]{0,300}?this\.notifySwitchFailure\(/.test(handlerCode)
   );
 

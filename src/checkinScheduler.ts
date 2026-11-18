@@ -1,6 +1,16 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount } from './accountStore';
 import { CheckinService, todayCN } from './checkinService';
+import { isCnAccount } from './domain';
+
+function getVscodeSafe(): typeof vscode | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('vscode') as typeof vscode;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Cockpit Tools 式每日定时签到调度器
@@ -19,10 +29,18 @@ export class CheckinScheduler {
   private onSummary:
     | ((success: number, total: number, awarded: number) => void)
     | null = null;
+  private leaderCheck: (() => boolean) | null = null;
 
   constructor(store: AccountStore, checkinService: CheckinService) {
     this.store = store;
     this.checkinService = checkinService;
+  }
+
+  /**
+   * 设置多窗口 Leader 检查器，仅 Leader 窗口实际发起定时签到
+   */
+  public setLeaderCheck(check: (() => boolean) | null): void {
+    this.leaderCheck = check;
   }
 
   /**
@@ -111,7 +129,11 @@ export class CheckinScheduler {
     jitterMinutes: number;
     perAccountDelaySeconds: number;
   } | null {
-    const cfg = vscode.workspace.getConfiguration('buddyRelay');
+    const vs = getVscodeSafe();
+    if (!vs) {
+      return null;
+    }
+    const cfg = vs.workspace.getConfiguration('buddyRelay');
     if (!cfg.get<boolean>('autoCheckin', true)) {
       return null;
     }
@@ -129,10 +151,13 @@ export class CheckinScheduler {
   }
 
   /**
-   * 执行一次定点签到（仅处理今日未签账号，账号间随机拟人化间隔）
+   * 执行一次定点签到（仅处理今日未签的国内账号，账号间随机拟人化间隔）
    */
   public async runScheduledCheckin(): Promise<void> {
     if (this.running) {
+      return;
+    }
+    if (this.leaderCheck && !this.leaderCheck()) {
       return;
     }
     this.running = true;
@@ -145,6 +170,7 @@ export class CheckinScheduler {
         (acc: CodeBuddyAccount) =>
           acc.status !== 'disabled' &&
           acc.status !== 'expired' &&
+          isCnAccount(acc.domain) &&
           (!acc.todayCheckedIn || acc.lastCheckinDate !== today)
       );
 

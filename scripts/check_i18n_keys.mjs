@@ -2,8 +2,8 @@
 /**
  * BuddyRelay i18n 字典对账门禁
  * - zh.ts 与 en.ts key 集合必须一致 (缺失即 FAIL)
- * - 源码 t('key') 调用与 sidebar.html {{i:key}} 占位符的 key 必须存在于字典 (缺失即 FAIL)
- * - 字典中未被引用的 key 仅提示 (保留 common.* 等预置 key)
+ * - 源码 src 目录 .ts、sidebar.html 与 sidebar.js 中的 t('key') / {{i:key}} 引用 key 必须存在于字典 (缺失即 FAIL)
+ * - 字典中未被引用的 key 仅提示明细
  * 用法: node scripts/check_i18n_keys.mjs
  */
 import fs from 'node:fs';
@@ -14,6 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ZH = path.join(ROOT, 'src', 'i18n', 'zh.ts');
 const EN = path.join(ROOT, 'src', 'i18n', 'en.ts');
 const HTML = path.join(ROOT, 'resources', 'webview', 'sidebar.html');
+const JS = path.join(ROOT, 'resources', 'webview', 'sidebar.js');
 
 let failed = 0;
 let passed = 0;
@@ -44,10 +45,13 @@ const enKeys = extractKeys(EN);
 
 const zhOnly = [...zhKeys].filter(k => !enKeys.has(k));
 const enOnly = [...enKeys].filter(k => !zhKeys.has(k));
-gate('i18n 对账: zh/en 字典 key 完全一致', zhOnly.length === 0 && enOnly.length === 0,
-  `zh 独有: ${zhOnly.join(', ') || '无'} | en 独有: ${enOnly.join(', ') || '无'}`);
+gate(
+  'i18n 对账: zh/en 字典 key 完全一致',
+  zhOnly.length === 0 && enOnly.length === 0,
+  `zh 独有: ${zhOnly.join(', ') || '无'} | en 独有: ${enOnly.join(', ') || '无'}`
+);
 
-// 收集引用: src/**/*.ts 的 t('key') + sidebar.html 的 {{i:key}} 与 t('key')
+// 收集引用: src/**/*.ts + sidebar.html + sidebar.js 的 t('key') 与 {{i:key}}
 const used = new Set();
 const missing = [];
 
@@ -73,16 +77,17 @@ const srcDir = path.join(ROOT, 'src');
 for (const f of fs.readdirSync(srcDir, { recursive: true })) {
   const p = path.join(srcDir, f.toString());
   if (f.toString().endsWith('.ts') && fs.statSync(p).isFile()) {
-    scanRefs(fs.readFileSync(p, 'utf8'), `src/${f}`);
+    scanRefs(fs.readFileSync(p, 'utf8'), `src/${f.toString().replace(/\\/g, '/')}`);
   }
 }
-scanRefs(fs.readFileSync(HTML, 'utf8'), 'sidebar.html');
+scanRefs(fs.readFileSync(HTML, 'utf8'), 'resources/webview/sidebar.html');
+scanRefs(fs.readFileSync(JS, 'utf8'), 'resources/webview/sidebar.js');
 
 gate('i18n 对账: 引用 key 均存在于字典', missing.length === 0, missing.slice(0, 12).join(' | '));
 
 const unused = [...zhKeys].filter(k => !used.has(k) && k !== '__lang__');
 if (unused.length > 0) {
-  console.log(`  HINT  字典中未被引用的 key (${unused.length}): ${unused.slice(0, 10).join(', ')}${unused.length > 10 ? ' ...' : ''}`);
+  console.log(`  HINT  字典中未直接引用的 key (${unused.length}): ${unused.join(', ')}`);
 }
 
 console.log('');

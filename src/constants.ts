@@ -1,9 +1,10 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
 /**
  * BuddyRelay 核心常量定义
- * 包含官方接口地址、Patch v4 锚点特征串、本地数据与指令文件路径
+ * 包含官方接口地址、Patch v5 锚点特征串、本地数据与指令文件路径
  */
 
 // ============================================================================
@@ -32,6 +33,21 @@ export const API_ENDPOINTS = {
   USER_RESOURCE: '/v2/billing/meter/get-user-resource',
   USAGE_STATUS: '/v2/billing/meter/usage-status'
 } as const;
+
+/**
+ * 根据域名或版本标识返回对应的 CodeBuddy API 基础地址
+ */
+export function getCodeBuddyBaseUrl(domainOrEdition?: string): string {
+  const v = (domainOrEdition || '').trim().toLowerCase();
+  if (
+    v === 'intl' ||
+    v.includes('codebuddy.ai') ||
+    v.includes('workbuddy.ai')
+  ) {
+    return API_ENDPOINTS.CODEBUDDY_AI_BASE;
+  }
+  return API_ENDPOINTS.CODEBUDDY_CN_BASE;
+}
 
 // 默认请求头
 export const DEFAULT_HEADERS = {
@@ -113,6 +129,48 @@ function resolveCandidateMainJsPaths(): string[] {
 const APPDATA = resolveAppDataDir();
 const LOCALAPPDATA = resolveLocalAppDataDir();
 
+function readVscodeAppName(): string {
+  try {
+    const vs = require('vscode');
+    return String(vs?.env?.appName || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 返回去重后的潜在宿主数据目录数组，兼容国内版 'CodeBuddy CN' 与国际版 'CodeBuddy'
+ */
+export function resolveHostDataDirs(): string[] {
+  const appData = resolveAppDataDir();
+  const appName = readVscodeAppName().toLowerCase();
+  const cnDir = path.join(appData, 'CodeBuddy CN');
+  const intlDir = path.join(appData, 'CodeBuddy');
+  const workDir = path.join(appData, 'WorkBuddy');
+
+  let ordered: string[];
+  if (appName.includes('workbuddy')) {
+    ordered = [workDir, cnDir, intlDir];
+  } else if (appName.includes('codebuddy') && !appName.includes('cn')) {
+    ordered = [intlDir, cnDir];
+  } else {
+    ordered = [cnDir, intlDir];
+  }
+  return Array.from(new Set(ordered));
+}
+
+function resolveExistingHostSubpath(...segments: string[]): string {
+  const dirs = resolveHostDataDirs();
+  for (const dir of dirs) {
+    const candidate = path.join(dir, ...segments);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(dirs[0] || path.join(APPDATA, 'CodeBuddy CN'), ...segments);
+}
+
+// 保持普通可变对象（测试会在运行期动态覆盖 PATHS.BYOK_SWITCH_FILE 等属性，禁止冻结）
 export const PATHS = {
   // Cockpit Tools 凭据存储规范
   COCKPIT_DIR: path.join(USER_PROFILE, '.antigravity_cockpit'),
@@ -125,8 +183,8 @@ export const PATHS = {
   BYOK_SWITCH_FILE: path.join(APPDATA, 'CodeBuddy CN', 'byok-switch.json'),
   BYOK_SWITCH_RESULT_FILE: path.join(APPDATA, 'CodeBuddy CN', 'byok-switch-result.json'),
   CODEBUDDY_SESSIONS_DB: path.join(APPDATA, 'CodeBuddy CN', 'codebuddy-sessions.vscdb'),
-  CODEBUDDY_STORAGE_JSON: path.join(APPDATA, 'CodeBuddy CN', 'User', 'globalStorage', 'storage.json'),
-  HOST_LOGS_DIR: path.join(APPDATA, 'CodeBuddy CN', 'logs'),
+  CODEBUDDY_STORAGE_JSON: resolveExistingHostSubpath('User', 'globalStorage', 'storage.json'),
+  HOST_LOGS_DIR: resolveExistingHostSubpath('logs'),
 
   // BuddyRelay 跨窗口共享中枢 (号池 / 账号锁，与宿主指令同区天然多窗口共享)
   RELAY_DIR: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay'),
@@ -145,7 +203,7 @@ export const PATHS = {
 
   // 跨平台 CodeBuddy main.js 候选路径
   CANDIDATE_MAIN_JS_PATHS: resolveCandidateMainJsPaths()
-} as const;
+};
 
 // ============================================================================
 // 3. Patch v5 锚点与补丁特征码 (热切中枢自愈引擎核心 · v5 新增切换回执闭环)

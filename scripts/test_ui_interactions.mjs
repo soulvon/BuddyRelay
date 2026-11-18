@@ -31,6 +31,7 @@ async function run() {
   console.log('=== 开始 BuddyRelay UI 交互设计回归测试 ===\n');
 
   const html = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.html'), 'utf8');
+  const js = fs.readFileSync(path.join(ROOT, 'resources', 'webview', 'sidebar.js'), 'utf8');
   const spTs = fs.readFileSync(path.join(ROOT, 'src', 'sidebarProvider.ts'), 'utf8');
   const statusBarTs = fs.readFileSync(path.join(ROOT, 'src', 'statusBar.ts'), 'utf8');
 
@@ -38,24 +39,25 @@ async function run() {
   console.log('[测试 1/6] 设置表单校验与 i18n 完整度');
   check(
     '设置表单保存 quotaThreshold 不再用 || 10 吞掉 0 值',
-    !/parseInt\(setQuotaThreshold\.value,\s*10\)\s*\|\|\s*10/.test(html)
+    !/parseInt\(setQuotaThreshold\.value,\s*10\)\s*\|\|\s*10/.test(js)
   );
   check(
     '设置表单保存 randomJitter 不再用 || 30 吞掉 0 值',
-    !/parseInt\(setRandomJitter\.value,\s*10\)\s*\|\|\s*30/.test(html)
+    !/parseInt\(setRandomJitter\.value,\s*10\)\s*\|\|\s*30/.test(js)
   );
   check(
     '设置表单支持 HH:mm 格式校验与错误提示',
-    html.includes('js.invalidDailyTime') && /\^\(\[01\]\?\\d\|2\[0-3\]\):\(\[0-5\]\\d\)\$/.test(html)
+    js.includes('js.invalidDailyTime') && /\^\(\[01\]\?\\d\|2\[0-3\]\):\(\[0-5\]\\d\)\$/.test(js)
   );
   check(
     '设置面板不再硬编码未国际化中文副标题',
-    !html.includes('>界面语言与隐私脱敏设置<') && !html.includes('>自动检测与安装 GitHub 最新发布版本<')
+    !html.includes('>界面语言与隐私脱敏设置<') && !html.includes('>自动检测与安装 GitHub 最新发布版本<') &&
+    !js.includes('>界面语言与隐私脱敏设置<') && !js.includes('>自动检测与安装 GitHub 最新发布版本<')
   );
 
   // 2. 切号看门狗 >= 10000ms（大于后端 8s 超时）且带耗时读秒
   console.log('[测试 2/6] 切号看门狗与经过秒数反馈');
-  const timeoutMatch = html.match(/window\.onSwitch\s*=\s*function[\s\S]{0,900}setTimeout\([\s\S]*?,\s*(\d+)\s*\)/);
+  const timeoutMatch = js.match(/window\.onSwitch\s*=\s*function[\s\S]{0,900}setTimeout\([\s\S]*?,\s*(\d+)\s*\)/);
   const watchdogMs = timeoutMatch ? Number(timeoutMatch[1]) : 0;
   check(
     '切号前端看门狗超时 >= 12000ms（不早于后端 8s 回执提前假解锁）',
@@ -64,14 +66,14 @@ async function run() {
   );
   check(
     '切号中状态支持读秒耗时显示',
-    html.includes('switchElapsed') && html.includes('js.switchingElapsed')
+    js.includes('switchElapsed') && js.includes('js.switchingElapsed')
   );
 
   // 3. 单卡真刷新与按钮等待态
   console.log('[测试 3/6] 单卡真刷新与按钮级等待反馈');
   check(
     'window.onRefresh 发送单卡 refreshAccount 且携带 accountId',
-    /window\.onRefresh\s*=\s*function\s*\(\s*id\s*\)[\s\S]{0,400}command:\s*['"]refreshAccount['"][\s\S]{0,120}accountId:\s*id/.test(html)
+    /window\.onRefresh\s*=\s*function\s*\(\s*id\s*\)[\s\S]{0,400}command:\s*['"]refreshAccount['"][\s\S]{0,120}accountId:\s*id/.test(js)
   );
   check(
     'SidebarProvider 实现 case refreshAccount 与 handleRefreshAccount',
@@ -79,8 +81,8 @@ async function run() {
   );
   check(
     '主工具栏 refreshAllBtn 与单卡刷新具备 is-spinning 等待反馈',
-    html.includes('refreshAllBtn.classList.add(\'is-spinning\')') &&
-    html.includes('refreshingIds')
+    js.includes("refreshAllBtn.classList.add('is-spinning')") &&
+    js.includes('refreshingIds')
   );
 
   // 4. 全模态框 Escape 关闭 & 搜索增强
@@ -95,7 +97,7 @@ async function run() {
     'settingsModalOverlay',
     'taskModalOverlay'
   ];
-  const escBlockMatch = html.match(/if\s*\(\s*e\.key\s*!==\s*'Escape'\s*\)\s*return;([\s\S]{0,1400})\}\);/);
+  const escBlockMatch = js.match(/if\s*\(\s*e\.key\s*!==\s*'Escape'\s*\)\s*return;([\s\S]{0,1400})\}\);/);
   const escBlock = escBlockMatch ? escBlockMatch[1] : '';
   for (const id of escModals) {
     const ok = id === 'addAccountOverlay'
@@ -103,7 +105,7 @@ async function run() {
       : escBlock.includes(id);
     check(`Escape 统一关闭覆盖 ${id}`, ok);
   }
-  const clampedMatch = html.match(/function readClampedInt[\s\S]*?\n\s*\}/);
+  const clampedMatch = js.match(/function readClampedInt[\s\S]*?\n\s*\}/);
   if (clampedMatch) {
     const fn = new Function(`${clampedMatch[0]}; return readClampedInt;`)();
     check('readClampedInt 保留合法 0 值而不回退默认值', fn({ value: '0' }, 10, 0, 90) === 0);
@@ -114,35 +116,35 @@ async function run() {
   }
   check(
     '搜索匹配包含备注 notes 与自定义标签 tags',
-    /searchQuery[\s\S]{0,500}\.notes[\s\S]{0,300}\.tags/.test(html)
+    /searchQuery[\s\S]{0,500}\.notes[\s\S]{0,300}\.tags/.test(js)
   );
   check(
     '搜索框支持按 Escape 一键清空',
-    /searchInput\.addEventListener\(['"]keydown['"][\s\S]{0,300}Escape/.test(html)
+    /searchInput\.addEventListener\(['"]keydown['"][\s\S]{0,300}Escape/.test(js)
   );
   check(
     '筛选无结果时提供清除筛选恢复按钮',
-    html.includes('btnResetFilter') && html.includes('js.clearFilterBtn')
+    js.includes('btnResetFilter') && js.includes('js.clearFilterBtn')
   );
 
   // 5. 错误 Toast 保护期与卡片渲染指纹去重 & UID 复制 & 删除防误触
   console.log('[测试 5/6] 错误 Toast 保护期、渲染指纹、UID 复制与防误触');
   check(
     '无 detail 的错误/警告 Toast 保护期 >= 10000ms',
-    /level\s*===\s*['"]error['"]\s*\|\|\s*msg\.level\s*===\s*['"]warn['"][\s\S]{0,80}10000/.test(html) ||
-    /\(msg\.level\s*===\s*['"]error['"]\s*\|\|\s*msg\.level\s*===\s*['"]warn['"]\)\s*\?\s*10000/.test(html)
+    /level\s*===\s*['"]error['"]\s*\|\|\s*msg\.level\s*===\s*['"]warn['"][\s\S]{0,80}10000/.test(js) ||
+    /\(msg\.level\s*===\s*['"]error['"]\s*\|\|\s*msg\.level\s*===\s*['"]warn['"]\)\s*\?\s*10000/.test(js)
   );
   check(
     'accountGrid 支持指纹去重与滚动位置保护',
-    html.includes('lastCardsFingerprint')
+    js.includes('lastCardsFingerprint')
   );
   check(
     '支持点击卡片 UID 复制（事件委托不破坏 G7 DOM 字面量）',
-    html.includes("closest('[data-field=\"uid\"]')") && html.includes('js.uidCopied')
+    js.includes("closest('[data-field=\"uid\"]')") && js.includes('js.uidCopied')
   );
   check(
     '删除按钮具备独立 danger 视觉修饰类防误触',
-    html.includes('is-danger-icon')
+    js.includes('is-danger-icon')
   );
 
   // 6. StatusBar QuickPick 展示他窗占用标识，且运行期 handleRefreshAccount 真实只同步目标账号

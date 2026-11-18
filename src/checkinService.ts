@@ -1,5 +1,5 @@
 import { API_ENDPOINTS } from './constants';
-import { httpRequest } from './oauthService';
+import { httpRequest } from './httpClient';
 import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore';
 import { t } from './i18n';
 import { isCnAccount } from './domain';
@@ -476,6 +476,17 @@ export class CheckinService {
     account: CodeBuddyAccount,
     store?: AccountStore
   ): Promise<CheckinStatusResult> {
+    if (!isCnAccount(account.domain)) {
+      return {
+        active: true,
+        todayCheckedIn: false,
+        streakDays: account.checkinStreak || 0,
+        dailyCredit: 0,
+        todayCredit: 0,
+        totalCredits: typeof account.totalCredits === 'number' ? account.totalCredits : 0
+      };
+    }
+
     const status = await this.queryStatus(account);
     const realQuota = await this.queryRealRemainingQuota(account);
     const quotaPatch = this.buildQuotaPatch(realQuota);

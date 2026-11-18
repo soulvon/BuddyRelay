@@ -7,7 +7,7 @@
 
 **切号不关窗口 · 不重启编辑器 · 历史会话完全互通 · 一键签到 · 一键做任务**
 
-[![Version](https://img.shields.io/badge/version-1.3.6-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.8-blue?style=flat-square)](https://github.com/soulvon/BuddyRelay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/BuddyRelay?color=orange&style=flat-square)](https://github.com/soulvon/BuddyRelay/releases)
@@ -60,7 +60,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 
 ### 方式二：从 VSIX 离线安装（网络受限或需锁定旧版本时）
 
-1. 下载最新版 `buddy-relay-1.3.6.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
+1. 下载最新版 `buddy-relay-1.3.8.vsix`（[GitHub Releases](https://github.com/soulvon/BuddyRelay/releases/latest)）；
 2. 打开电脑上的 **CodeBuddy CN**（或 CodeBuddy 国际版）IDE；
 3. 进入左侧扩展面板 ➔ 点击右上角 `...` 菜单 ➔ 选择 **“从 VSIX 安装...” (Install from VSIX...)**；
 4. 选中下载的文件，安装完成后左侧活动栏即可看到 **BuddyRelay** 图标。
@@ -72,7 +72,7 @@ BuddyRelay 已正式上架 **Open VSX 扩展市场**（CodeBuddy IDE 内置扩�
 buddycn --install-extension soulvon.buddy-relay --force
 
 # 或从本地 VSIX 文件安装
-buddycn --install-extension buddy-relay-1.3.6.vsix --force
+buddycn --install-extension buddy-relay-1.3.8.vsix --force
 ```
 
 > ⚠️ **新手避坑（重要）：**  
@@ -272,11 +272,11 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 | `buddyRelay.autoCheckin.perAccountDelaySeconds` | `number` | `15` | 多账号签到之间的随机间隔上限（秒） |
 | `buddyRelay.autoSwitch.enabled` | `boolean` | `true` | 是否启用额度见底自动切号 |
 | `buddyRelay.autoSwitch.quotaThresholdPercent` | `number` | `10` | 触发自动切号的剩余百分比阈值 |
-| `buddyRelay.autoSwitch.strategy` | `string` | `"highest_quota"` | 切号策略：`highest_quota` / `lru` / `round_robin` |
+| `buddyRelay.autoSwitch.strategy` | `string` | `"highest_quota"` | 切号策略：`highest_quota`（剩余算力最高优先）/ `lru`（最近最少使用）/ `round_robin`（号池顺序轮换）/ `health_priority`（连续签到天数最高优先） |
 | `buddyRelay.autoSwitch.cooldownMinutes` | `number` | `5` | 切号后的防抖冷却时长（分钟） |
 | `buddyRelay.growthTasks.autoAfterCheckin` | `boolean` | `true` | 每日签到后是否自动执行成长中心流水线 |
 | `buddyRelay.update.autoCheck` | `boolean` | `true` | 启动时是否自动检查 GitHub 最新发布版本 |
-| `buddyRelay.update.autoInstall` | `boolean` | `false` | 发现新版本时是否自动静默安装（无需二次确认） |
+| `buddyRelay.update.autoInstall` | `boolean` | `true` | 发现新版本时是否自动静默安装（无需二次确认） |
 
 ---
 
@@ -303,7 +303,7 @@ BuddyRelay 针对腾讯生态内的不同分支版本进行了严格区分与适
 <details>
 <summary><b>Q4: 插件是如何存储账号 Token 的？是否安全？</b></summary>
 <br>
-<b>完全安全。</b>账号凭据存储在 VS Code 原生隔离的 <code>globalState</code> 本地持久化数据库中，所有网络请求仅直连腾讯官方域名（<code>codebuddy.cn</code> / <code>copilot.tencent.com</code>），绝不向任何第三方服务器上传敏感数据。
+<b>完全安全。</b>账号凭据采用本地 <code>AES-256-GCM</code>（32 字节随机主密钥 <code>master.key</code> 权限 <code>0o600</code>）加密落盘于跨窗口共享号池 <code>pool.json</code>（密文格式 <code>enc:v1:...</code>），读写均受跨进程排他锁与损坏熔断保护；所有网络请求仅直连腾讯官方域名（<code>codebuddy.cn</code> / <code>codebuddy.ai</code> / <code>copilot.tencent.com</code>），绝不向任何第三方服务器上传敏感数据。
 </details>
 
 <details>
@@ -383,7 +383,7 @@ CodeBuddy 国际版采用官方的 <b>4 档位模型选择机制</b>（按推理
 
 **如果这个工具帮到了你，点一个 Star 让更多开发者看到它 · If this project helps you, a star means a lot.**
 
-[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/soulvon/BuddyRelay&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=soulvon/BuddyRelay&type=Date)](https://star-history.com/#soulvon/BuddyRelay&Date)
 
 ---
 

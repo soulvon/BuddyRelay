@@ -19,7 +19,6 @@
   "config.locale.en": "English",
   "config.autoCheckin": "是否开启定时自动签到与领算力积分",
   "config.refreshIntervalMinutes": "账号状态与额度自动刷新间隔 (分钟)",
-  "config.cockpitEndpoint": "Cockpit 外部环境配置导入源地址",
   "config.autoCheckin.dailyTime": "每日自动签到时间（HH:mm，24 小时制）",
   "config.autoCheckin.randomJitterMinutes": "签到随机延迟窗口（分钟），错开整点更像真人操作",
   "config.autoCheckin.perAccountDelaySeconds": "多账号逐个签到之间的随机间隔上限（秒）",

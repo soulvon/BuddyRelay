@@ -45,6 +45,13 @@ jobs:
       - name: Package VSIX
         run: npx @vscode/vsce package --no-dependencies --skip-license
 
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: buddy-relay-vsix
+          path: "*.vsix"
+          if-no-files-found: error
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -58,28 +65,34 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Verify tag matches package.json version
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG_VER=$(node -p "require('./package.json').version")
-          if [ "$TAG" != "$PKG_VER" ]; then
-            echo "::error::tag 与 package.json 版本不一致，终止发布。"
-            exit 1
-          fi
+      - name: Download built VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: buddy-relay-vsix
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify VSIX package.json version matches tag
+        run: |
+          VSIX_FILE=$(ls -1 *.vsix | head -n 1)
+          if [ -z "$VSIX_FILE" ]; then
+            echo "::error::未找到构建产物 .vsix"
+            exit 1
+          fi
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG_VER=$(unzip -p "$VSIX_FILE" extension/package.json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(d.version)")
+          echo "git tag: v$TAG"
+          echo "vsix package.json version: $PKG_VER"
+          if [ "$TAG" != "$PKG_VER" ]; then
+            echo "::error::tag v$TAG 与产物包 version $PKG_VER 不一致，终止发布。"
+            exit 1
+          fi
+          echo "VSIX_FILE=$VSIX_FILE" >> "$GITHUB_ENV"
 
       - name: Publish to Open VSX Registry
-        run: npx ovsx publish -p "$OVSX_PAT"
+        run: npx ovsx publish "$VSIX_FILE" -p "$OVSX_PAT"
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}

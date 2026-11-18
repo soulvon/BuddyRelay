@@ -2,10 +2,6 @@
  * 会话母体自愈中枢
  *
  * 背景事故（2026-11-03）：`ensureJunction` 把母体 uid 硬编码成作者本人的账号 uid。
- * 在作者机器上该目录恰好是真实数据目录，一切正常；在用户机器上该 uid 从未登录过，
- * 于是"新建一个空母体 → 把用户真实会话目录改名成 .bak_时间戳 → 建链指向空目录"，
- * 表现为切号后右侧会话记录全部消失、只剩 New Chat，切回原账号也看不到（原路径已被替换）。
- *
  * 本模块做三件事：
  *   1. 母体不再硬编码：优先用已登记母体，其次当前登录 uid，最后选内容最丰富的实体目录；
  *   2. 升级后自愈：把被误接的 junction 摘掉、把 .bak_ 备份里的数据合并回母体并复原路径；
@@ -15,8 +11,10 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { PATHS } from './constants';
-import { atomicWriteFileSync } from './atomicWrite';
+import * as constants from './constants';
+import { atomicWriteJsonSync, readJsonFileSafe } from './atomicFile';
+
+const { PATHS } = constants;
 
 export interface UidDirInfo {
   uid: string;
@@ -62,6 +60,9 @@ export function copyDirMerge(src: string, dest: string): number {
         stack.push({ from: fromPath, to: toPath });
         continue;
       }
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       if (fs.existsSync(toPath)) {
         skipped += 1;
         continue;
@@ -92,7 +93,6 @@ function removeLink(linkPath: string): void {
 
 /**
  * 归一化链接目标：剥掉 Windows 设备命名空间前缀（\\?\ 与 \??\）并统一小写。
- * cmd mklink 与 Node symlinkSync 产物的前缀不同，不剥离会把"指向正确"误判成 stale link 反复重建。
  */
 export function normalizeLinkTarget(target: string): string {
   return target.replace(/^\\{1,2}\?\?\\|^\\{1,2}\?\\/i, '').toLowerCase();
@@ -111,29 +111,51 @@ export class SessionHealer {
 
   /** 读取已登记母体 uid；文件损坏或字段非法返回 null，不猜 */
   public readRegisteredMaster(): string | null {
-    try {
-      const raw = JSON.parse(fs.readFileSync(this.masterFile, 'utf8'));
-      const uid = String(raw?.masterUid || '').trim();
-      return uid || null;
-    } catch {
+    const res = readJsonFileSafe<{ masterUid?: unknown }>(this.masterFile);
+    if (res.status !== 'ok') {
       return null;
     }
+    const uid = String(res.data?.masterUid || '').trim();
+    return uid || null;
   }
 
   /** 登记母体 uid（原子写） */
   public registerMaster(uid: string): void {
-    atomicWriteFileSync(this.masterFile, JSON.stringify({ masterUid: uid, updatedAt: Date.now() }, null, 2));
+    atomicWriteJsonSync(this.masterFile, { masterUid: uid, updatedAt: Date.now() }, 2);
   }
 
   /** 当前登录 uid（宿主 globalStorage/storage.json 明文） */
   public readCurrentUid(): string | null {
+    const candidates = [PATHS.CODEBUDDY_STORAGE_JSON];
     try {
-      const raw = JSON.parse(fs.readFileSync(PATHS.CODEBUDDY_STORAGE_JSON, 'utf8'));
-      const uid = String(raw?.['genie.userId'] || '').trim();
-      return uid || null;
-    } catch {
-      return null;
+      const hostDirs: unknown = typeof (constants as any).resolveHostDataDirs === 'function'
+        ? (constants as any).resolveHostDataDirs()
+        : null;
+      if (Array.isArray(hostDirs)) {
+        for (const dir of hostDirs) {
+          if (typeof dir === 'string' && dir.trim()) {
+            candidates.push(path.join(dir, 'User', 'globalStorage', 'storage.json'));
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    const seen = new Set<string>();
+    for (const storageFile of candidates) {
+      const norm = path.resolve(storageFile);
+      if (seen.has(norm)) {
+        continue;
+      }
+      seen.add(norm);
+      const res = readJsonFileSafe<Record<string, unknown>>(storageFile);
+      if (res.status === 'ok') {
+        const uid = String(res.data?.['genie.userId'] || '').trim();
+        if (uid) {
+          return uid;
+        }
+      }
     }
+    return null;
   }
 
   /** 扫描 Data 下所有 uid 目录与备份 */
@@ -203,7 +225,7 @@ export class SessionHealer {
   }
 
   /**
-   * 选出母体 uid。顺序：已登记 → 当前登录 → 内容最丰富的实体目录。
+   * 选出母体 uid。顺序：已登记 -> 当前登录 -> 内容最丰富的实体目录。
    * 只返回"可用"母体；没有可用母体时返回 null，由 heal() 尝试从备份复原。
    */
   public pickMaster(infos: UidDirInfo[]): string | null {
@@ -258,6 +280,74 @@ export class SessionHealer {
     }
   }
 
+  /** 修复或新建单个 uid 的会话目录链接 */
+  private repairUidLink(info: UidDirInfo, masterPath: string, warnings: string[]): boolean {
+    const { uid, innerPath } = info;
+    if (info.isLink) {
+      let target = '';
+      try {
+        target = fs.readlinkSync(innerPath);
+      } catch {
+        target = '';
+      }
+      if (
+        target &&
+        normalizeLinkTarget(path.resolve(path.dirname(innerPath), target)) === normalizeLinkTarget(path.resolve(masterPath))
+      ) {
+        return false;
+      }
+      try {
+        removeLink(innerPath);
+        fs.symlinkSync(masterPath, innerPath, process.platform === 'win32' ? 'junction' : 'dir');
+        this.appendLog(`repaired link ${innerPath} -> ${masterPath}`);
+        return true;
+      } catch (err: any) {
+        warnings.push(`修复链接失败 ${innerPath}: ${err.message}`);
+        return false;
+      }
+    }
+
+    if (info.exists && info.itemCount > 0) {
+      try {
+        const skipped = copyDirMerge(innerPath, masterPath);
+        this.appendLog(`merged uid dir ${innerPath} -> ${masterPath} (skipped=${skipped})`);
+        if (skipped > 0) {
+          warnings.push(`${uid} 目录有 ${skipped} 个同名文件未覆盖，已保留原目录备份`);
+        }
+      } catch (err: any) {
+        warnings.push(`合并 ${uid} 失败，保留原目录未建链: ${err.message}`);
+        return false;
+      }
+      const backup = `${innerPath}.bak_${Date.now()}`;
+      try {
+        fs.renameSync(innerPath, backup);
+        this.appendLog(`renamed ${innerPath} -> ${backup}`);
+      } catch (err: any) {
+        warnings.push(`备份 ${uid} 目录失败，未建链: ${err.message}`);
+        return false;
+      }
+    } else if (info.exists) {
+      try {
+        fs.rmdirSync(innerPath);
+      } catch (err: any) {
+        warnings.push(`清理空目录失败 ${innerPath}: ${err.message}`);
+        return false;
+      }
+    }
+
+    try {
+      if (!fs.existsSync(path.dirname(innerPath))) {
+        fs.mkdirSync(path.dirname(innerPath), { recursive: true });
+      }
+      fs.symlinkSync(masterPath, innerPath, process.platform === 'win32' ? 'junction' : 'dir');
+      this.appendLog(`linked ${innerPath} -> ${masterPath}`);
+      return true;
+    } catch (err: any) {
+      warnings.push(`建链接失败 ${innerPath}: ${err.message}`);
+      return false;
+    }
+  }
+
   /**
    * 升级后自愈：修复被错误指向空母体的链接，并把 .bak_ 备份里的数据合并回母体。
    * 幂等：没有问题时不改动任何文件，返回 healed=false。
@@ -283,7 +373,6 @@ export class SessionHealer {
 
     let masterUid = this.pickMaster(infos);
 
-    // 所有实体目录都空/不存在：尝试把最丰富的备份改名回原位，认作母体
     if (!masterUid) {
       const richest = this.pickRichestBackup(infos);
       if (!richest) {
@@ -341,7 +430,6 @@ export class SessionHealer {
     }
     const masterPath = masterInfo.innerPath;
 
-    // 母体为空但存在备份：把备份内容合并进母体（不覆盖已有文件）
     if (isEmptyDir(masterPath)) {
       const richest = this.pickRichestBackup(infos);
       if (richest) {
@@ -359,78 +447,13 @@ export class SessionHealer {
       }
     }
 
-    // 逐个 uid 修正链接
     for (const info of infos) {
-      const { uid, innerPath } = info;
-      if (uid === masterUid) {
+      if (info.uid === masterUid) {
         continue;
       }
-
-      // 已正确指向母体的链接：不动
-      if (info.isLink) {
-        let target = '';
-        try {
-          target = fs.readlinkSync(innerPath);
-        } catch {
-          target = '';
-        }
-        if (
-          target &&
-          normalizeLinkTarget(path.resolve(path.dirname(innerPath), target)) === normalizeLinkTarget(path.resolve(masterPath))
-        ) {
-          continue;
-        }
-        try {
-          removeLink(innerPath);
-          fs.symlinkSync(masterPath, innerPath, process.platform === 'win32' ? 'junction' : 'dir');
-          repairedLinks += 1;
-          healed = true;
-          this.appendLog(`repaired link ${innerPath} -> ${masterPath}`);
-        } catch (err: any) {
-          warnings.push(`修复链接失败 ${innerPath}: ${err.message}`);
-        }
-        continue;
-      }
-
-      // 实体目录：先把它自己的数据合并进母体，再改名备份并建链
-      if (info.exists && info.itemCount > 0) {
-        try {
-          const skipped = copyDirMerge(innerPath, masterPath);
-          this.appendLog(`merged uid dir ${innerPath} -> ${masterPath} (skipped=${skipped})`);
-          if (skipped > 0) {
-            warnings.push(`${uid} 目录有 ${skipped} 个同名文件未覆盖，已保留原目录备份`);
-          }
-        } catch (err: any) {
-          warnings.push(`合并 ${uid} 失败，保留原目录未建链: ${err.message}`);
-          continue;
-        }
-        const backup = `${innerPath}.bak_${Date.now()}`;
-        try {
-          fs.renameSync(innerPath, backup);
-          this.appendLog(`renamed ${innerPath} -> ${backup}`);
-        } catch (err: any) {
-          warnings.push(`备份 ${uid} 目录失败，未建链: ${err.message}`);
-          continue;
-        }
-      } else if (info.exists) {
-        try {
-          fs.rmdirSync(innerPath);
-        } catch (err: any) {
-          warnings.push(`清理空目录失败 ${innerPath}: ${err.message}`);
-          continue;
-        }
-      }
-
-      try {
-        if (!fs.existsSync(path.dirname(innerPath))) {
-          fs.mkdirSync(path.dirname(innerPath), { recursive: true });
-        }
-        fs.symlinkSync(masterPath, innerPath, process.platform === 'win32' ? 'junction' : 'dir');
+      if (this.repairUidLink(info, masterPath, warnings)) {
         repairedLinks += 1;
         healed = true;
-        this.appendLog(`linked ${innerPath} -> ${masterPath}`);
-      } catch (err: any) {
-        warnings.push(`建链接失败 ${innerPath}: ${err.message}`);
       }
     }
 
@@ -477,7 +500,6 @@ export class SessionHealer {
 
   /**
    * 接管一个实体会话目录：先把内容合并进母体，再改名成 .bak_时间戳 留底。
-   * 合并失败直接抛错——调用方不得继续改名，否则就是数据丢失。
    */
   public adoptIntoMaster(innerPath: string, masterPath: string): void {
     const skipped = copyDirMerge(innerPath, masterPath);

@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { PATHS } from './constants';
-import { atomicWriteFileSync } from './atomicWrite';
+import { atomicWriteJsonSync, readJsonFileSafe, withFileLockSync } from './atomicFile';
 import { CodeBuddyAccount } from './accountStore';
+import { todayCN } from './checkinService';
 import { t } from './i18n';
 
 export interface UsageRecord {
@@ -17,9 +17,7 @@ export interface UsageRecord {
   balanceAfter?: number;
   title: string;
   detail?: string;
-  /** 来源：snapshot=余额快照差值（仅明细展示），action=明确业务动作（计入今日到账） */
   source?: 'snapshot' | 'action';
-  /** 单调递增写入序号：同一毫秒内多条记录的排序兜底键 */
   seq?: number;
 }
 
@@ -28,36 +26,15 @@ export interface DailySummary {
   totalConsumed: number;
   totalAwarded: number;
   switchCount: number;
-  /** 单账号今日消耗 (仅当日已成功拉取的账号有值) */
   perAccountConsumed: Record<string, number>;
-  /** 单账号今日新增 (仅当日已成功拉取的账号有值) */
   perAccountGrants: Record<string, number>;
 }
 
-/** 单账号单日按模型聚合的消耗 */
-export interface ModelDayStat {
-  credits: number;
-  count: number;
-}
-
-/** date -> accountId -> model -> stat */
+export interface ModelDayStat { credits: number; count: number; }
 export type ModelStatsDays = Record<string, Record<string, Record<string, ModelDayStat>>>;
+export interface ModelStatsSnapshot { days: ModelStatsDays; syncedDays: Record<string, string[]>; }
 
-export interface ModelStatsSnapshot {
-  /** date -> accountId -> model -> stat（深拷贝，供 webview 端过滤渲染） */
-  days: ModelStatsDays;
-  /** accountId -> 已完整同步的历史天列表（不含今天，失败天留洞下次补拉） */
-  syncedDays: Record<string, string[]>;
-}
-
-/**
- * 今日统计：完全基于官方数据源
- * - consumed: 官方请求明细求和 (get-user-request-usage)
- * - grants: 官方今日发放包容量求和 (get-user-resource, CreateTime 当日)
- * - 每月 1 号基础基数: 启用账号数 × 500（基础体验包月度重置）
- */
 export interface DailyStats {
-  /** 结构版本：3 = 明细带账号归属 + 跨窗口共享的拉取节流表。低版本文件整体重置，不迁移旧记录 */
   schema: number;
   date: string;
   consumed: number;
@@ -66,43 +43,45 @@ export interface DailyStats {
   perAccountGrants: Record<string, number>;
   recentRequests: Array<{
     requestId: string;
-    /** 归属账号：官方明细行本身不带账号，靠逐号查询时打标 */
     accountId: string;
     credit: number;
     model: string;
     client: string;
     requestTime: string;
   }>;
-  /** 每号拉取状态：ts=最后一次尝试时间，fails=连续失败次数（多窗口共享同一份节流） */
   fetchState: Record<string, { ts: number; fails: number }>;
 }
 
 const DAILY_STATS_SCHEMA = 3;
-/** 自动拉取：单号 3 分钟内最多一次 */
 const AUTO_FETCH_GAP_MS = 180_000;
-/** 手动刷新：允许绕过自动节流，但保底 10 秒防连点 */
 const FORCE_FETCH_GAP_MS = 10_000;
-/** 连续失败退避：30s 起，指数翻倍，上限 10 分钟 */
 const FAIL_BACKOFF_BASE_MS = 30_000;
 const FAIL_BACKOFF_MAX_MS = 600_000;
-/** 同时查询的账号数上限，避免一次刷新打出几十个请求 */
 const FETCH_CONCURRENCY = 2;
-
-/** 模型统计结构版本 */
+const OFFICIAL_MAX_PAGES = 25;
 const MODEL_STATS_SCHEMA = 1;
-/** 模型统计保留天数（与面板可选范围一致，超窗数据直接丢弃） */
 const MODEL_STATS_MAX_DAYS = 7;
-
 const MAX_RECORDS = 1000;
+const CN_OFFSET_MS = 8 * 3600 * 1000;
 
-/**
- * 算力流水对账与调度审计追踪引擎
- * 负责：
- * 1. 周期快照差值计算 (Delta Snapshot) 抓取真实代码补全/会话算力消耗
- * 2. 签到、出游打工、盲盒礼包到账流水记录
- * 3. 手动切号、额度见底自动切号、429 限流切号事件审计
- * 4. 跨窗口共享流水文件 %APPDATA%/CodeBuddy CN/buddy-relay/usage-records.json
- */
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+const sumValues = (map: Record<string, number>): number =>
+  round2(Object.values(map).reduce((s, v) => s + (Number(v) || 0), 0));
+
+function createEmptyDailyStats(date: string = ''): DailyStats {
+  return {
+    schema: DAILY_STATS_SCHEMA, date, consumed: 0, grants: 0,
+    perAccountConsumed: {}, perAccountGrants: {}, recentRequests: [], fetchState: {}
+  };
+}
+
+function mergeNumericMap(target: Record<string, number>, disk: Record<string, number>, dirtyIds: Set<string>): void {
+  for (const [k, v] of Object.entries(disk)) {
+    if (!dirtyIds.has(k) && typeof v === 'number') target[k] = v;
+  }
+}
+
+/** 算力流水对账与调度审计追踪引擎 */
 export class UsageTracker {
   private filePath: string;
   private records: UsageRecord[] = [];
@@ -110,23 +89,21 @@ export class UsageTracker {
   private switchTimestamps: number[] = [];
   private _seq: number = 0;
   private dailyStatsPath: string;
-  private dailyStats: DailyStats = { schema: DAILY_STATS_SCHEMA, date: '', consumed: 0, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: [], fetchState: {} };
-  /** 模型统计：按天×账号×模型聚合，历史天同步一次后不再重拉 */
+  private dailyStats: DailyStats = createEmptyDailyStats();
+  private dirtyDailyIds: Set<string> = new Set();
+  private dailyManualOverride: { consumed?: boolean; grants?: boolean; reset?: boolean } = {};
   private modelStatsPath: string;
   private modelStats: ModelStatsSnapshot = { days: {}, syncedDays: {} };
+  private dirtyModelKeys: Set<string> = new Set();
   private modelStatsBusy: boolean = false;
   private lastModelStatsTodayTs: number = 0;
-  /** 同进程内的在途请求：防连续推送导致同一账号并发重复拉取 */
   private inFlight: Set<string> = new Set();
   private lastBalances: Map<string, number> = new Map();
   private changeListeners: Array<() => void> = [];
 
-  /** 注册今日统计变更回调，返回取消订阅函数 */
   public onChange(listener: () => void): () => void {
     this.changeListeners.push(listener);
-    return () => {
-      this.changeListeners = this.changeListeners.filter((fn) => fn !== listener);
-    };
+    return () => { this.changeListeners = this.changeListeners.filter((fn) => fn !== listener); };
   }
 
   private notifyChange(): void {
@@ -144,162 +121,159 @@ export class UsageTracker {
     this.loadModelStats();
   }
 
+  private formatTime(ts: number): { timeStr: string; dateStr: string } {
+    const iso = new Date(ts + CN_OFFSET_MS).toISOString();
+    return { dateStr: iso.slice(0, 10), timeStr: iso.slice(11, 19) };
+  }
+
   private load(): void {
-    if (!fs.existsSync(this.filePath)) {
-      this.records = [];
-      return;
-    }
-    try {
-      const raw = fs.readFileSync(this.filePath, 'utf8');
-      const data = JSON.parse(raw);
-      if (Array.isArray(data.records)) {
-        this.records = data.records;
-        // 恢复单调序号基线，保证重启后 seq 依旧递增
-        this._seq = this.records.reduce((max, r) => Math.max(max, r.seq || 0), 0);
-      }
-    } catch (_) {
+    const res = readJsonFileSafe<{ records?: UsageRecord[] }>(this.filePath);
+    if (res.status === 'ok' && Array.isArray(res.data?.records)) {
+      this.records = res.data.records;
+      this._seq = this.records.reduce((max, r) => Math.max(max, r.seq || 0), 0);
+    } else {
       this.records = [];
     }
   }
 
+  private parseDailyStats(data: any): DailyStats | null {
+    if (!data || typeof data !== 'object' || typeof data.date !== 'string') return null;
+    if (data.schema !== 2 && data.schema !== DAILY_STATS_SCHEMA) return null;
+    return {
+      schema: DAILY_STATS_SCHEMA,
+      date: data.date,
+      consumed: typeof data.consumed === 'number' ? data.consumed : 0,
+      grants: typeof data.grants === 'number' ? data.grants : 0,
+      perAccountConsumed: data.perAccountConsumed && typeof data.perAccountConsumed === 'object' ? { ...data.perAccountConsumed } : {},
+      perAccountGrants: data.perAccountGrants && typeof data.perAccountGrants === 'object' ? { ...data.perAccountGrants } : {},
+      recentRequests: Array.isArray(data.recentRequests) ? [...data.recentRequests] : [],
+      fetchState: data.fetchState && typeof data.fetchState === 'object' ? { ...data.fetchState } : {}
+    };
+  }
+
   private loadDailyStats(): void {
-    try {
-      if (!fs.existsSync(this.dailyStatsPath)) {
-        return;
-      }
-      const raw = fs.readFileSync(this.dailyStatsPath, 'utf8');
-      const data = JSON.parse(raw);
-      if (!data || typeof data !== 'object' || typeof data.date !== 'string') {
-        return;
-      }
-      // 无账号归属的旧结构（schema<=1）不迁移：整体重算，下次拉取从官方补回真实数据
-      if (data.schema !== 2 && data.schema !== DAILY_STATS_SCHEMA) {
-        return;
-      }
-      this.dailyStats = {
-        schema: DAILY_STATS_SCHEMA,
-        date: data.date,
-        consumed: typeof data.consumed === 'number' ? data.consumed : 0,
-        grants: typeof data.grants === 'number' ? data.grants : 0,
-        perAccountConsumed: data.perAccountConsumed && typeof data.perAccountConsumed === 'object' ? data.perAccountConsumed : {},
-        perAccountGrants: data.perAccountGrants && typeof data.perAccountGrants === 'object' ? data.perAccountGrants : {},
-        recentRequests: Array.isArray(data.recentRequests) ? data.recentRequests : [],
-        fetchState: data.fetchState && typeof data.fetchState === 'object' ? data.fetchState : {}
-      };
-    } catch (_) {
-      // 文件损坏就从零起算，不阻塞扩展
+    const res = readJsonFileSafe<DailyStats>(this.dailyStatsPath);
+    if (res.status === 'ok') {
+      const parsed = this.parseDailyStats(res.data);
+      if (parsed) this.dailyStats = parsed;
     }
   }
 
   private saveDailyStats(): void {
     try {
-      const payload = JSON.stringify(this.dailyStats, null, 2);
-      atomicWriteFileSync(this.dailyStatsPath, payload);
+      const dirtyIds = new Set(this.dirtyDailyIds);
+      const overrides = { ...this.dailyManualOverride };
+      this.dirtyDailyIds.clear();
+      this.dailyManualOverride = {};
+
+      withFileLockSync(this.dailyStatsPath, () => {
+        const res = readJsonFileSafe<DailyStats>(this.dailyStatsPath);
+        const disk = res.status === 'ok' ? this.parseDailyStats(res.data) : null;
+        if (!overrides.reset && disk && disk.date === this.dailyStats.date) {
+          if (!overrides.consumed) mergeNumericMap(this.dailyStats.perAccountConsumed, disk.perAccountConsumed, dirtyIds);
+          if (!overrides.grants) mergeNumericMap(this.dailyStats.perAccountGrants, disk.perAccountGrants, dirtyIds);
+          for (const [k, st] of Object.entries(disk.fetchState)) {
+            if (!st || typeof st !== 'object') continue;
+            const cur = this.dailyStats.fetchState[k];
+            if (!cur || Number(st.ts || 0) > Number(cur.ts || 0)) {
+              this.dailyStats.fetchState[k] = { ts: Number(st.ts || 0), fails: Number(st.fails || 0) };
+            }
+          }
+          const byReq = new Map<string, DailyStats['recentRequests'][number]>();
+          for (const r of disk.recentRequests) if (r?.requestId) byReq.set(r.requestId, r);
+          for (const r of this.dailyStats.recentRequests) if (r?.requestId) byReq.set(r.requestId, r);
+          this.dailyStats.recentRequests = Array.from(byReq.values())
+            .sort((a, b) => String(b.requestTime || '').localeCompare(String(a.requestTime || '')))
+            .slice(0, 200);
+
+          if (!overrides.consumed) {
+            if (Object.keys(this.dailyStats.perAccountConsumed).length > 0) {
+              this.dailyStats.consumed = sumValues(this.dailyStats.perAccountConsumed);
+            } else if (disk.consumed > 0 && this.dailyStats.consumed === 0) {
+              this.dailyStats.consumed = disk.consumed;
+            }
+          }
+          if (!overrides.grants) {
+            if (Object.keys(this.dailyStats.perAccountGrants).length > 0) {
+              this.dailyStats.grants = sumValues(this.dailyStats.perAccountGrants);
+            } else if (disk.grants > 0 && this.dailyStats.grants === 0) {
+              this.dailyStats.grants = disk.grants;
+            }
+          }
+        }
+        atomicWriteJsonSync(this.dailyStatsPath, this.dailyStats);
+      });
       this.notifyChange();
     } catch (err: any) {
       console.warn('[UsageTracker] 保存今日统计失败:', err.message);
     }
   }
 
-  /**
-   * 检测余额变化的账号（每次向侧栏推送状态时调用，同步、零成本）
-   * 变化的账号才需要去官方核对消耗与到账
-   */
   public detectChangedAccounts(items: Array<{ id: string; credits: number }>): string[] {
-    const today = this.formatTime(Date.now()).dateStr;
+    const today = todayCN();
     const changedIds: string[] = [];
     let valid = false;
 
     for (const item of items) {
-      if (!item || !item.id || typeof item.credits !== 'number' || !isFinite(item.credits)) {
-        continue;
-      }
+      if (!item?.id || typeof item.credits !== 'number' || !isFinite(item.credits)) continue;
       valid = true;
       const prev = this.lastBalances.get(item.id);
-      if (prev === undefined || Math.abs(prev - item.credits) >= 0.01) {
-        changedIds.push(item.id);
-      }
+      if (prev === undefined || Math.abs(prev - item.credits) >= 0.01) changedIds.push(item.id);
       this.lastBalances.set(item.id, item.credits);
     }
-    if (!valid) {
-      return [];
-    }
+    if (!valid) return [];
 
     if (this.dailyStats.date !== today) {
-      // 跨天：消耗/到账统计清零，全部账号重新核对
-      this.dailyStats = {
-        schema: DAILY_STATS_SCHEMA,
-        date: today,
-        consumed: 0,
-        grants: 0,
-        perAccountConsumed: {},
-        perAccountGrants: {},
-        recentRequests: [],
-        fetchState: {}
-      };
+      this.dailyStats = createEmptyDailyStats(today);
+      this.dailyManualOverride.reset = true;
       this.saveDailyStats();
       return items.filter((i) => i && typeof i.credits === 'number').map((i) => i.id);
     }
     return changedIds;
   }
 
-  /**
-   * 拉取官方今日数据（每账号一次调用）
-   * 包含：1. 消耗明细 2. 今日新发放资源包
-   */
   public async refreshOfficialStats(
     items: Array<{ id: string; token: string; uid: string }>,
     opts?: { force?: boolean }
   ): Promise<boolean> {
+    this.loadDailyStats();
     const now = Date.now();
-    const force = opts?.force === true;
-    const gap = force ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS;
+    const gap = opts?.force === true ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS;
 
-    // 单号节流 + 失败退避 + 在途去重：节流表随 daily-stats 落盘，多窗口共享同一份窗口
     const valid = (items || []).filter((i) => {
-      if (!i || !i.id || !i.token || !i.uid) return false;
-      if (this.inFlight.has(i.id)) return false;
+      if (!i?.id || !i.token || !i.uid || this.inFlight.has(i.id)) return false;
       const st = this.dailyStats.fetchState[i.id];
       const last = st ? Number(st.ts || 0) : 0;
       if (now - last < gap) return false;
       const fails = st ? Number(st.fails || 0) : 0;
-      if (fails > 0) {
-        const backoff = Math.min(FAIL_BACKOFF_MAX_MS, FAIL_BACKOFF_BASE_MS * Math.pow(2, fails - 1));
-        if (now - last < backoff) return false;
+      if (fails > 0 && now - last < Math.min(FAIL_BACKOFF_MAX_MS, FAIL_BACKOFF_BASE_MS * Math.pow(2, fails - 1))) {
+        return false;
       }
       return true;
     });
-    if (!valid.length) {
-      return false;
-    }
+    if (!valid.length) return false;
     valid.forEach((i) => this.inFlight.add(i.id));
 
     try {
-      // 分批查询：单次刷新不会同时打出几十个请求
       const results: Array<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> = [];
       for (let k = 0; k < valid.length; k += FETCH_CONCURRENCY) {
         const batch = valid.slice(k, k + FETCH_CONCURRENCY);
         results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid)))));
       }
 
-      const today = this.formatTime(Date.now()).dateStr;
+      const today = todayCN();
       if (this.dailyStats.date !== today) {
-        this.dailyStats = {
-          schema: DAILY_STATS_SCHEMA,
-          date: today,
-          consumed: 0,
-          grants: 0,
-          perAccountConsumed: {},
-          perAccountGrants: {},
-          recentRequests: [],
-          fetchState: this.dailyStats.fetchState
-        };
+        const prevFetchState = this.dailyStats.fetchState;
+        this.dailyStats = createEmptyDailyStats(today);
+        this.dailyStats.fetchState = prevFetchState;
+        this.dailyManualOverride.reset = true;
       }
 
-      // 只覆盖本次成功查到的账号，其余沿用缓存；失败号记次数走退避
       let failedCount = 0;
+      const seen = new Set(this.dailyStats.recentRequests.map((x) => x.requestId));
       for (let i = 0; i < valid.length; i++) {
         const r = results[i];
+        this.dirtyDailyIds.add(valid[i].id);
         if (!r) {
           failedCount++;
           const prevFails = this.dailyStats.fetchState[valid[i].id]?.fails || 0;
@@ -310,11 +284,8 @@ export class UsageTracker {
         this.dailyStats.perAccountConsumed[valid[i].id] = r.consumed;
         this.dailyStats.perAccountGrants[valid[i].id] = r.grants;
 
-        const seen = new Set(this.dailyStats.recentRequests.map((x) => x.requestId));
         for (const row of r.rows) {
-          if (!row.requestId || seen.has(row.requestId)) {
-            continue;
-          }
+          if (!row.requestId || seen.has(row.requestId)) continue;
           seen.add(row.requestId);
           this.dailyStats.recentRequests.push({
             requestId: row.requestId,
@@ -331,20 +302,14 @@ export class UsageTracker {
         this.dailyStats.recentRequests = this.dailyStats.recentRequests.slice(0, 200);
       }
 
-      const totalConsumed = Math.round(
-        Object.keys(this.dailyStats.perAccountConsumed).reduce((s, k) => s + (Number(this.dailyStats.perAccountConsumed[k]) || 0), 0) * 100
-      ) / 100;
-      const totalGrants = Math.round(
-        Object.keys(this.dailyStats.perAccountGrants).reduce((s, k) => s + (Number(this.dailyStats.perAccountGrants[k]) || 0), 0) * 100
-      ) / 100;
-
+      const totalConsumed = sumValues(this.dailyStats.perAccountConsumed);
+      const totalGrants = sumValues(this.dailyStats.perAccountGrants);
       const changed =
         Math.abs(this.dailyStats.consumed - totalConsumed) >= 0.01 ||
         Math.abs(this.dailyStats.grants - totalGrants) >= 0.01 ||
         failedCount > 0;
       this.dailyStats.consumed = totalConsumed;
       this.dailyStats.grants = totalGrants;
-      // fetchState 变化同样要落盘，否则多窗口退避与节流失效
       this.saveDailyStats();
       return changed;
     } finally {
@@ -352,10 +317,6 @@ export class UsageTracker {
     }
   }
 
-  /**
-   * 拉取单账号指定日期的官方消耗与当日发包数据
-   * @param targetDate 缺省拉今天；传具体日期（YYYY-MM-DD）时仅查消耗明细，不查发包
-   */
   public static async fetchOfficialDaily(
     token: string,
     uid: string,
@@ -367,19 +328,16 @@ export class UsageTracker {
       'Content-Type': 'application/json',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
-    const cnNow = new Date(Date.now() + 8 * 3600 * 1000);
-    const todayStr = cnNow.toISOString().slice(0, 10);
+    const todayStr = todayCN();
     const dateStr = targetDate || todayStr;
-    const isToday = dateStr === todayStr;
     const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
     const dayEnd = dayStart + 86400_000;
 
-    // 1. 查消耗明细（自动翻页）
     let consumedSum = 0;
     const allRows: Array<Record<string, any>> = [];
     let pageNum = 1;
     try {
-      for (let page = 0; page < 5; page++) {
+      for (let page = 0; page < OFFICIAL_MAX_PAGES; page++) {
         const res = await fetch('https://www.codebuddy.cn/billing/meter/get-user-request-usage', {
           method: 'POST',
           headers,
@@ -391,163 +349,130 @@ export class UsageTracker {
             pageSize: 200
           })
         });
-        if (!res.ok) {
-          return null;
-        }
+        if (!res.ok) return null;
         const json: any = await res.json().catch(() => null);
-        if (!json || json.code !== 0 || !json.data) {
-          return null;
-        }
+        if (!json || json.code !== 0 || !json.data) return null;
         const rows: Array<Record<string, any>> = json.data.data || [];
         consumedSum += rows.reduce((s, r) => s + Number(r.credit || 0), 0);
         allRows.push(...rows);
-        const total = Number(json.data.total || 0);
-        if (pageNum * 200 >= total || rows.length === 0) {
-          break;
-        }
+        if (pageNum * 200 >= Number(json.data.total || 0) || rows.length === 0) break;
         pageNum++;
       }
-    } catch (_) {
+    } catch {
       return null;
     }
 
-    // 2. 查当日新到账资源包（仅今天有意义：签到包 100 + 活动任务包；历史天跳过省一次请求）
     let grantsSum = 0;
-    if (isToday) {
+    if (dateStr === todayStr) {
       try {
         const res = await fetch('https://www.codebuddy.cn/v2/billing/meter/get-user-resource', {
           method: 'POST',
           headers,
           signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({
-            PageNumber: 1,
-            PageSize: 100,
-            ProductCode: 'p_tcaca',
-            Status: [0, 3]
-          })
+          body: JSON.stringify({ PageNumber: 1, PageSize: 100, ProductCode: 'p_tcaca', Status: [0, 3] })
         });
         if (res.ok) {
           const json: any = await res.json().catch(() => null);
           const packs = json?.data?.Response?.Data?.Accounts || [];
           for (const p of packs) {
             const ct = Number(p.CreateTime || 0);
-            if (ct >= dayStart && ct < dayEnd) {
-              grantsSum += Number(p.CapacitySize || 0);
-            }
+            if (ct >= dayStart && ct < dayEnd) grantsSum += Number(p.CapacitySize || 0);
           }
         }
-      } catch (_) {
-        // 查包失败不阻断，grants 保持 0
+      } catch {
+        // 查包失败不阻断
       }
     }
 
-    return {
-      consumed: Math.round(consumedSum * 100) / 100,
-      grants: Math.round(grantsSum * 100) / 100,
-      rows: allRows
-    };
+    return { consumed: round2(consumedSum), grants: round2(grantsSum), rows: allRows };
   }
 
-  // ════════ 模型用量统计（按天 × 账号 × 模型，供观察限流阈值与换号策略） ════════
+  private parseModelStats(data: any, cutoff: string): ModelStatsSnapshot | null {
+    if (!data || data.schema !== MODEL_STATS_SCHEMA || !data.days || typeof data.days !== 'object') return null;
+    const days: ModelStatsDays = {};
+    const syncedDays: Record<string, string[]> = {};
+    for (const [date, accs] of Object.entries(data.days)) {
+      if (date >= cutoff && accs && typeof accs === 'object') {
+        days[date] = accs as Record<string, Record<string, ModelDayStat>>;
+      }
+    }
+    const rawSynced = data.syncedDays && typeof data.syncedDays === 'object' ? data.syncedDays : {};
+    for (const [acc, list] of Object.entries(rawSynced)) {
+      if (Array.isArray(list)) {
+        syncedDays[acc] = list.filter((d): d is string => typeof d === 'string' && d >= cutoff);
+      }
+    }
+    return { days, syncedDays };
+  }
 
   private loadModelStats(): void {
-    try {
-      if (!fs.existsSync(this.modelStatsPath)) {
-        return;
-      }
-      const raw = fs.readFileSync(this.modelStatsPath, 'utf8');
-      const data = JSON.parse(raw);
-      if (!data || data.schema !== MODEL_STATS_SCHEMA || !data.days || typeof data.days !== 'object') {
-        return;
-      }
-      const cutoff = this.formatTime(Date.now() - (MODEL_STATS_MAX_DAYS - 1) * 86400_000).dateStr;
-      const days: ModelStatsDays = {};
-      const syncedDays: Record<string, string[]> = {};
-      for (const [date, accs] of Object.entries(data.days)) {
-        if (date >= cutoff && accs && typeof accs === 'object') {
-          days[date] = accs as Record<string, Record<string, ModelDayStat>>;
-        }
-      }
-      const rawSynced = data.syncedDays && typeof data.syncedDays === 'object' ? data.syncedDays : {};
-      for (const [acc, list] of Object.entries(rawSynced)) {
-        if (Array.isArray(list)) {
-          syncedDays[acc] = list.filter((d) => typeof d === 'string' && d >= cutoff);
-        }
-      }
-      this.modelStats = { days, syncedDays };
-    } catch (_) {
-      // 文件损坏从零起算，不阻塞扩展
-    }
+    const res = readJsonFileSafe<any>(this.modelStatsPath);
+    if (res.status !== 'ok') return;
+    const cutoff = this.formatTime(Date.now() - (MODEL_STATS_MAX_DAYS - 1) * 86400_000).dateStr;
+    const parsed = this.parseModelStats(res.data, cutoff);
+    if (parsed) this.modelStats = parsed;
   }
 
   private saveModelStats(): void {
     try {
-      const payload = JSON.stringify(
-        { schema: MODEL_STATS_SCHEMA, savedAt: Date.now(), days: this.modelStats.days, syncedDays: this.modelStats.syncedDays },
-        null, 2
-      );
-      atomicWriteFileSync(this.modelStatsPath, payload);
+      const dirtyKeys = new Set(this.dirtyModelKeys);
+      this.dirtyModelKeys.clear();
+      const cutoff = this.formatTime(Date.now() - (MODEL_STATS_MAX_DAYS - 1) * 86400_000).dateStr;
+
+      withFileLockSync(this.modelStatsPath, () => {
+        const res = readJsonFileSafe<any>(this.modelStatsPath);
+        const disk = res.status === 'ok' ? this.parseModelStats(res.data, cutoff) : null;
+        if (disk) {
+          for (const [date, accMap] of Object.entries(disk.days)) {
+            if (!this.modelStats.days[date]) this.modelStats.days[date] = {};
+            for (const [accId, models] of Object.entries(accMap)) {
+              if (!dirtyKeys.has(`${date}::${accId}`)) this.modelStats.days[date][accId] = models;
+            }
+          }
+          for (const [accId, dates] of Object.entries(disk.syncedDays)) {
+            const merged = new Set([...(this.modelStats.syncedDays[accId] || []), ...dates]);
+            this.modelStats.syncedDays[accId] = Array.from(merged).filter(d => d >= cutoff).sort();
+          }
+        }
+        atomicWriteJsonSync(this.modelStatsPath, {
+          schema: MODEL_STATS_SCHEMA, savedAt: Date.now(), days: this.modelStats.days, syncedDays: this.modelStats.syncedDays
+        });
+      });
     } catch (err: any) {
       console.warn('[UsageTracker] 保存模型统计失败:', err.message);
     }
   }
 
-  /**
-   * 拉取多天明细并聚合为 按天×账号×模型 消耗
-   * 节流：历史天按账号只同步一次（syncedDays 记账，失败天留洞下次补拉）；今天跟随自动刷新 3 分钟节流
-   */
   public async refreshModelStats(
     items: Array<{ id: string; token: string; uid: string }>,
     opts?: { days?: number; force?: boolean }
   ): Promise<boolean> {
-    if (this.modelStatsBusy) {
-      return false;
-    }
+    if (this.modelStatsBusy) return false;
+    this.loadModelStats();
     const wantDays = Math.min(MODEL_STATS_MAX_DAYS, Math.max(1, Math.floor(opts?.days ?? MODEL_STATS_MAX_DAYS)));
     const force = opts?.force === true;
     const now = Date.now();
-    const today = this.formatTime(now).dateStr;
-
-    // 生成请求窗口（从今天往旧排）
-    const wantDates: string[] = [];
-    for (let i = 0; i < wantDays; i++) {
-      wantDates.push(this.formatTime(now - i * 86400_000).dateStr);
-    }
-
-    // 今天节流：自动链路 3 分钟一次；手动 force 保底 10 秒防连点
+    const today = todayCN();
+    const wantDates = Array.from({ length: wantDays }, (_, i) => this.formatTime(now - i * 86400_000).dateStr);
     const todayBlocked = now - this.lastModelStatsTodayTs < (force ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS);
-
-    const valid = (items || []).filter((i) => i && i.id && i.token && i.uid);
+    const valid = (items || []).filter((i) => i?.id && i.token && i.uid);
     const jobs: Array<{ item: { id: string; token: string; uid: string }; date: string }> = [];
     for (const item of valid) {
       const synced = new Set(this.modelStats.syncedDays[item.id] || []);
       for (const date of wantDates) {
-        if (date === today) {
-          if (!todayBlocked) {
-            jobs.push({ item, date });
-          }
-          continue;
-        }
-        if (!synced.has(date)) {
-          jobs.push({ item, date });
-        }
+        if (date === today ? !todayBlocked : !synced.has(date)) jobs.push({ item, date });
       }
     }
-    if (!jobs.length) {
-      return false;
-    }
+    if (!jobs.length) return false;
 
     this.modelStatsBusy = true;
     try {
       let changed = false;
-      // 分批并发，节奏与今日明细拉取一致
       for (let k = 0; k < jobs.length; k += FETCH_CONCURRENCY) {
         const batch = jobs.slice(k, k + FETCH_CONCURRENCY);
         await Promise.all(batch.map(async (job) => {
           const r = await UsageTracker.fetchOfficialDaily(job.item.token, job.item.uid, job.date);
-          if (!r) {
-            return; // 失败：该天不写数据不入账，下次补拉
-          }
+          if (!r) return;
           const models: Record<string, ModelDayStat> = {};
           for (const row of r.rows) {
             const m = String(row.model || 'unknown');
@@ -556,13 +481,10 @@ export class UsageTracker {
             cur.count += 1;
             models[m] = cur;
           }
-          for (const m of Object.keys(models)) {
-            models[m].credits = Math.round(models[m].credits * 100) / 100;
-          }
-          if (!this.modelStats.days[job.date]) {
-            this.modelStats.days[job.date] = {};
-          }
+          for (const m of Object.keys(models)) models[m].credits = round2(models[m].credits);
+          if (!this.modelStats.days[job.date]) this.modelStats.days[job.date] = {};
           this.modelStats.days[job.date][job.item.id] = models;
+          this.dirtyModelKeys.add(`${job.date}::${job.item.id}`);
           if (job.date !== today) {
             const set = new Set(this.modelStats.syncedDays[job.item.id] || []);
             set.add(job.date);
@@ -571,7 +493,6 @@ export class UsageTracker {
           changed = true;
         }));
       }
-
       if (changed) {
         this.lastModelStatsTodayTs = now;
         this.saveModelStats();
@@ -582,7 +503,6 @@ export class UsageTracker {
     }
   }
 
-  /** 模型统计快照（深拷贝），随 postStateToWebview 推给侧栏做过滤渲染 */
   public getModelStatsSnapshot(): ModelStatsSnapshot {
     return {
       days: JSON.parse(JSON.stringify(this.modelStats.days)),
@@ -590,105 +510,64 @@ export class UsageTracker {
     };
   }
 
-  /** 官方请求明细（全账号合并，倒序），供侧栏明细列表展示 */
   public getRecentOfficialRequests(limit: number = 25): Array<Record<string, any>> {
-    if (this.dailyStats.date !== this.formatTime(Date.now()).dateStr) {
-      return [];
-    }
+    if (this.dailyStats.date !== todayCN()) return [];
     return this.dailyStats.recentRequests.slice(0, limit);
   }
 
-
-
-  private save(): void {
+  private saveRecords(replaceAll: boolean = false): void {
     try {
-      // 保持最新 MAX_RECORDS 条
-      if (this.records.length > MAX_RECORDS) {
-        this.records = this.records.slice(-MAX_RECORDS);
-      }
-      atomicWriteFileSync(
-        this.filePath,
-        JSON.stringify({ version: '1.0', updatedAt: Date.now(), records: this.records }, null, 2)
-      );
+      withFileLockSync(this.filePath, () => {
+        if (!replaceAll) {
+          const disk = readJsonFileSafe<{ records?: UsageRecord[] }>(this.filePath);
+          if (disk.status === 'ok' && Array.isArray(disk.data?.records)) {
+            const byId = new Map<string, UsageRecord>();
+            for (const r of disk.data.records) if (r?.id) byId.set(r.id, r);
+            for (const r of this.records) if (r?.id) byId.set(r.id, r);
+            this.records = Array.from(byId.values())
+              .sort((a, b) => (a.ts - b.ts) || ((a.seq || 0) - (b.seq || 0)))
+              .slice(-MAX_RECORDS);
+            this._seq = this.records.reduce((max, r) => Math.max(max, r.seq || 0), this._seq);
+          }
+        }
+        if (this.records.length > MAX_RECORDS) this.records = this.records.slice(-MAX_RECORDS);
+        atomicWriteJsonSync(this.filePath, { version: '1.0', updatedAt: Date.now(), records: this.records });
+      });
     } catch (err: any) {
       console.warn('[UsageTracker] 保存流水记录失败:', err.message);
     }
   }
 
-  private formatTime(ts: number): { timeStr: string; dateStr: string } {
-    const d = new Date(ts);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    return { timeStr, dateStr };
-  }
-
-  /**
-   * 记录配额快照差值 (Delta Snapshot)
-   * 当从云端刷新拿到新的总可用积分时调用，自动计算净消耗或新增
-   */
   public recordSnapshot(account: CodeBuddyAccount, newCredits: number, source: string = t('ut.snapshotSource')): void {
     const aid = account.id || account.uid;
     const name = account.nickname || account.email || account.uid;
     const prev = this.lastCreditsMap.get(aid);
-
-    // 首次载入仅打底，不产生虚假流水
-    if (prev === undefined) {
-      this.lastCreditsMap.set(aid, newCredits);
-      return;
-    }
-
     this.lastCreditsMap.set(aid, newCredits);
-    const delta = Math.round((newCredits - prev) * 100) / 100;
+    if (prev === undefined) return;
 
-    // 忽略小于 0.05 的微小浮点抖动
-    if (Math.abs(delta) < 0.05) {
-      return;
-    }
+    const delta = round2(newCredits - prev);
+    if (Math.abs(delta) < 0.05) return;
 
     const ts = Date.now();
     const { timeStr, dateStr } = this.formatTime(ts);
-
-    if (delta < 0) {
-      // 算力消耗 (写代码 / AI 对话)
-      this.records.push({
-        id: `rec_${ts}_${++this._seq}`,
-        seq: this._seq,
-        ts,
-        timeStr,
-        dateStr,
-        type: 'consume',
-        accountId: aid,
-        accountName: name,
-        deltaCredits: delta,
-        balanceAfter: newCredits,
-        title: t('ut.consumeTitle'),
-        detail: t('ut.consumeDetail', source, delta, newCredits)
-      });
-      this.save();
-    } else {
-      // 算力增加 (签到或任务奖励到账)
-      this.records.push({
-        id: `rec_${ts}_${++this._seq}`,
-        seq: this._seq,
-        ts,
-        timeStr,
-        dateStr,
-        type: 'reward',
-        accountId: aid,
-        accountName: name,
-        deltaCredits: delta,
-        balanceAfter: newCredits,
-        title: t('ut.gainTitle'),
-        detail: t('ut.gainDetail', source, delta, newCredits)
-      });
-      this.save();
-    }
+    const isConsume = delta < 0;
+    this.records.push({
+      id: `rec_${ts}_${++this._seq}`,
+      seq: this._seq,
+      ts,
+      timeStr,
+      dateStr,
+      type: isConsume ? 'consume' : 'reward',
+      accountId: aid,
+      accountName: name,
+      deltaCredits: delta,
+      balanceAfter: newCredits,
+      title: isConsume ? t('ut.consumeTitle') : t('ut.gainTitle'),
+      detail: isConsume ? t('ut.consumeDetail', source, delta, newCredits) : t('ut.gainDetail', source, delta, newCredits)
+    });
+    this.saveRecords();
   }
 
-  /**
-   * 记录明确的业务动作 (签到、打工、切号、告警)
-   */
   public recordAction(entry: {
     type: 'consume' | 'reward' | 'switch' | 'warn';
     accountId: string;
@@ -700,110 +579,69 @@ export class UsageTracker {
   }): void {
     const ts = Date.now();
     const { timeStr, dateStr } = this.formatTime(ts);
-    this.records.push({
-      id: `rec_${ts}_${++this._seq}`,
-        seq: this._seq,
-      ts,
-      timeStr,
-      dateStr,
-      ...entry
-    });
-
-    if (entry.type === 'switch') {
-      this.switchTimestamps.push(ts);
-    }
-
-    this.save();
+    this.records.push({ id: `rec_${ts}_${++this._seq}`, seq: this._seq, ts, timeStr, dateStr, ...entry });
+    if (entry.type === 'switch') this.switchTimestamps.push(ts);
+    this.saveRecords();
   }
 
-  /**
-   * 获取最近时间窗口内的切号次数 (用于熔断器判定)
-   */
   public getRecentSwitchCount(windowMs: number = 60_000): number {
     const now = Date.now();
-    this.switchTimestamps = this.switchTimestamps.filter(t => now - t <= windowMs);
+    this.switchTimestamps = this.switchTimestamps.filter(ts => now - ts <= windowMs);
     return this.switchTimestamps.length;
   }
 
-  /**
-   * 获取时间倒序排列的流水列表
-   * 注意：仅在构造时加载一次磁盘状态；运行期以内存为权威（save 为全量原子写），
-   * 避免读取动作覆盖本窗口刚写入的记录（跨平台文件时序差异防线）
-   */
   public getRecentRecords(limit: number = 50): UsageRecord[] {
     return [...this.records].sort((a, b) => (b.ts - a.ts) || ((b.seq || 0) - (a.seq || 0))).slice(0, limit);
   }
 
-  /**
-   * 获取今日经营对账总报表
-   * - 消耗 = 官方明细求和（权威）
-   * - 新增 = 官方今日发包容量求和 + （每月1号 ? activeAccountCount * 500 : 0）
-   */
   public getDailySummary(activeAccountCount: number = 0, targetDate?: string): DailySummary {
-    const today = targetDate || this.formatTime(Date.now()).dateStr;
+    const today = targetDate || todayCN();
     const sameDay = this.dailyStats.date === today;
-
-    let switchCount = 0;
-    for (const r of this.records) {
-      if (r.dateStr === today && r.type === 'switch') {
-        switchCount++;
-      }
-    }
-
+    const switchCount = this.records.filter(r => r.dateStr === today && r.type === 'switch').length;
     const consumed = sameDay ? this.dailyStats.consumed : 0;
     const grants = sameDay ? this.dailyStats.grants : 0;
-
-    // 单账号口径与总量同源：跨天直接清零，避免把昨日流水挂到今日卡片上
     const perAccountConsumed = sameDay ? { ...this.dailyStats.perAccountConsumed } : {};
     const perAccountGrants = sameDay ? { ...this.dailyStats.perAccountGrants } : {};
 
-    // 每月 1 号基础体验包重置基数：每号 500（按日期串直接解析，避免 UTC 偏移误判成上月最后一天）
-    const dayOfMonth = Number(today.slice(8, 10));
-    const isFirstDayOfMonth = dayOfMonth === 1;
-    const firstDayBonus = isFirstDayOfMonth ? Math.max(0, activeAccountCount) * 500 : 0;
-    const totalAwarded = Math.round((grants + firstDayBonus) * 100) / 100;
-
+    const firstDayBonus = today.slice(8, 10) === '01' ? Math.max(0, activeAccountCount) * 500 : 0;
     return {
       date: today,
-      totalConsumed: sameDay ? Math.round(consumed * 100) / 100 : 0,
-      totalAwarded,
+      totalConsumed: sameDay ? round2(consumed) : 0,
+      totalAwarded: round2(grants + firstDayBonus),
       switchCount,
       perAccountConsumed,
       perAccountGrants
     };
   }
 
-  /** 手动写入今日消耗（测试与离线兜底） */
-  public updateTodayConsumed(total: number): void {
-    const today = this.formatTime(Date.now()).dateStr;
-    const value = Math.round(total * 100) / 100;
+  private updateManualDailyField(field: 'consumed' | 'grants', total: number): void {
+    const today = todayCN();
+    const value = round2(total);
     if (this.dailyStats.date !== today) {
-      this.dailyStats = { schema: DAILY_STATS_SCHEMA, date: today, consumed: value, grants: 0, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests, fetchState: {} };
-    } else {
-      this.dailyStats.consumed = value;
+      this.dailyStats = createEmptyDailyStats(today);
+      this.dailyManualOverride.reset = true;
+    }
+    this.dailyStats[field] = value;
+    if (field === 'consumed') {
       this.dailyStats.perAccountConsumed = {};
-    }
-    this.saveDailyStats();
-  }
-
-  /** 手动写入今日到账（测试与离线兜底） */
-  public updateTodayGrants(total: number): void {
-    const today = this.formatTime(Date.now()).dateStr;
-    const value = Math.round(total * 100) / 100;
-    if (this.dailyStats.date !== today) {
-      this.dailyStats = { schema: DAILY_STATS_SCHEMA, date: today, consumed: 0, grants: value, perAccountConsumed: {}, perAccountGrants: {}, recentRequests: this.dailyStats.recentRequests, fetchState: {} };
+      this.dailyManualOverride.consumed = true;
     } else {
-      this.dailyStats.grants = value;
       this.dailyStats.perAccountGrants = {};
+      this.dailyManualOverride.grants = true;
     }
     this.saveDailyStats();
   }
 
-  /**
-   * 清空流水历史记录
-   */
+  public updateTodayConsumed(total: number): void {
+    this.updateManualDailyField('consumed', total);
+  }
+
+  public updateTodayGrants(total: number): void {
+    this.updateManualDailyField('grants', total);
+  }
+
   public clearRecords(): void {
     this.records = [];
-    this.save();
+    this.saveRecords(true);
   }
 }
