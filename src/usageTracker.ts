@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { PATHS } from './constants';
 import { atomicWriteJsonSync, readJsonFileSafe, withFileLockSync } from './atomicFile';
-import { CodeBuddyAccount } from './accountStore';
+import { CodeBuddyAccount, resolveAccountDisplayName } from './accountStore';
 import { todayCN } from './checkinService';
 import { t } from './i18n';
 
@@ -540,7 +540,7 @@ export class UsageTracker {
 
   public recordSnapshot(account: CodeBuddyAccount, newCredits: number, source: string = t('ut.snapshotSource')): void {
     const aid = account.id || account.uid;
-    const name = account.nickname || account.email || account.uid;
+    const name = resolveAccountDisplayName(account);
     const prev = this.lastCreditsMap.get(aid);
     this.lastCreditsMap.set(aid, newCredits);
     if (prev === undefined) return;

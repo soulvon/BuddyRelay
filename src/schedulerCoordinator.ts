@@ -6,6 +6,7 @@ import { AutoSwitcher, RotationEvent } from './autoSwitcher';
 import { CheckinScheduler } from './checkinScheduler';
 import { CooldownLogWatcher } from './cooldownLogWatcher';
 import { UsageTracker } from './usageTracker';
+import { TokenLedger } from './tokenLedger';
 import { acquireLock, tryClaimSchedulerLeader, releaseSchedulerLeader } from './accountLock';
 import { checkForUpdates } from './updater';
 import { formatAccountLabel } from './importExportService';
@@ -20,6 +21,7 @@ export interface SchedulerCoordinatorDeps {
   checkinScheduler: CheckinScheduler;
   cooldownWatcher: CooldownLogWatcher;
   usageTracker: UsageTracker;
+  tokenLedger?: TokenLedger;
   onStateUpdated: () => void;
   onNotify: (level: 'success' | 'error' | 'warn', message: string, detail?: string) => void;
   onRequestTaskRunAuto: () => Promise<void>;
@@ -36,6 +38,7 @@ export class SchedulerCoordinator implements vscode.Disposable {
   private startupTimers: NodeJS.Timeout[] = [];
   private checkinTimer: NodeJS.Timeout | null = null;
   private quotaRefreshTimer: NodeJS.Timeout | null = null;
+  private tokenRefreshTimer: NodeJS.Timeout | null = null;
   private cleanups: Array<() => void> = [];
   private started = false;
   private disposed = false;
@@ -54,7 +57,7 @@ export class SchedulerCoordinator implements vscode.Disposable {
     if (this.started || this.disposed) return;
     this.started = true;
 
-    const { store, checkinService, autoSwitcher, checkinScheduler, cooldownWatcher, usageTracker } = this.deps;
+    const { store, checkinService, autoSwitcher, checkinScheduler, cooldownWatcher, usageTracker, tokenLedger } = this.deps;
     const cfg = vscode.workspace.getConfiguration('buddyRelay');
 
     // 1. 绑定 Leader 检查到定点签到与 Token 全局刷新
@@ -102,7 +105,27 @@ export class SchedulerCoordinator implements vscode.Disposable {
       'rateLimit',
       (ev) => { void autoSwitcher.handlePassiveRateLimit(ev.uid, ev.model, ev.resetAt); }
     );
+    this.bindEvent(cooldownWatcher, 'usageLog', () => {
+      if (!tokenLedger || this.disposed) return;
+      if (this.tokenRefreshTimer) clearTimeout(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = setTimeout(() => {
+        this.tokenRefreshTimer = null;
+        if (this.disposed) return;
+        void tokenLedger.getSummary(true).then(() => {
+          if (!this.disposed) this.deps.onStateUpdated();
+        }).catch(() => {});
+      }, 800);
+    });
     cooldownWatcher.start();
+
+    if (tokenLedger) {
+      this.startupTimers.push(setTimeout(() => {
+        if (this.disposed) return;
+        void tokenLedger.getSummary(false).then(() => {
+          if (!this.disposed) this.deps.onStateUpdated();
+        }).catch(() => {});
+      }, 1200));
+    }
 
     // 4. 定点签到调度器
     checkinScheduler.onScheduleSummary((success, total, awarded) => {
@@ -257,6 +280,10 @@ export class SchedulerCoordinator implements vscode.Disposable {
     if (this.quotaRefreshTimer) {
       clearInterval(this.quotaRefreshTimer);
       this.quotaRefreshTimer = null;
+    }
+    if (this.tokenRefreshTimer) {
+      clearTimeout(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = null;
     }
 
     const { autoSwitcher, checkinScheduler, cooldownWatcher } = this.deps;

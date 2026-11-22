@@ -148,7 +148,7 @@ async function run() {
   );
 
   // 6. StatusBar QuickPick 展示他窗占用标识，且运行期 handleRefreshAccount 真实只同步目标账号
-  console.log('[测试 6/6] QuickPick 他窗状态提示与单卡后端刷新实测');
+  console.log('[测试 6/7] QuickPick 他窗状态提示与单卡后端刷新实测');
   check(
     'StatusBar QuickPick 引入 getOtherLockedUids 标记他窗占用',
     statusBarTs.includes('getOtherLockedUids')
@@ -195,6 +195,48 @@ async function run() {
   } finally {
     Module._load = origLoad;
   }
+
+  // 7. 自定义显示名称前端模板与交互完整性（Issue #3）
+  console.log('[测试 7/7] 自定义显示名称编辑框与全视图适配检查');
+  check(
+    'sidebar.html 编辑弹窗包含 #editMetaDisplayName 输入框且限长 64',
+    html.includes('id="editMetaDisplayName"') && /id="editMetaDisplayName"[^>]*maxlength="64"/.test(html)
+  );
+  check(
+    'sidebar.js 定义 getAccountRawName 并用于名称排序、搜索过滤与卡片指纹',
+    js.includes('function getAccountRawName(') &&
+    /sortBy === ['"]name['"][\s\S]{0,160}getAccountRawName/.test(js) &&
+    /searchQuery[\s\S]{0,200}displayName/.test(js) &&
+    /cardsFp[\s\S]{0,600}a\.displayName/.test(js)
+  );
+  check(
+    'sidebar.js 保存元数据携带 displayName 并覆盖隐私模式 Toast 脱敏与弹窗同步',
+    /updateAccountMeta[\s\S]{0,160}displayName/.test(js) &&
+    /sanitizeToastText[\s\S]{0,350}acc\.displayName/.test(js) &&
+    /onDelete[\s\S]{0,160}getAccountRawName/.test(js) &&
+    /usageAccountLabel[\s\S]{0,160}getAccountRawName/.test(js)
+  );
+  check(
+    'sidebar.js 编辑弹窗 Enter 提交具备 IME 输入法防误触守卫 (!e.isComposing)',
+    /editMetaDisplayName\.addEventListener\('keydown'[\s\S]{0,160}!e\.isComposing/.test(js) &&
+    /editMetaTags\.addEventListener\('keydown'[\s\S]{0,160}!e\.isComposing/.test(js)
+  );
+
+  // 8. 本地 Token 消耗统计面板、卡片条与指纹穿透验证
+  console.log('[测试 8/8] 本地 Token 统计 UI 与卡片交互闭合');
+  check(
+    'sidebar.html 包含顶部 #tokenStatsBar（翠绿/琥珀胶囊）与 #tabContentTokens 多维分析页',
+    html.includes('id="tokenStatsBar"') &&
+    html.includes('id="todayTokensBadge"') &&
+    html.includes('id="todayCostBadge"') &&
+    html.includes('id="tabContentTokens"')
+  );
+  check(
+    'sidebar.js 卡片渲染、指纹与委托覆盖 .grid-card-tokens / openAccountTokens / a.tokenStats',
+    js.includes('grid-card-tokens') &&
+    js.includes("action === 'openAccountTokens'") &&
+    /cardsFp[\s\S]{0,900}a\.tokenStats/.test(js)
+  );
 
   console.log(`\n=== 结果: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) {

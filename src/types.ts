@@ -21,6 +21,8 @@ export interface CodeBuddyAccount {
   email: string;
   /** 昵称 */
   nickname: string;
+  /** 用户自定义显示名称（留空时回退 nickname / email） */
+  displayName?: string;
   /** JWT 访问令牌 */
   accessToken: string;
   /** 刷新令牌 */

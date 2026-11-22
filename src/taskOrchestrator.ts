@@ -1,4 +1,4 @@
-import { AccountStore, CodeBuddyAccount } from './accountStore';
+import { AccountStore, CodeBuddyAccount, resolveAccountDisplayName } from './accountStore';
 import { CheckinService } from './checkinService';
 import { isCnAccount } from './domain';
 import { GrowthAssetSummary, GrowthTask, GrowthTaskService } from './growthTaskService';
@@ -77,7 +77,7 @@ export class TaskOrchestrator {
       this.deps.growthTasks.listTasks(target),
       this.deps.growthTasks.getGrowthAssetSummary(target)
     ]);
-    this.pushTasksToWebview(tasks, target.id, target.nickname || target.email, assetSummary);
+    this.pushTasksToWebview(tasks, target.id, resolveAccountDisplayName(target), assetSummary);
   }
 
   private resolveCnTargets(accountIds?: string[] | null): CodeBuddyAccount[] {
@@ -125,7 +125,7 @@ export class TaskOrchestrator {
       if (tasks.length === 0 && sourceErrors.length > 0) {
         this.deps.sendNotify('error', t('err.readTasksFailed', sourceErrors.join(' | ')));
       }
-      this.pushTasksToWebview(tasks, target.id, target.nickname || target.email, assetSummary);
+      this.pushTasksToWebview(tasks, target.id, resolveAccountDisplayName(target), assetSummary);
     } catch (err: any) {
       this.deps.sendNotify('error', t('err.readTasksFailed', err?.message || String(err)));
     } finally {
@@ -194,7 +194,7 @@ export class TaskOrchestrator {
     try {
       for (let i = 0; i < targets.length; i++) {
         const acc = targets[i];
-        const rawName = acc.nickname || acc.email;
+        const rawName = resolveAccountDisplayName(acc);
         const safeLabel = this.displayLabel(acc);
         if (this.abortTaskBatch) {
           wasStopped = true;

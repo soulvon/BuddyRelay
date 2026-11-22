@@ -47,6 +47,14 @@
   let modelStatsSyncRequested = false;
   let modelStatsFingerprint = '';
 
+  let activeUsageTab = 'model';
+  let lastTokenLedger = null;
+  let tokenRange = 'today';
+  let tokenMode = 'total';
+  let tokenAccountFilter = 'all';
+  let tokenSourceFilter = 'all';
+  let tokenStatsFingerprint = '';
+
   let currentTasks = [];
   let viewingAccountId = null;
   let editingMetaAccountId = '';
@@ -107,10 +115,35 @@
     return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
   }
 
+  function fmtCompactTok(n) {
+    const v = Number(n || 0);
+    if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B tok';
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M tok';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K tok';
+    return Math.round(v) + ' tok';
+  }
+
+  function fmtUsd(n) {
+    const v = Number(n || 0);
+    if (v <= 0) return '$0.00';
+    if (v < 0.01) return '<$0.01';
+    if (v < 100) return '$' + v.toFixed(2);
+    return '$' + v.toFixed(1);
+  }
+
   function fmtCooldownTime(ts) {
     const d = new Date(ts);
     const p = (n) => String(n).padStart(2, '0');
     return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function getAccountOriginName(acc) {
+    return (acc && (acc.nickname || acc.email)) || '';
+  }
+
+  function getAccountRawName(acc) {
+    const custom = acc && acc.displayName ? String(acc.displayName).trim() : '';
+    return custom || getAccountOriginName(acc);
   }
 
   function levelClass(percent, remain) {
@@ -240,6 +273,18 @@
   const tabContentModel = document.getElementById('tabContentModel');
   const tabContentLogs = document.getElementById('tabContentLogs');
   const btnRefreshUsage = document.getElementById('btnRefreshUsage');
+  const tokenStatsBar = document.getElementById('tokenStatsBar');
+  const todayTokensBadge = document.getElementById('todayTokensBadge');
+  const todayCostBadge = document.getElementById('todayCostBadge');
+  const btnOpenTokenDetail = document.getElementById('btnOpenTokenDetail');
+  const tabContentTokens = document.getElementById('tabContentTokens');
+  const tokenStatsRange = document.getElementById('tokenStatsRange');
+  const tokenStatsMode = document.getElementById('tokenStatsMode');
+  const tokenStatsAccount = document.getElementById('tokenStatsAccount');
+  const tokenStatsSource = document.getElementById('tokenStatsSource');
+  const tokenStatsKpiBar = document.getElementById('tokenStatsKpiBar');
+  const tokenStatsBody = document.getElementById('tokenStatsBody');
+  const usageModalHint = document.getElementById('usageModalHint');
 
   const restartModalOverlay = document.getElementById('restartModalOverlay');
   const restartNowBtn = document.getElementById('restartNowBtn');
@@ -258,6 +303,7 @@
   const editMetaCancel = document.getElementById('editMetaCancel');
   const editMetaSave = document.getElementById('editMetaSave');
   const editMetaAccountName = document.getElementById('editMetaAccountName');
+  const editMetaDisplayName = document.getElementById('editMetaDisplayName');
   const editMetaTags = document.getElementById('editMetaTags');
   const editMetaNotes = document.getElementById('editMetaNotes');
 
@@ -387,6 +433,10 @@
     if (!privacyMode) return raw;
     let out = raw.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, (m) => maskEmail(m));
     for (const acc of currentAccounts) {
+      const disp = acc.displayName && String(acc.displayName).trim();
+      if (disp && disp.length >= 2 && out.includes(disp)) {
+        out = out.split(disp).join(maskName(disp));
+      }
       const nick = acc.nickname && String(acc.nickname).trim();
       if (nick && nick.length >= 2 && out.includes(nick)) {
         out = out.split(nick).join(maskName(nick));
@@ -655,26 +705,38 @@
   if (restartModalClose) restartModalClose.addEventListener('click', hideRestartModal);
   if (restartModalOverlay) restartModalOverlay.addEventListener('click', (e) => { if (e.target === restartModalOverlay) hideRestartModal(); });
 
+  function submitEditMeta() {
+    if (!editingMetaAccountId) return;
+    const displayName = editMetaDisplayName ? editMetaDisplayName.value.trim() : '';
+    const notes = editMetaNotes.value.trim();
+    const tags = editMetaTags.value.trim().split(/\s+/).filter(Boolean);
+    vscode.postMessage({ command: 'updateAccountMeta', accountId: editingMetaAccountId, displayName, notes, tags });
+    closeModal(editMetaModalOverlay);
+  }
+
   window.onEditMeta = function (id) {
     editingMetaAccountId = id;
     const acc = currentAccounts.find((a) => a.id === id);
     if (!acc) return;
-    const rawName = acc.nickname || acc.email;
-    editMetaAccountName.textContent = privacyMode ? maskName(rawName) : rawName;
+    const originName = getAccountOriginName(acc);
+    editMetaAccountName.textContent = privacyMode ? maskName(originName) : originName;
+    if (editMetaDisplayName) editMetaDisplayName.value = acc.displayName || '';
     editMetaTags.value = Array.isArray(acc.tags) ? acc.tags.join(' ') : '';
     editMetaNotes.value = acc.notes || '';
-    openModal(editMetaModalOverlay, editMetaTags);
+    openModal(editMetaModalOverlay, editMetaDisplayName || editMetaTags);
   };
   if (editMetaClose) editMetaClose.addEventListener('click', () => closeModal(editMetaModalOverlay));
   if (editMetaCancel) editMetaCancel.addEventListener('click', () => closeModal(editMetaModalOverlay));
   if (editMetaModalOverlay) editMetaModalOverlay.addEventListener('click', (e) => { if (e.target === editMetaModalOverlay) closeModal(editMetaModalOverlay); });
-  if (editMetaSave) {
-    editMetaSave.addEventListener('click', () => {
-      if (!editingMetaAccountId) return;
-      const notes = editMetaNotes.value.trim();
-      const tags = editMetaTags.value.trim().split(/\s+/).filter(Boolean);
-      vscode.postMessage({ command: 'updateAccountMeta', accountId: editingMetaAccountId, notes, tags });
-      closeModal(editMetaModalOverlay);
+  if (editMetaSave) editMetaSave.addEventListener('click', submitEditMeta);
+  if (editMetaDisplayName) {
+    editMetaDisplayName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submitEditMeta(); }
+    });
+  }
+  if (editMetaTags) {
+    editMetaTags.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submitEditMeta(); }
     });
   }
 
@@ -691,7 +753,7 @@
     if (eyeOff) { if (privacyMode) eyeOff.removeAttribute('hidden'); else eyeOff.setAttribute('hidden', ''); }
     if (editingMetaAccountId && editMetaModalOverlay && !editMetaModalOverlay.hidden) {
       const acc = currentAccounts.find((a) => a.id === editingMetaAccountId);
-      if (acc) editMetaAccountName.textContent = maskName(acc.nickname || acc.email);
+      if (acc) editMetaAccountName.textContent = maskName(getAccountOriginName(acc));
     }
     if (lastUsageRecords.length) safeRender('usage', document.getElementById('usageRecordsList'), () => renderUsageRecords(lastUsageRecords, lastUsageSummary));
   }
@@ -864,6 +926,18 @@
     });
   }
 
+  function renderTokenSummaryBar() {
+    const today = lastTokenLedger && lastTokenLedger.totals && lastTokenLedger.totals.today;
+    const last30d = lastTokenLedger && lastTokenLedger.totals && lastTokenLedger.totals.last30d;
+    if (todayTokensBadge) todayTokensBadge.textContent = fmtCompactTok(today ? today.total : 0);
+    if (todayCostBadge) todayCostBadge.textContent = fmtUsd(today ? today.costUsd : 0);
+    if (tokenStatsBar) {
+      tokenStatsBar.title = today
+        ? t('ui.tokenStatsTitle') + ' (' + t('js.cardTokensToday', fmtCompactTok(today.total), fmtUsd(today.costUsd)) + ' · ' + t('ui.range30d') + ' ' + fmtCompactTok(last30d ? last30d.total : 0) + ' / ' + fmtUsd(last30d ? last30d.costUsd : 0) + ')'
+        : t('ui.tokenStatsTitle');
+    }
+  }
+
   function sortAccountList(list) {
     if (sortBy === 'quota') {
       return [...list].sort((a, b) => (b.totalCredits || 0) - (a.totalCredits || 0));
@@ -872,7 +946,7 @@
       return [...list].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
     }
     if (sortBy === 'name') {
-      return [...list].sort((a, b) => String(a.nickname || a.email || '').localeCompare(String(b.nickname || b.email || '')));
+      return [...list].sort((a, b) => String(getAccountRawName(a)).localeCompare(String(getAccountRawName(b))));
     }
     return list;
   }
@@ -884,6 +958,7 @@
       let list = currentAccounts;
       if (searchQuery) {
         list = list.filter((a) =>
+          (a.displayName || '').toLowerCase().includes(searchQuery) ||
           (a.nickname || '').toLowerCase().includes(searchQuery) ||
           (a.email || '').toLowerCase().includes(searchQuery) ||
           (a.uid || '').toLowerCase().includes(searchQuery) ||
@@ -924,9 +999,10 @@
         (currentLockedUids || []).join(','),
         JSON.stringify(lastCooldownEvents ? lastCooldownEvents.byUid || {} : {}),
         list.map((a) => [
-          a.id, a.uid, a.nickname, a.email, a.status, a.isActive ? 1 : 0,
+          a.id, a.uid, a.displayName || '', a.nickname, a.email, a.status, a.isActive ? 1 : 0,
           a.totalCredits, a.todayConsumed, a.todayGrants, a.todayCheckedIn ? 1 : 0,
           a.checkinStreak, a.notes || '', (a.tags || []).join('|'),
+          a.tokenStats ? [a.tokenStats.todayTokens, a.tokenStats.todayCostUsd, a.tokenStats.totalTokens, a.tokenStats.totalCalls].join('/') : '',
           a.basePackage ? a.basePackage.remain + '/' + a.basePackage.total : '',
           a.activityPackage ? a.activityPackage.remain + '/' + a.activityPackage.total : ''
         ].join(':')).join(';')
@@ -936,12 +1012,17 @@
 
       const prevGridScroll = accountGrid.scrollTop;
       const prevDocScroll = window.scrollY || 0;
+      const cardTokSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="0.5"/><rect x="12" y="8" width="3" height="10" rx="0.5"/><rect x="17" y="5" width="3" height="13" rx="0.5"/></svg>';
 
       accountGrid.innerHTML = list.map((acc) => {
         const isActive = acc.isActive;
         const safeId = escAttr(acc.id);
-        const rawName = acc.nickname || acc.email;
+        const rawName = getAccountRawName(acc);
         const displayName = maskName(rawName);
+        const originRaw = getAccountOriginName(acc);
+        const customTrimmed = acc.displayName ? String(acc.displayName).trim() : '';
+        const hasCustomName = Boolean(customTrimmed && originRaw && customTrimmed !== originRaw);
+        const titleTip = hasCustomName ? (displayName + ' (' + maskName(originRaw) + ')') : displayName;
         const displayUid = maskUid(acc.uid);
         const planText = String(acc.paymentType || 'free').toLowerCase().replace(/[^a-z0-9_-]/g, '');
         const planLabel = planText ? planText.charAt(0).toUpperCase() + planText.slice(1) : 'Free';
@@ -1009,10 +1090,27 @@
 
         const basePct = Math.max(0, Math.min(100, Number(base.percent || 0)));
         const actPct = Math.max(0, Math.min(100, Number(act.percent || 0)));
+        const ts = acc.tokenStats;
+        let tokenBarHtml = '';
+        if (ts && ts.todayTokens > 0) {
+          tokenBarHtml = '<button type="button" class="grid-card-tokens" data-action="openAccountTokens" data-uid="' + escAttr(acc.uid) + '" title="' + escAttr(t('js.cardTokensHint')) + '">'
+            + '<span class="grid-card-tokens-main">' + cardTokSvg + '<span>' + escHtml(t('js.cardTokensToday', fmtCompactTok(ts.todayTokens), fmtUsd(ts.todayCostUsd))) + '</span></span>'
+            + '<span class="grid-card-tokens-sub">' + escHtml(t('js.cardTokensTotal', fmtCompactTok(ts.totalTokens))) + '</span>'
+            + '</button>';
+        } else if (ts && ts.totalTokens > 0) {
+          tokenBarHtml = '<button type="button" class="grid-card-tokens" data-action="openAccountTokens" data-uid="' + escAttr(acc.uid) + '" title="' + escAttr(t('js.cardTokensHint')) + '">'
+            + '<span class="grid-card-tokens-main">' + cardTokSvg + '<span>' + escHtml(t('js.cardTokensTotalOnly', fmtCompactTok(ts.totalTokens), fmtUsd(ts.totalCostUsd))) + '</span></span>'
+            + '<span class="grid-card-tokens-sub">' + escHtml(t('ui.tokenCallsFmt', fmtNum(ts.totalCalls))) + '</span>'
+            + '</button>';
+        } else if (isActive) {
+          tokenBarHtml = '<button type="button" class="grid-card-tokens is-pending" data-action="openAccountTokens" data-uid="' + escAttr(acc.uid) + '" title="' + escAttr(t('js.cardTokensHint')) + '">'
+            + '<span class="grid-card-tokens-main">' + cardTokSvg + '<span>' + escHtml(t('js.cardTokensPending')) + '</span></span>'
+            + '</button>';
+        }
         return `
           <div class="grid-card ${isActive ? 'is-active' : ''} ${isDisabled ? 'is-disabled' : ''}" data-id="${safeId}">
             <div class="grid-card-head">
-              <div class="grid-card-email" title="${escAttr(displayName)}">${escHtml(displayName)}</div>
+              <div class="grid-card-email" title="${escAttr(titleTip)}">${escHtml(displayName)}</div>
               ${isActive ? '<span class="grid-active-tag">' + escHtml(t('js.currentSuffix').trim()) + '</span>' : (isDisabled ? '<span class="grid-disabled-tag">' + escHtml(t('js.disabled')) + '</span>' : '')}
             </div>
             <div class="grid-card-meta">
@@ -1048,6 +1146,7 @@
               <div class="grid-extra-row"><span>${escHtml(t('js.streakLabel'))}</span><span class="grid-extra-val" data-field="streak">${escHtml(t('js.streakDaysUnit', acc.checkinStreak || 0))}</span></div>
               <div class="grid-extra-row"><span class="grid-extra-val" data-field="uid" title="${escAttr(t('js.copyUidTitle'))}">${escHtml(displayUid)}</span>${todayStatsHtml}</div>
             </div>
+            ${tokenBarHtml}
             <div class="grid-card-actions">
               ${leftAction}
               <div class="grid-actions-right">
@@ -1112,7 +1211,7 @@
   };
   window.onDelete = async function (id) {
     const acc = currentAccounts.find((a) => a.id === id);
-    const rawName = acc ? (acc.nickname || acc.email) : t('js.thisAccount');
+    const rawName = acc ? getAccountRawName(acc) : t('js.thisAccount');
     const name = privacyMode ? maskName(rawName) : rawName;
     const ok = await showConfirm(t('js.removeConfirm', name), t('js.removeConfirmTitle'), t('js.removeConfirmBtn'), true);
     if (ok) vscode.postMessage({ command: 'deleteAccount', accountId: id, confirmed: true });
@@ -1169,6 +1268,7 @@
       else if (action === 'refresh') window.onRefresh(id);
       else if (action === 'delete') void window.onDelete(id);
       else if (action === 'toggleStatus') window.onToggleStatus(id);
+      else if (action === 'openAccountTokens') openTokenModalForAccount(actionEl.dataset.uid || '');
     });
   }
 
@@ -1197,7 +1297,7 @@
 
       taskAcctList.innerHTML = currentAccounts.map((acc) => {
         const checked = selectedAccountIds.has(acc.id);
-        const rawName = acc.nickname || acc.email;
+        const rawName = getAccountRawName(acc);
         const name = privacyMode ? maskName(rawName) : rawName;
         const suffix = acc.isActive ? t('js.currentSuffixShort') : '';
         return '<label class="acct-chip ' + (checked ? 'is-selected' : '') + '" title="' + escAttr(name) + '">' +
@@ -1221,7 +1321,7 @@
       } else if (selectedAccountIds.size === 1) {
         const singleId = Array.from(selectedAccountIds)[0];
         const singleAcc = currentAccounts.find((a) => a.id === singleId);
-        const sName = singleAcc ? (singleAcc.nickname || singleAcc.email) : t('js.oneAccount');
+        const sName = singleAcc ? getAccountRawName(singleAcc) : t('js.oneAccount');
         const maskedSingle = privacyMode ? maskName(sName) : sName;
         taskAccountSummary.textContent = maskedSingle + (singleAcc && singleAcc.isActive ? t('js.currentSuffixShort') : '');
         taskFooterHint.textContent = t('js.willRunOne', maskedSingle);
@@ -1489,7 +1589,7 @@
   function usageAccountLabel(accountId) {
     const acc = currentAccounts.find((a) => a.id === accountId);
     if (!acc) return t('ui.usageUnknownAccount');
-    const raw = acc.nickname || acc.email || accountId;
+    const raw = getAccountRawName(acc) || accountId;
     return privacyMode ? maskName(raw) : raw;
   }
 
@@ -1508,6 +1608,7 @@
 
     safeRender('usageRecords', container, () => {
       const fingerprint = (privacyMode ? 'p1' : 'p0')
+        + '#' + currentAccounts.map((a) => a.id + ':' + getAccountRawName(a)).join(',')
         + '#' + lastUsageRecords.map((r) => r.requestId + '|' + r.accountId + '|' + r.credit).join(',')
         + '#' + (summary ? (summary.totalAwarded || 0) + '/' + (summary.totalConsumed || 0) : '');
       if (fingerprint === lastUsageFingerprint && container.children.length) return;
@@ -1717,24 +1818,247 @@
     vscode.postMessage({ command: 'refreshModelStats', days: modelStatsDays });
   }
 
+  function shiftUtc8Date(baseDateStr, deltaDays) {
+    const parts = String(baseDateStr || '').split('-').map(Number);
+    const ms = parts.length === 3 && parts[0] > 2000
+      ? Date.UTC(parts[0], parts[1] - 1, parts[2]) + deltaDays * 86400000
+      : Date.now() + 8 * 3600000 + deltaDays * 86400000;
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+  }
+
+  function tokenAllowedDateSet() {
+    const today = (lastTokenLedger && lastTokenLedger.todayKey) || shiftUtc8Date('', 0);
+    if (tokenRange === 'today') return new Set([today]);
+    if (tokenRange === '7d' || tokenRange === '30d') {
+      const n = tokenRange === '7d' ? 7 : 30;
+      const s = new Set();
+      for (let i = 0; i < n; i++) s.add(shiftUtc8Date(today, -i));
+      return s;
+    }
+    return null;
+  }
+
+  function syncTokenFilterControls() {
+    if (tokenStatsRange) {
+      tokenStatsRange.querySelectorAll('.model-seg-btn').forEach((el) => el.classList.toggle('is-active', el.getAttribute('data-range') === tokenRange));
+    }
+    if (tokenStatsMode) {
+      tokenStatsMode.querySelectorAll('.model-seg-btn').forEach((el) => el.classList.toggle('is-active', el.getAttribute('data-mode') === tokenMode));
+    }
+    if (tokenStatsAccount) tokenStatsAccount.value = tokenAccountFilter || 'all';
+    if (tokenStatsSource) tokenStatsSource.value = tokenSourceFilter || 'all';
+  }
+
+  function fillTokenAccountOptions() {
+    if (!tokenStatsAccount) return;
+    const seen = new Set();
+    const opts = [{ val: 'all', label: t('ui.modelStatsAllAccounts') }];
+    for (const acc of currentAccounts) {
+      if (!acc.uid || seen.has(acc.uid)) continue;
+      seen.add(acc.uid);
+      const raw = getAccountRawName(acc) || acc.uid;
+      opts.push({ val: acc.uid, label: privacyMode ? maskName(raw) : raw });
+    }
+    const slices = (lastTokenLedger && Array.isArray(lastTokenLedger.slices)) ? lastTokenLedger.slices : [];
+    let hasUnattributed = false;
+    for (const sl of slices) {
+      if (!sl.uid) continue;
+      if (sl.uid === 'unattributed') { hasUnattributed = true; continue; }
+      if (!seen.has(sl.uid)) {
+        seen.add(sl.uid);
+        opts.push({ val: sl.uid, label: maskUid(sl.uid) });
+      }
+    }
+    if (hasUnattributed) opts.push({ val: 'unattributed', label: t('ui.tokenUnattributed') });
+    tokenStatsAccount.innerHTML = opts.map((o) => '<option value="' + escAttr(o.val) + '">' + escHtml(o.label) + '</option>').join('');
+    const validVals = new Set(opts.map((o) => o.val));
+    tokenAccountFilter = validVals.has(tokenAccountFilter) ? tokenAccountFilter : 'all';
+    tokenStatsAccount.value = tokenAccountFilter;
+  }
+
+  function formatTokenMetric(item) {
+    if (tokenMode === 'usd') return fmtUsd(item.costUsd);
+    if (tokenMode === 'weighted') return fmtCompactTok(item.weighted);
+    return fmtCompactTok(item.total);
+  }
+
+  function pickTokenMetricNum(item) {
+    if (tokenMode === 'usd') return Number(item.costUsd || 0);
+    if (tokenMode === 'weighted') return Number(item.weighted || 0);
+    return Number(item.total || 0);
+  }
+
+  function sourceDisplayName(src) {
+    if (src === 'ide') return t('ui.tokenSourceIde');
+    if (src === 'cli') return t('ui.tokenSourceCli');
+    if (src === 'workbuddy') return t('ui.tokenSourceWorkbuddy');
+    return String(src || '');
+  }
+
+  function renderTokenStats() {
+    if (!tokenStatsBody) return;
+    safeRender('tokenStats', tokenStatsBody, () => {
+      fillTokenAccountOptions();
+      const grandBadge = document.getElementById('modelStatsGrandTotal');
+      const slices = (lastTokenLedger && Array.isArray(lastTokenLedger.slices)) ? lastTokenLedger.slices : [];
+      const scannedAt = lastTokenLedger ? lastTokenLedger.scannedAt : 0;
+      const fp = [
+        privacyMode ? '1' : '0', tokenRange, tokenMode, tokenAccountFilter, tokenSourceFilter,
+        scannedAt, currentAccounts.map((a) => a.uid + ':' + getAccountRawName(a)).join(',')
+      ].join('#');
+      if (fp === tokenStatsFingerprint && tokenStatsBody.children.length) return;
+      tokenStatsFingerprint = fp;
+
+      const allowedDates = tokenAllowedDateSet();
+      const filtered = slices.filter((sl) => {
+        if (allowedDates && !allowedDates.has(sl.date)) return false;
+        if (tokenAccountFilter !== 'all' && sl.uid !== tokenAccountFilter) return false;
+        if (tokenSourceFilter !== 'all' && sl.source !== tokenSourceFilter) return false;
+        return true;
+      });
+
+      if (!filtered.length) {
+        if (grandBadge && activeUsageTab === 'tokens') grandBadge.hidden = true;
+        if (tokenStatsKpiBar) tokenStatsKpiBar.innerHTML = '';
+        tokenStatsBody.innerHTML = '<div class="empty-state usage-list-empty" style="grid-column: 1 / -1; padding: 48px 14px;">' + escHtml(t('ui.tokenEmpty')) + '</div>';
+        return;
+      }
+
+      const agg = { total: 0, weighted: 0, costUsd: 0, savedByCacheUsd: 0, input: 0, cacheRead: 0, output: 0, calls: 0 };
+      const sourcesSeen = new Set();
+      const byModel = new Map();
+      const byDay = new Map();
+
+      for (const sl of filtered) {
+        agg.total += sl.total;
+        agg.weighted += sl.weighted;
+        agg.costUsd += sl.costUsd;
+        agg.savedByCacheUsd += sl.savedByCacheUsd;
+        agg.input += sl.input;
+        agg.cacheRead += sl.cacheRead;
+        agg.output += sl.output;
+        agg.calls += sl.calls;
+        sourcesSeen.add(sl.source);
+
+        let mEntry = byModel.get(sl.model);
+        if (!mEntry) {
+          mEntry = { model: sl.model, displayName: sl.displayName || sl.model, total: 0, weighted: 0, costUsd: 0, input: 0, cacheRead: 0, output: 0, calls: 0 };
+          byModel.set(sl.model, mEntry);
+        }
+        mEntry.total += sl.total; mEntry.weighted += sl.weighted; mEntry.costUsd += sl.costUsd;
+        mEntry.input += sl.input; mEntry.cacheRead += sl.cacheRead; mEntry.output += sl.output; mEntry.calls += sl.calls;
+
+        let dEntry = byDay.get(sl.date);
+        if (!dEntry) {
+          dEntry = { date: sl.date, total: 0, weighted: 0, costUsd: 0, calls: 0, models: new Map() };
+          byDay.set(sl.date, dEntry);
+        }
+        dEntry.total += sl.total; dEntry.weighted += sl.weighted; dEntry.costUsd += sl.costUsd; dEntry.calls += sl.calls;
+        let dm = dEntry.models.get(sl.model);
+        if (!dm) {
+          dm = { model: sl.model, displayName: sl.displayName || sl.model, total: 0, weighted: 0, costUsd: 0, calls: 0 };
+          dEntry.models.set(sl.model, dm);
+        }
+        dm.total += sl.total; dm.weighted += sl.weighted; dm.costUsd += sl.costUsd; dm.calls += sl.calls;
+      }
+
+      const hitDenom = agg.input + agg.cacheRead;
+      const cacheHitPct = hitDenom > 0 ? Math.round((agg.cacheRead / hitDenom) * 1000) / 10 : 0;
+      if (grandBadge && activeUsageTab === 'tokens') {
+        grandBadge.textContent = t('ui.modelStatsTotal') + ' ' + formatTokenMetric(agg);
+        grandBadge.hidden = false;
+      }
+
+      if (tokenStatsKpiBar) {
+        let primaryLabel = t('ui.kpiTokenMain');
+        let primaryVal = fmtCompactTok(agg.total);
+        let primarySub = fmtUsd(agg.costUsd) + ' · ' + t('ui.tokenModeWeighted') + ' ' + fmtCompactTok(agg.weighted);
+        if (tokenMode === 'usd') {
+          primaryLabel = t('ui.kpiTokenCost');
+          primaryVal = fmtUsd(agg.costUsd);
+          primarySub = fmtCompactTok(agg.total);
+        } else if (tokenMode === 'weighted') {
+          primaryLabel = t('ui.kpiTokenWeighted');
+          primaryVal = fmtCompactTok(agg.weighted);
+          primarySub = fmtCompactTok(agg.total) + ' · ' + fmtUsd(agg.costUsd);
+        }
+        const sourceText = Array.from(sourcesSeen).map(sourceDisplayName).join(' · ');
+        tokenStatsKpiBar.innerHTML =
+          '<div class="model-kpi-card"><span class="model-kpi-label">' + escHtml(primaryLabel) + '</span><div class="model-kpi-val-row"><span class="model-kpi-val is-primary">' + escHtml(primaryVal) + '</span></div><span class="token-kpi-sub">' + escHtml(primarySub) + '</span></div>'
+          + '<div class="model-kpi-card"><span class="model-kpi-label">' + escHtml(t('ui.kpiCacheHit')) + '</span><div class="model-kpi-val-row"><span class="model-kpi-val">' + escHtml(cacheHitPct + '%') + '</span></div><span class="token-kpi-sub">' + escHtml(t('ui.tokenSavedFmt', fmtUsd(agg.savedByCacheUsd))) + '</span></div>'
+          + '<div class="model-kpi-card"><span class="model-kpi-label">' + escHtml(t('ui.kpiInOut')) + '</span><div class="model-kpi-val-row"><span class="model-kpi-val">' + escHtml(fmtCompactTok(agg.input)) + '</span></div><span class="token-kpi-sub">' + escHtml(t('ui.tokenInOutSub', fmtCompactTok(agg.cacheRead), fmtCompactTok(agg.output))) + '</span></div>'
+          + '<div class="model-kpi-card"><span class="model-kpi-label">' + escHtml(t('ui.kpiActiveCalls')) + '</span><div class="model-kpi-val-row"><span class="model-kpi-val">' + escHtml(fmtNum(agg.calls)) + '</span></div><span class="token-kpi-sub">' + escHtml(sourceText) + '</span></div>';
+      }
+
+      const palette = ['#10b981', '#3b82f6', '#06b6d4', '#f59e0b', '#64748b'];
+      const totalMetric = pickTokenMetricNum(agg);
+      const modelsSorted = Array.from(byModel.values()).sort((a, b) => pickTokenMetricNum(b) - pickTokenMetricNum(a));
+      const leftHtml = '<div class="model-col-wrap"><div class="model-col-header"><span>' + escHtml(t('ui.modelRankSection')) + '</span><span class="model-col-header-count">' + escHtml(t('ui.modelStatsModelCount', modelsSorted.length)) + '</span></div><div class="model-card-list">'
+        + modelsSorted.map((st, idx) => {
+          const color = palette[idx % palette.length];
+          const valNum = pickTokenMetricNum(st);
+          const pct = totalMetric > 0 ? Math.round((valNum / totalMetric) * 1000) / 10 : 0;
+          const mHitDenom = st.input + st.cacheRead;
+          const mHitPct = mHitDenom > 0 ? Math.round((st.cacheRead / mHitDenom) * 1000) / 10 : 0;
+          const secVal = tokenMode === 'usd' ? fmtCompactTok(st.total) : fmtUsd(st.costUsd);
+          return '<div class="model-card-item"><div class="model-card-main"><div class="model-card-title-col"><span class="model-card-dot" style="background:' + color + '"></span><span class="model-card-name" title="' + escAttr(st.model) + '">' + escHtml(st.displayName) + '</span></div><span class="model-card-sum">' + escHtml(formatTokenMetric(st)) + '</span></div><div class="model-card-bar-track"><div class="model-card-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div><div class="model-card-subline"><span class="model-card-count">' + escHtml(t('ui.tokenCallsFmt', fmtNum(st.calls)) + ' · ' + mHitPct + '% · ' + secVal) + '</span><span class="model-card-pct">' + pct + '%</span></div></div>';
+        }).join('') + '</div></div>';
+
+      const todayKey = (lastTokenLedger && lastTokenLedger.todayKey) || shiftUtc8Date('', 0);
+      const daysSorted = Array.from(byDay.values()).sort((a, b) => b.date.localeCompare(a.date));
+      const rightHtml = '<div class="model-col-wrap"><div class="model-col-header"><span>' + escHtml(t('ui.tokenDailySection')) + '</span><span class="model-col-header-count">' + escHtml(t('ui.modelStatsDayCount', daysSorted.length)) + '</span></div><div class="model-daily-list">'
+        + daysSorted.map((day) => {
+          const isToday = day.date === todayKey;
+          const dayModels = Array.from(day.models.values()).sort((a, b) => pickTokenMetricNum(b) - pickTokenMetricNum(a)).slice(0, 5);
+          const subrows = dayModels.map((dm) => '<div class="model-day-model-row"><span class="model-day-model-name" title="' + escAttr(dm.model) + '">' + escHtml(dm.displayName) + '</span><span class="model-day-model-count">' + escHtml(t('ui.modelStatsReqCount', dm.calls)) + '</span><span class="model-day-model-stat">' + escHtml(formatTokenMetric(dm)) + '</span></div>').join('');
+          return '<div class="model-day-card' + (isToday ? ' is-today' : '') + '"><div class="model-day-card-head"><div class="model-day-badge-wrap"><span class="model-day-date-text">' + escHtml(day.date.slice(5)) + '</span>' + (isToday ? '<span class="model-day-today-tag">' + escHtml(t('ui.modelDailyToday')) + '</span>' : '') + '</div><span class="model-day-total-text">' + escHtml(formatTokenMetric(day) + (tokenMode === 'usd' ? '' : ' (' + fmtUsd(day.costUsd) + ')')) + '</span></div><div class="model-day-models">' + subrows + '</div></div>';
+        }).join('') + '</div></div>';
+
+      tokenStatsBody.innerHTML = leftHtml + rightHtml;
+    });
+  }
+
+  function openTokenModalForAccount(uid) {
+    tokenAccountFilter = uid || 'all';
+    tokenSourceFilter = 'all';
+    const ts = uid && lastTokenLedger && lastTokenLedger.perAccount ? lastTokenLedger.perAccount[uid] : null;
+    tokenRange = (uid && ts && ts.todayTokens <= 0 && ts.totalTokens > 0) ? 'all' : 'today';
+    syncTokenFilterControls();
+    openUsageModal('tokens');
+  }
+
   function switchUsageTab(tabName) {
     if (!usageModalTabs) return;
-    usageModalTabs.querySelectorAll('.usage-modal-tab').forEach((tab) => tab.classList.toggle('is-active', tab.getAttribute('data-tab') === tabName));
-    if (tabContentModel) tabContentModel.hidden = tabName !== 'model';
-    if (tabContentLogs) tabContentLogs.hidden = tabName !== 'logs';
+    activeUsageTab = tabName || 'model';
+    usageModalTabs.querySelectorAll('.usage-modal-tab').forEach((tab) => tab.classList.toggle('is-active', tab.getAttribute('data-tab') === activeUsageTab));
+    if (tabContentModel) tabContentModel.hidden = activeUsageTab !== 'model';
+    if (tabContentLogs) tabContentLogs.hidden = activeUsageTab !== 'logs';
+    if (tabContentTokens) tabContentTokens.hidden = activeUsageTab !== 'tokens';
+    if (usageModalHint) usageModalHint.textContent = activeUsageTab === 'tokens' ? t('ui.tokenHint') : t('ui.modelDailyHint');
     const bodyEl = usageModalOverlay ? usageModalOverlay.querySelector('.modal-body') : null;
     if (bodyEl) bodyEl.scrollTop = 0;
+    if (activeUsageTab === 'tokens') {
+      tokenStatsFingerprint = '';
+      renderTokenStats();
+      if (!lastTokenLedger) vscode.postMessage({ command: 'refreshTokenLedger' });
+    } else if (activeUsageTab === 'model') {
+      modelStatsFingerprint = '';
+      renderModelStats();
+      requestModelStatsSync();
+    } else {
+      const grandBadge = document.getElementById('modelStatsGrandTotal');
+      if (grandBadge) grandBadge.hidden = true;
+    }
   }
 
   function openUsageModal(initialTab) {
     if (!usageModalOverlay) return;
     document.documentElement.classList.add('usage-modal-open');
     document.body.classList.add('usage-modal-open');
-    if (initialTab) switchUsageTab(initialTab);
     modelStatsSyncRequested = false;
-    modelStatsFingerprint = '';
-    renderModelStats();
-    requestModelStatsSync();
+    switchUsageTab(initialTab || activeUsageTab || 'model');
     openModal(usageModalOverlay, usageModalClose);
   }
 
@@ -1752,6 +2076,46 @@
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUsageModal('model'); }
     });
   }
+  const openGlobalTokensModal = () => {
+    tokenAccountFilter = 'all';
+    tokenSourceFilter = 'all';
+    tokenRange = 'today';
+    syncTokenFilterControls();
+    openUsageModal('tokens');
+  };
+  if (btnOpenTokenDetail) btnOpenTokenDetail.addEventListener('click', (e) => { e.stopPropagation(); openGlobalTokensModal(); });
+  if (tokenStatsBar) {
+    tokenStatsBar.addEventListener('click', openGlobalTokensModal);
+    tokenStatsBar.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openGlobalTokensModal(); }
+    });
+  }
+  if (tokenStatsRange) {
+    tokenStatsRange.addEventListener('click', (e) => {
+      const segBtn = e.target.closest ? e.target.closest('.model-seg-btn') : null;
+      if (!segBtn) return;
+      const r = segBtn.getAttribute('data-range') || 'today';
+      if (r === tokenRange) return;
+      tokenRange = r;
+      syncTokenFilterControls();
+      tokenStatsFingerprint = '';
+      renderTokenStats();
+    });
+  }
+  if (tokenStatsMode) {
+    tokenStatsMode.addEventListener('click', (e) => {
+      const segBtn = e.target.closest ? e.target.closest('.model-seg-btn') : null;
+      if (!segBtn) return;
+      const m = segBtn.getAttribute('data-mode') || 'total';
+      if (m === tokenMode) return;
+      tokenMode = m;
+      syncTokenFilterControls();
+      tokenStatsFingerprint = '';
+      renderTokenStats();
+    });
+  }
+  if (tokenStatsAccount) tokenStatsAccount.addEventListener('change', () => { tokenAccountFilter = tokenStatsAccount.value || 'all'; tokenStatsFingerprint = ''; renderTokenStats(); });
+  if (tokenStatsSource) tokenStatsSource.addEventListener('change', () => { tokenSourceFilter = tokenStatsSource.value || 'all'; tokenStatsFingerprint = ''; renderTokenStats(); });
   if (usageModalTabs) usageModalTabs.addEventListener('click', (e) => {
     const tabBtn = e.target.closest ? e.target.closest('.usage-modal-tab') : null;
     if (tabBtn) switchUsageTab(tabBtn.getAttribute('data-tab') || 'model');
@@ -1795,6 +2159,7 @@
       if (usageSpinTimer) clearTimeout(usageSpinTimer);
       usageSpinTimer = setTimeout(() => { stopUsageRefreshSpin(); showToast(t('js.refreshTimeout'), 'warn', 8000); }, 30000);
       vscode.postMessage({ command: 'refreshStatus' });
+      vscode.postMessage({ command: 'refreshTokenLedger' });
     });
   }
 
@@ -1832,6 +2197,7 @@
       currentAccounts = accounts || [];
       currentLockedUids = Array.isArray(backendLockedUids) ? backendLockedUids : [];
       if (msg.data.cooldownEvents !== undefined) lastCooldownEvents = msg.data.cooldownEvents;
+      if (msg.data.tokenLedger !== undefined) lastTokenLedger = msg.data.tokenLedger;
       if (msg.data.cooldownEventsError) showToast(t('cooldown.readError') + ': ' + msg.data.cooldownEventsError, 'error');
       stopUsageRefreshSpin();
       if (msg.data && msg.data.settings) currentSettings = msg.data.settings;
@@ -1859,6 +2225,7 @@
       }
 
       renderSummary();
+      renderTokenSummaryBar();
       renderCards();
       renderAcctChips();
       if (msg.data) {
@@ -1867,6 +2234,10 @@
           lastModelStats = msg.data.modelStats;
           modelStatsSyncRequested = false;
           renderModelStats();
+        }
+        if (msg.data.tokenLedger !== undefined && usageModalOverlay && !usageModalOverlay.hidden && activeUsageTab === 'tokens') {
+          tokenStatsFingerprint = '';
+          renderTokenStats();
         }
       }
     } else if (msg.command === 'notify') {

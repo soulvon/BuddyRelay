@@ -37,6 +37,8 @@ function check(title, condition, detail = '') {
 
 const configUpdates = [];
 const mockConfigStore = new Map();
+let lastStatusBarItem = null;
+let lastQuickPickItems = [];
 const mockVscode = {
   env: {
     appName: 'CodeBuddy CN',
@@ -47,6 +49,12 @@ const mockVscode = {
     openExternal: async () => true
   },
   ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+  MarkdownString: class MarkdownString {
+    constructor(val = '') { this.value = val; }
+    appendMarkdown(str) { this.value += str; return this; }
+  },
+  ThemeColor: class ThemeColor { constructor(id) { this.id = id; } },
+  QuickPickItemKind: { Separator: -1, Default: 0 },
   workspace: {
     getConfiguration: (section) => ({
       get: (k, def) => {
@@ -65,7 +73,15 @@ const mockVscode = {
     showWarningMessage: async () => undefined,
     showErrorMessage: async () => undefined,
     withProgress: async (_opt, fn) => fn({ report: () => {} }),
-    createStatusBarItem: () => ({ show: () => {}, hide: () => {}, dispose: () => {} }),
+    createStatusBarItem: () => {
+      const item = { text: '', tooltip: '', command: '', backgroundColor: undefined, show: () => {}, hide: () => {}, dispose: () => {} };
+      lastStatusBarItem = item;
+      return item;
+    },
+    showQuickPick: async (items) => {
+      lastQuickPickItems = items || [];
+      return undefined;
+    },
     registerWebviewViewProvider: () => ({ dispose: () => {} })
   },
   commands: {
@@ -319,6 +335,129 @@ async function run() {
       '#btnResetFilter 清除筛选后同步调用 renderTagBar() 重置顶部标签高亮',
       /resetBtn[\s\S]{0,400}renderTagBar\(\)/.test(js)
     );
+
+    // ── 7. Issue #3 自定义显示名称全链路回归测试 ──
+    console.log('[测试 7/7] 自定义显示名称保存、合并保留、脱敏与状态栏/QuickPick/SidebarProvider 透传');
+    const { formatAccountLabel, normalizeImportedAccount, importAccountsFromText } = require(path.join(ROOT, 'out', 'importExportService.js'));
+    const { StatusBarManager } = require(path.join(ROOT, 'out', 'statusBar.js'));
+
+    const poolDisplay = path.join(tmpDir, 'pool-display.json');
+    const storeDisplay = new AccountStore(undefined, poolDisplay);
+    await storeDisplay.upsert({
+      id: 'acc-dn-1', uid: 'uid-dn-1', email: '13800138000', nickname: '13800138000',
+      accessToken: 'tok-dn-1', refreshToken: 'ref-dn-1', tokenType: 'Bearer',
+      expiresAt: Date.now() + 7200e3, domain: 'www.codebuddy.cn',
+      status: 'active', totalCredits: 2300, createdAt: 1, lastUsed: 10
+    });
+
+    // updateMeta 控制字符清洗 + 64 字符截断
+    const longRaw = ` \u0007${'张三测试名称'.repeat(20)}\u001b `;
+    await storeDisplay.updateMeta('acc-dn-1', { displayName: longRaw, notes: '测试备注', tags: ['主力'] });
+    const dnAcc1 = storeDisplay.get('acc-dn-1');
+    check(
+      'AccountStore.updateMeta 剥离控制字符并截断 displayName 到 64 字符',
+      Boolean(dnAcc1 && dnAcc1.displayName && dnAcc1.displayName.length === 64 && !/[\x00-\x1f\x7f]/.test(dnAcc1.displayName)),
+      `len=${dnAcc1?.displayName?.length}`
+    );
+
+    await storeDisplay.updateMeta('acc-dn-1', { displayName: '  王小明  ', notes: '测试备注', tags: ['主力'] });
+    check('AccountStore.find 支持按自定义 displayName 搜索账号', storeDisplay.find('王小明')?.id === 'acc-dn-1');
+
+    // OAuth/外部 upsert 不含 displayName 时保留已有自定义名称
+    await storeDisplay.upsert({
+      id: 'acc-dn-1', uid: 'uid-dn-1', email: '13800138000', nickname: '13800138000',
+      accessToken: 'tok-dn-refreshed', refreshToken: 'ref-dn-1', tokenType: 'Bearer',
+      expiresAt: Date.now() + 7200e3, domain: 'www.codebuddy.cn',
+      status: 'idle', createdAt: 1, lastUsed: 20
+    });
+    check('AccountStore.upsert 重授/刷新不含 displayName 时保留原有自定义显示名称', storeDisplay.get('acc-dn-1')?.displayName === '王小明');
+
+    // formatAccountLabel 优先级与隐私脱敏
+    const accObj = storeDisplay.get('acc-dn-1');
+    check('formatAccountLabel 非隐私模式优先返回 displayName', formatAccountLabel(accObj, false) === '王小明');
+    check('formatAccountLabel 隐私模式对自定义显示名称走 maskName 脱敏', formatAccountLabel(accObj, true) === '王**');
+    check('formatAccountLabel 无 displayName 时回退 nickname/email', formatAccountLabel({ nickname: '13900139000', email: '13900139000', uid: 'u' }, true) === '139****9000');
+
+    // normalizeImportedAccount & importAccountsFromText
+    const normSnake = normalizeImportedAccount({ uid: 'u-imp-1', access_token: 'tok-imp', nickname: '13900139000', display_name: ' \x00张三\x01 ' });
+    check('normalizeImportedAccount 兼容 display_name 并清洗控制字符', normSnake?.displayName === '张三', String(normSnake?.displayName));
+
+    await importAccountsFromText(
+      JSON.stringify([{ id: 'acc-dn-1', uid: 'uid-dn-1', access_token: 'tok-dn-new', nickname: '13800138000' }]),
+      storeDisplay,
+      { batchSyncStatus: async () => {} },
+      { setOperating: () => {}, sendNotify: () => {} }
+    );
+    check('importAccountsFromText 覆盖更新 Token 时保留已有 displayName', storeDisplay.get('acc-dn-1')?.displayName === '王小明');
+
+    // SidebarProvider 透传、保存与清空 displayName
+    const spDisplay = new SidebarProvider({ fsPath: ROOT }, storeDisplay, new SeamlessSwitcher(), {}, {}, {});
+    const spMsgs = [];
+    spDisplay._view = { visible: true, webview: { postMessage: (m) => spMsgs.push(m) } };
+    spDisplay.postStateToWebview();
+    const initState = spMsgs.find((m) => m.command === 'updateState');
+    check(
+      'SidebarProvider.postStateToWebview 下发 displayName 字段',
+      initState?.data?.accounts?.some((a) => a.id === 'acc-dn-1' && a.displayName === '王小明')
+    );
+
+    await spDisplay.dispatchWebviewMessage({ command: 'updateAccountMeta', accountId: 'acc-dn-1', displayName: '张三', notes: '后端备注', tags: ['团队'] });
+    check('SidebarProvider updateAccountMeta 正确持久化 displayName', storeDisplay.get('acc-dn-1')?.displayName === '张三');
+
+    // StatusBarManager & QuickPick 展示与脱敏
+    const sbDisplay = new StatusBarManager(storeDisplay, new SeamlessSwitcher(), async () => {});
+    check(
+      'StatusBarManager 非隐私模式显示自定义 displayName 与原账号提示',
+      lastStatusBarItem?.text.includes('张三') &&
+      lastStatusBarItem?.tooltip?.value?.includes('张三') &&
+      lastStatusBarItem?.tooltip?.value?.includes('13800138000'),
+      JSON.stringify({ text: lastStatusBarItem?.text, tip: lastStatusBarItem?.tooltip?.value })
+    );
+
+    await sbDisplay.showQuickPick();
+    const qpAccItem = lastQuickPickItems.find((i) => i.actionType === 'account' && i.account?.id === 'acc-dn-1');
+    check(
+      'StatusBar QuickPick 非隐私模式在 label 显示自定义名称并在 detail 显示原账号',
+      Boolean(qpAccItem && qpAccItem.label.includes('张三') && qpAccItem.detail.includes('13800138000')),
+      JSON.stringify(qpAccItem)
+    );
+
+    await storeDisplay.setPrivacyMode(true);
+    sbDisplay.update();
+    check(
+      'StatusBarManager 隐私模式下对自定义 displayName 与原账号同时脱敏',
+      Boolean(
+        lastStatusBarItem?.text.includes('张*') &&
+        !lastStatusBarItem?.text.includes('张三') &&
+        lastStatusBarItem?.tooltip?.value?.includes('张*') &&
+        lastStatusBarItem?.tooltip?.value?.includes('138****8000') &&
+        !lastStatusBarItem?.tooltip?.value?.includes('13800138000')
+      ),
+      JSON.stringify({ text: lastStatusBarItem?.text, tip: lastStatusBarItem?.tooltip?.value })
+    );
+
+    await sbDisplay.showQuickPick();
+    const qpMaskedItem = lastQuickPickItems.find((i) => i.actionType === 'account' && i.account?.id === 'acc-dn-1');
+    check(
+      'StatusBar QuickPick 隐私模式下对 label 与 detail 原账号同步脱敏',
+      Boolean(qpMaskedItem && qpMaskedItem.label.includes('张*') && qpMaskedItem.detail.includes('138****8000') && !qpMaskedItem.detail.includes('13800138000')),
+      JSON.stringify(qpMaskedItem)
+    );
+
+    // 清空 displayName 后自动回退 nickname
+    await storeDisplay.setPrivacyMode(false);
+    await spDisplay.dispatchWebviewMessage({ command: 'updateAccountMeta', accountId: 'acc-dn-1', displayName: '   ', notes: '', tags: [] });
+    sbDisplay.update();
+    check(
+      '清空 displayName 后存储置 undefined 并回退展示原 nickname/email',
+      storeDisplay.get('acc-dn-1')?.displayName === undefined &&
+      Boolean(lastStatusBarItem?.text.includes('13800138000')) &&
+      !lastStatusBarItem?.tooltip?.value?.includes('原账号：')
+    );
+
+    sbDisplay.dispose();
+    spDisplay.dispose();
+    storeDisplay.dispose();
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }

@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import { PATHS, PATCH_V5 } from './constants';
 import { atomicWriteJsonSync, readJsonFileSafe } from './atomicFile';
-import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { CodeBuddyAccount, AccountStore, resolveAccountDisplayName } from './accountStore';
 import { SessionHealer, normalizeLinkTarget } from './sessionHealer';
 import { t } from './i18n';
 import {
@@ -476,7 +476,7 @@ export class SeamlessSwitcher {
       return switchFail(account, patchResult, junctionResult, t('sw.cmdWriteFailed', err.message), { error: err.message });
     }
 
-    const label = account.nickname || account.email || account.uid;
+    const label = resolveAccountDisplayName(account);
     if (patchResult.repatched) {
       return switchFail(account, patchResult, junctionResult, t('sw.repatchPending', label), { needsFullRestart: true, error: 'NEEDS_FULL_RESTART' });
     }
@@ -499,7 +499,7 @@ export class SeamlessSwitcher {
       patchResult,
       junctionResult,
       receipt,
-      message: confirmed ? t('sw.switchedReceipt', account.nickname, receipt.skipped ? t('sw.receiptSkipSuffix') : '') : t('sw.notEffective', receipt.message),
+      message: confirmed ? t('sw.switchedReceipt', label, receipt.skipped ? t('sw.receiptSkipSuffix') : '') : t('sw.notEffective', receipt.message),
       error: confirmed ? undefined : 'HOST_RECEIPT_UNCONFIRMED'
     };
   }

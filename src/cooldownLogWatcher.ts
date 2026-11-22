@@ -36,6 +36,7 @@ export interface ParsedErrorLine {
 }
 
 const ERROR_MARKER = '[ResultHandler.handleError] errorMessage ';
+const USAGE_LOG_MARKER = 'Agent execution successful with usage:';
 const EVENT_LINE_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \[error\] \[ResultHandler\.handleError\] errorMessage /;
 const RATE_LIMIT_CODE = 6004;
 const MAX_SEEN = 200;
@@ -286,6 +287,9 @@ export class CooldownLogWatcher extends EventEmitter {
     const uid = extractUid(line);
     if (uid) this.uids.set(file, uid);
     this.learnModelName(line);
+    if (allowRateLimitEmit && line.includes(USAGE_LOG_MARKER)) {
+      this.emit('usageLog', { file, uid: this.uids.get(file) || '' });
+    }
     if (!EVENT_LINE_RE.test(line)) return;
 
     let parsed: ParsedErrorLine | null;

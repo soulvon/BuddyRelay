@@ -27,7 +27,8 @@ const GATES = [
   'scripts/test_v040_features.mjs',
   'scripts/test_model_cooldown.mjs',
   'scripts/test_ui_interactions.mjs',
-  'scripts/test_bugfix_regression.mjs'
+  'scripts/test_bugfix_regression.mjs',
+  'scripts/test_token_ledger.mjs'
 ];
 
 const concArg = process.argv.find((a) => a.startsWith('--concurrency='));

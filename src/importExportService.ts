@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AccountStore, CodeBuddyAccount, maskName, maskUid } from './accountStore';
+import { AccountStore, CodeBuddyAccount, cleanDisplayName, maskName, maskUid, resolveAccountDisplayName } from './accountStore';
 import { CheckinService, todayCN } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
 import { readHostLoginUid } from './hostSession';
@@ -15,12 +15,12 @@ const MAX_PAYMENT_TYPE_LEN = 32;
 const JWT_LINE_RE = /\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)\b/;
 const JWT_GLOBAL_RE = /\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)\b/g;
 
-/** 生成尊重隐私模式的账号展示名（邮箱同步掩码域名）。 */
+/** 生成尊重隐私模式的账号展示名（自定义显示名称优先，邮箱同步掩码域名）。 */
 export function formatAccountLabel(
-  account: Pick<CodeBuddyAccount, 'nickname' | 'email' | 'uid'>,
+  account: Pick<CodeBuddyAccount, 'nickname' | 'email' | 'uid'> & { displayName?: string },
   privacyMode: boolean = false
 ): string {
-  const raw = account.nickname || account.email || account.uid || '';
+  const raw = resolveAccountDisplayName(account);
   if (!privacyMode || !raw) return raw;
   const masked = maskName(raw, true);
   if (raw.includes('@')) {
@@ -76,6 +76,7 @@ export function normalizeImportedAccount(raw: any): CodeBuddyAccount | null {
   if (!Number.isFinite(expiresAt) || expiresAt < 0) expiresAt = 0;
   if (expiresAt > 0 && expiresAt < 10_000_000_000) expiresAt *= 1000;
 
+  const cleanCustomDisplayName = cleanDisplayName(data.displayName ?? data.display_name);
   const cleanTags = Array.isArray(data.tags)
     ? Array.from(new Set(data.tags.map((v: any) => String(v).trim()).filter(Boolean)))
     : undefined;
@@ -86,6 +87,7 @@ export function normalizeImportedAccount(raw: any): CodeBuddyAccount | null {
     uid: uidStr,
     email: String(email),
     nickname: String(nickname),
+    displayName: cleanCustomDisplayName,
     accessToken: accessToken.trim(),
     refreshToken: String(data.refreshToken || data.refresh_token || ''),
     tokenType: String(data.tokenType || data.token_type || 'Bearer'),
@@ -176,6 +178,7 @@ export async function importAccountsFromText(
 
       const existing = store.get(acc.id) || store.get(acc.uid);
       if (existing) {
+        const preservedDisplayName = existing.displayName && existing.displayName.trim() ? existing.displayName : acc.displayName;
         const preservedTags = Array.isArray(existing.tags) && existing.tags.length > 0 ? existing.tags : acc.tags;
         const preservedNotes = existing.notes && existing.notes.trim() ? existing.notes : acc.notes;
         existing.accessToken = acc.accessToken;
@@ -183,6 +186,7 @@ export async function importAccountsFromText(
         if (acc.expiresAt) existing.expiresAt = acc.expiresAt;
         if (acc.quotaRaw) existing.quotaRaw = acc.quotaRaw;
         if (existing.status === 'expired') existing.status = 'idle';
+        existing.displayName = preservedDisplayName;
         existing.tags = preservedTags;
         existing.notes = preservedNotes;
         existing.lastUsed = Date.now();
@@ -291,6 +295,7 @@ export async function exportAccounts(
     uid: maskUid(acc.uid, true),
     email: formatAccountLabel({ nickname: acc.email, email: acc.email, uid: acc.uid }, true),
     nickname: formatAccountLabel({ nickname: acc.nickname, email: acc.email, uid: acc.uid }, true),
+    displayName: acc.displayName ? maskName(acc.displayName, true) : undefined,
     status: acc.status,
     totalCredits: acc.totalCredits ?? 0,
     paymentType: acc.paymentType || 'free',

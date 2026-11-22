@@ -40,6 +40,21 @@ export function maskUid(uid: string, privacyMode: boolean = true): string {
   return uid.slice(0, 8) + '...' + uid.slice(-4);
 }
 
+/** 清洗自定义显示名称（剥离控制字符并限制最大长度，空白返回 undefined） */
+export function cleanDisplayName(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const cleaned = raw.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 64);
+  return cleaned || undefined;
+}
+
+/** 解析账号展示名称（自定义显示名称优先，留空回退昵称/邮箱/UID） */
+export function resolveAccountDisplayName(
+  account: Partial<Pick<CodeBuddyAccount, 'displayName' | 'nickname' | 'email' | 'uid'>>
+): string {
+  const custom = typeof account.displayName === 'string' ? account.displayName.trim() : '';
+  return custom || account.nickname || account.email || account.uid || '';
+}
+
 function hasPlaintextToken(acc: CodeBuddyAccount): boolean {
   if (typeof acc.accessToken === 'string' && acc.accessToken.length > 0 && !isEncryptedSecret(acc.accessToken)) return true;
   if (typeof acc.refreshToken === 'string' && acc.refreshToken.length > 0 && !isEncryptedSecret(acc.refreshToken)) return true;
@@ -505,7 +520,8 @@ export class AccountStore extends EventEmitter {
         acc.id.toLowerCase().includes(q) ||
         acc.uid.toLowerCase().includes(q) ||
         acc.email.toLowerCase().includes(q) ||
-        acc.nickname.toLowerCase().includes(q)
+        acc.nickname.toLowerCase().includes(q) ||
+        (acc.displayName || '').toLowerCase().includes(q)
       ) {
         return acc;
       }
@@ -545,6 +561,8 @@ export class AccountStore extends EventEmitter {
   }
 
   private mergeAccountRecord(existing: CodeBuddyAccount, acc: CodeBuddyAccount): CodeBuddyAccount {
+    const incomingDisplayName = cleanDisplayName(acc.displayName);
+    const mergedDisplayName = incomingDisplayName || existing.displayName;
     const incomingTags = Array.isArray(acc.tags) && acc.tags.length > 0 ? cleanTagsList(acc.tags) : null;
     const mergedTags = incomingTags
       ? Array.from(new Set([...(existing.tags || []), ...incomingTags]))
@@ -565,6 +583,7 @@ export class AccountStore extends EventEmitter {
       ...existing,
       ...acc,
       id: existing.id || acc.id,
+      displayName: mergedDisplayName,
       tags: mergedTags,
       notes: mergedNotes,
       status: mergedStatus,
@@ -696,15 +715,20 @@ export class AccountStore extends EventEmitter {
     }
   }
 
-  /** 一次加锁写盘同时更新备注和标签（只触发一次 change） */
-  public async updateMeta(id: string, meta: { notes?: string; tags?: string[] }): Promise<boolean> {
+  /** 一次加锁写盘同时更新显示名称、备注和标签（只触发一次 change） */
+  public async updateMeta(id: string, meta: { displayName?: string; notes?: string; tags?: string[] }): Promise<boolean> {
     const acc = this.get(id);
     if (!acc) return false;
+    if (meta.displayName !== undefined) acc.displayName = cleanDisplayName(meta.displayName);
     if (meta.notes !== undefined) acc.notes = meta.notes ? meta.notes.trim() : undefined;
     if (meta.tags !== undefined) acc.tags = cleanTagsList(meta.tags);
     this._pendingUpsertIds.add(acc.id);
     await this.persist();
     return true;
+  }
+
+  public async updateDisplayName(idOrUid: string, displayName: string): Promise<void> {
+    await this.updateMeta(idOrUid, { displayName });
   }
 
   public async updateNotes(idOrUid: string, notes: string): Promise<void> {

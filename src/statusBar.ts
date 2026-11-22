@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AccountStore, CodeBuddyAccount, maskName, maskUid } from './accountStore';
+import { AccountStore, CodeBuddyAccount, maskName, maskUid, resolveAccountDisplayName } from './accountStore';
 import { SeamlessSwitcher, ElevationPlan } from './seamlessSwitcher';
 import { t } from './i18n';
 import { detectHostEdition } from './host';
@@ -8,6 +8,8 @@ import { showFailureWithActions } from './diagnostics';
 import { UsageTracker } from './usageTracker';
 import { loadCooldownEvents } from './cooldownLogWatcher';
 import { acquireLock, getOtherLockedUids } from './accountLock';
+import { formatAccountLabel } from './importExportService';
+import { TokenLedger } from './tokenLedger';
 
 interface AccountQuickPickItem extends vscode.QuickPickItem {
   actionType: 'account' | 'action';
@@ -26,6 +28,22 @@ function fmtCooldownTime(ts: number): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function fmtCompactTok(n: number): string {
+  const v = Number(n || 0);
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(Math.round(v));
+}
+
+function fmtUsd(n: number): string {
+  const v = Number(n || 0);
+  if (v <= 0) return '$0.00';
+  if (v < 0.01) return '<$0.01';
+  if (v < 100) return `$${v.toFixed(2)}`;
+  return `$${v.toFixed(1)}`;
+}
+
 /**
  * BuddyRelay 左下角常驻状态栏管理器
  * 遵循克制扁平、自然中文原则，展示当前账号名称与额度积分，点击唤起切号下拉菜单
@@ -37,6 +55,7 @@ export class StatusBarManager implements vscode.Disposable {
   private restartPrompt: () => Promise<void>;
   private elevationPrompt?: (plan: ElevationPlan, account: CodeBuddyAccount) => Promise<void>;
   private usageTracker?: UsageTracker;
+  private tokenLedger?: TokenLedger;
   private disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -44,13 +63,15 @@ export class StatusBarManager implements vscode.Disposable {
     switcher: SeamlessSwitcher,
     restartPrompt: () => Promise<void>,
     usageTracker?: UsageTracker,
-    elevationPrompt?: (plan: ElevationPlan, account: CodeBuddyAccount) => Promise<void>
+    elevationPrompt?: (plan: ElevationPlan, account: CodeBuddyAccount) => Promise<void>,
+    tokenLedger?: TokenLedger
   ) {
     this.store = store;
     this.switcher = switcher;
     this.restartPrompt = restartPrompt;
     this.usageTracker = usageTracker;
     this.elevationPrompt = elevationPrompt;
+    this.tokenLedger = tokenLedger;
 
     // 右下角常驻 (vscode.StatusBarAlignment.Right, 优先级 100)
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -92,7 +113,7 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    const rawName = active.nickname || active.email || t('status.unnamedAccount');
+    const rawName = resolveAccountDisplayName(active) || t('status.unnamedAccount');
     const name = isPrivacy ? maskName(rawName) : rawName;
     const creditsText =
       typeof active.totalCredits === 'number'
@@ -142,9 +163,23 @@ export class StatusBarManager implements vscode.Disposable {
 
     md.appendMarkdown(t('status.tooltipHeader', isPrivacy ? t('status.privacyOn') : ''));
     md.appendMarkdown(t('status.tooltipAccount', name));
+    const originRaw = active.nickname || active.email || '';
+    const customTrimmed = active.displayName ? active.displayName.trim() : '';
+    if (customTrimmed && originRaw && customTrimmed !== originRaw) {
+      md.appendMarkdown(t('status.tooltipOriginAccount', isPrivacy ? maskName(originRaw) : originRaw));
+    }
     md.appendMarkdown(t('status.tooltipUid', isPrivacy ? maskUid(active.uid) : active.uid));
     md.appendMarkdown(t('status.tooltipCredits', typeof active.totalCredits === 'number' ? t('status.creditsReady', fmtNum(active.totalCredits)) : t('status.ready')));
     md.appendMarkdown(t('status.tooltipTodayStats', fmtNum(todayConsumed), fmtNum(todayGrants)));
+    const accTok = this.tokenLedger?.getCachedSummary()?.perAccount[active.uid];
+    if (accTok && accTok.totalTokens > 0) {
+      md.appendMarkdown(t(
+        'status.tooltipTokens',
+        `${fmtCompactTok(accTok.todayTokens)} tok`,
+        fmtUsd(accTok.todayCostUsd),
+        `${fmtCompactTok(accTok.totalTokens)} tok`
+      ));
+    }
     md.appendMarkdown(t('status.tooltipCheckin', isTodayCheckedIn(active) ? t('status.checked') : t('status.unchecked'), active.checkinStreak || 0));
     md.appendMarkdown(t('status.tooltipModelCooldown', cooldownText));
     md.appendMarkdown('---\n\n');
@@ -168,8 +203,13 @@ export class StatusBarManager implements vscode.Disposable {
       for (const acc of accounts) {
         const isActive = acc.status === 'active';
         const isLockedElsewhere = !isActive && otherLocked.has(acc.uid);
-        const rawName = acc.nickname || acc.email;
+        const rawName = resolveAccountDisplayName(acc);
         const labelName = isPrivacy ? maskName(rawName) : rawName;
+        const originRaw = acc.nickname || acc.email || '';
+        const customTrimmed = acc.displayName ? acc.displayName.trim() : '';
+        const originDisplay = customTrimmed && originRaw && customTrimmed !== originRaw
+          ? (isPrivacy ? maskName(originRaw) : originRaw)
+          : '';
         const displayUid = isPrivacy ? maskUid(acc.uid) : `${acc.uid.slice(0, 8)}...`;
         const icon = isActive
           ? '$(check)'
@@ -193,10 +233,11 @@ export class StatusBarManager implements vscode.Disposable {
             ? t('qp.creditsUnit', fmtNum(acc.totalCredits))
             : acc.paymentType || t('qp.free');
 
+        const streakDetail = t('qp.detailStreak', displayUid, acc.checkinStreak || 0, isTodayCheckedIn(acc) ? t('qp.checkedToday') : t('qp.notCheckedToday'));
         items.push({
           label: `${icon} ${labelName}`,
           description: `[${statusLabel}] ${creditsStr}${isLockedElsewhere ? t('qp.lockedElsewhere') : ''}`,
-          detail: t('qp.detailStreak', displayUid, acc.checkinStreak || 0, isTodayCheckedIn(acc) ? t('qp.checkedToday') : t('qp.notCheckedToday')),
+          detail: originDisplay ? `${originDisplay} | ${streakDetail}` : streakDetail,
           actionType: 'account',
           account: acc
         });
@@ -292,10 +333,11 @@ export class StatusBarManager implements vscode.Disposable {
    * 执行账号热切并反馈进度
    */
   private async handleSwitch(target: CodeBuddyAccount): Promise<void> {
+    const label = formatAccountLabel(target, this.store.getPrivacyMode());
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: t('msg.switchingTo', target.nickname || target.email),
+        title: t('msg.switchingTo', label),
         cancellable: false
       },
       async (progress) => {
@@ -316,7 +358,7 @@ export class StatusBarManager implements vscode.Disposable {
         if (res.success) {
           acquireLock(target.uid);
           this.update();
-          vscode.window.showInformationMessage(t('msg.switched', target.nickname || target.email));
+          vscode.window.showInformationMessage(t('msg.switched', label));
         } else {
           await showFailureWithActions(t('msg.switchFailed', res.message), res.detail);
         }

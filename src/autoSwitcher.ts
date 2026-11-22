@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import type * as vscode from 'vscode';
-import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { CodeBuddyAccount, AccountStore, resolveAccountDisplayName } from './accountStore';
 import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
 import { OAuthService } from './oauthService';
 import { httpRequest } from './httpClient';
@@ -267,7 +267,7 @@ export class AutoSwitcher extends EventEmitter {
     for (const cand of candidates) {
       const probe = await this.probeAccount(cand);
       if (probe.valid) return cand;
-      console.log(`[AutoSwitcher][Probe] 候选 ${cand.nickname || cand.email} 未通过预检: ${probe.reason}，顺延下一位`);
+      console.log(`[AutoSwitcher][Probe] 候选 ${resolveAccountDisplayName(cand)} 未通过预检: ${probe.reason}，顺延下一位`);
     }
     return null;
   }
@@ -291,15 +291,17 @@ export class AutoSwitcher extends EventEmitter {
       this._lastRoundRobinId = next.id;
       if (this.usageTracker) {
         const current = this.store.get(fromUid) || this.store.find(fromUid);
+        const fromLabel = current ? resolveAccountDisplayName(current) : fromUid;
+        const toLabel = resolveAccountDisplayName(next);
         const is429 = reason === 'rate_limited_429';
         this.usageTracker.recordAction({
           type: 'switch',
           accountId: next.id,
-          accountName: next.nickname || next.email,
+          accountName: toLabel,
           title: is429 ? t('act.autoSwitch429') : t('act.autoSwitchQuota'),
           detail: is429
-            ? t('act.autoSwitch429Detail', current?.nickname || fromUid, next.nickname || next.email)
-            : t('act.autoSwitchQuotaDetail', current?.nickname || fromUid, next.nickname || next.email)
+            ? t('act.autoSwitch429Detail', fromLabel, toLabel)
+            : t('act.autoSwitchQuotaDetail', fromLabel, toLabel)
         });
       }
       this.emit('rotation', baseEv as RotationEvent);
@@ -377,7 +379,7 @@ export class AutoSwitcher extends EventEmitter {
       this.usageTracker.recordAction({
         type: 'warn',
         accountId: active.id,
-        accountName: active.nickname || active.email,
+        accountName: resolveAccountDisplayName(active),
         title: t('act.autoSwitch429'),
         detail: `${model || 'unknown'} (${t('status.rateLimited')})`
       });
@@ -427,7 +429,7 @@ export class AutoSwitcher extends EventEmitter {
         if (pct == null || isNaN(pct) || pct > cfg.thresholdPercent) return;
 
         console.log(
-          `[BuddyRelay][QuotaGuard] 账号 ${active.nickname || active.email} 剩余 ${pct}% ≤ 阈值 ${cfg.thresholdPercent}%，触发自动无感切换`
+          `[BuddyRelay][QuotaGuard] 账号 ${resolveAccountDisplayName(active)} 剩余 ${pct}% ≤ 阈值 ${cfg.thresholdPercent}%，触发自动无感切换`
         );
         const res = await this.handleQuotaExhausted(active.uid, `剩余算力 ${pct}% 低于阈值 ${cfg.thresholdPercent}%`);
         if (res.success && !res.needsElevation && !res.needsFullRestart) {

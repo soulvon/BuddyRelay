@@ -191,6 +191,7 @@ export const PATHS = {
   POOL_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'pool.json'),
   LOCK_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'account-locks.json'),
   COOLDOWN_EVENTS_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'cooldown-events.json'),
+  TOKEN_LEDGER_FILE: path.join(APPDATA, 'CodeBuddy CN', 'buddy-relay', 'token-ledger-v1.json'),
 
   // 会话物理存储与软链接联结点 (跨账号会话穿透)
   EXTENSION_DATA_DIR: path.join(LOCALAPPDATA, 'CodeBuddyExtension', 'Data'),

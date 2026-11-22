@@ -14,6 +14,7 @@ import { UsageTracker } from './usageTracker';
 import { SessionHealer } from './sessionHealer';
 import { CooldownLogWatcher } from './cooldownLogWatcher';
 import { SchedulerCoordinator } from './schedulerCoordinator';
+import { TokenLedger } from './tokenLedger';
 import { formatAccountLabel } from './importExportService';
 import { t, initI18n, watchLocaleConfig, onLangChange } from './i18n';
 
@@ -23,6 +24,7 @@ let statusBarManager: StatusBarManager | null = null;
 let autoSwitcherInstance: AutoSwitcher | null = null;
 let schedulerCoordinator: SchedulerCoordinator | null = null;
 let sidebarProviderInstance: SidebarProvider | null = null;
+let tokenLedgerInstance: TokenLedger | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   initI18n();
@@ -36,6 +38,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const checkinService = new CheckinService();
   const importer = new CockpitImporter();
   const usageTracker = new UsageTracker();
+  const tokenLedger = new TokenLedger();
+  tokenLedgerInstance = tokenLedger;
   const autoSwitcher = new AutoSwitcher(store, switcher, oauthService, { usageTracker });
   autoSwitcherInstance = autoSwitcher;
   checkinScheduler = new CheckinScheduler(store, checkinService);
@@ -50,12 +54,13 @@ export async function activate(context: vscode.ExtensionContext) {
   if (defaultPrivacy && !store.getPrivacyMode()) store.setPrivacyMode(true).catch(() => {});
 
   const sidebarProvider = new SidebarProvider(
-    context.extensionUri, store, switcher, checkinService, importer, oauthService, usageTracker
+    context.extensionUri, store, switcher, checkinService, importer, oauthService, usageTracker, { tokenLedger }
   );
   sidebarProviderInstance = sidebarProvider;
   statusBarManager = new StatusBarManager(
     store, switcher, () => sidebarProvider.promptFullRestart(), usageTracker,
-    (plan, account) => sidebarProvider.promptElevationAndApply(plan, account).then(() => {})
+    (plan, account) => sidebarProvider.promptElevationAndApply(plan, account).then(() => {}),
+    tokenLedger
   );
 
   // store.on('change') 仅做界面刷新，绝不抢占他窗账号锁
@@ -77,7 +82,7 @@ export async function activate(context: vscode.ExtensionContext) {
   registerCommands(context, store, switcher, sidebarProvider);
 
   schedulerCoordinator = new SchedulerCoordinator({
-    store, switcher, checkinService, autoSwitcher, checkinScheduler, cooldownWatcher, usageTracker,
+    store, switcher, checkinService, autoSwitcher, checkinScheduler, cooldownWatcher, usageTracker, tokenLedger,
     onStateUpdated: refreshUi,
     onNotify: (level: 'success' | 'info' | 'warn' | 'error', message: string, detail?: string) =>
       sidebarProvider.sendNotify(level === 'info' ? 'success' : level, message, detail),
@@ -183,5 +188,6 @@ export function deactivate() {
   autoSwitcherInstance?.stopMonitor(); autoSwitcherInstance = null;
   statusBarManager?.dispose(); statusBarManager = null;
   sidebarProviderInstance?.dispose(); sidebarProviderInstance = null;
+  tokenLedgerInstance?.dispose(); tokenLedgerInstance = null;
   try { releaseLock(); stopHeartbeat(); releaseSchedulerLeader(); } catch {}
 }

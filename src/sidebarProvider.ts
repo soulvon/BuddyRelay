@@ -17,6 +17,7 @@ import { detectHostEdition } from './host';
 import { isCnAccount } from './domain';
 import { PATHS } from './constants';
 import { loadCooldownEvents } from './cooldownLogWatcher';
+import { TokenLedger } from './tokenLedger';
 import { collectRestartWaitPids, buildRestartHelperSource, spawnIdeRestartHelper } from './restartHelper';
 import {
   formatAccountLabel,
@@ -31,6 +32,7 @@ import { TaskOrchestrator } from './taskOrchestrator';
 
 export interface SidebarProviderOptions {
   onActiveSwitched?: (uid: string) => void;
+  tokenLedger?: TokenLedger;
 }
 
 const BOOL_SETTING_MAP: ReadonlyArray<readonly [string, string, boolean]> = [
@@ -72,6 +74,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private oauthService: OAuthService;
   private growthTasks: GrowthTaskService;
   private usageTracker?: UsageTracker;
+  private tokenLedger?: TokenLedger;
   private options?: SidebarProviderOptions;
   private taskOrchestrator: TaskOrchestrator;
   private isOperating: boolean = false;
@@ -98,6 +101,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.importer = importer;
     this.oauthService = oauthService;
     this.usageTracker = usageTracker;
+    this.tokenLedger = options?.tokenLedger;
     this.options = options;
     this.growthTasks = new GrowthTaskService();
     this.taskOrchestrator = new TaskOrchestrator({
@@ -124,7 +128,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.postStateTimer = setTimeout(() => { this.postStateTimer = null; this.postStateToWebview(); }, Math.max(0, delayMs));
   }
 
-  private displayLabel(account: Pick<CodeBuddyAccount, 'nickname' | 'email' | 'uid'>): string {
+  private displayLabel(account: Pick<CodeBuddyAccount, 'nickname' | 'email' | 'uid'> & { displayName?: string }): string {
     return formatAccountLabel(account, this.store.getPrivacyMode?.() ?? false);
   }
 
@@ -162,6 +166,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'refreshStatus': await this.handleRefreshStatus(); break;
       case 'refreshAccount': await this.handleRefreshAccount(id); break;
       case 'refreshModelStats': await this.handleRefreshModelStats(Number(message.days) || 7, message.force === true); break;
+      case 'refreshTokenLedger': await this.handleRefreshTokenLedger(); break;
       case 'importJson': await this.handleImportJson(String(message.text || '')); break;
       case 'importLocal': await this.handleImportLocal(); break;
       case 'taskList': await this.taskOrchestrator.handleTaskList(message.accountId ? id : undefined); break;
@@ -177,13 +182,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'checkUpdate': await checkForUpdates(false); break;
       case 'exportAccounts': await this.handleExportAccounts(message.mode); break;
       case 'reauthAccount': await this.handleReauthAccount(id); break;
-      case 'updateAccountMeta':
+      case 'updateAccountMeta': {
+        const displayName = typeof message.displayName === 'string' ? message.displayName : undefined;
         await this.handleUpdateAccountMeta(
           id,
+          displayName,
           typeof message.notes === 'string' ? message.notes : '',
           Array.isArray(message.tags) ? message.tags.map(String) : []
         );
         break;
+      }
       case 'updateNotes':
         await this.store.updateNotes?.(id, String(message.notes || ''));
         this.sendNotify('success', t('msg.notesSaved'));
@@ -231,6 +239,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.refreshUsageStats(false);
     const enabledCount = accounts.filter((a) => a.status !== 'disabled').length;
     const usageSummary = this.usageTracker?.getDailySummary(enabledCount);
+    const tokenLedgerSummary = this.tokenLedger?.getCachedSummary() ?? null;
+    if (this.tokenLedger && !tokenLedgerSummary) {
+      void this.tokenLedger.getSummary(false).then(() => this.schedulePostState(50)).catch(() => {});
+    }
 
     let cooldownEvents: ReturnType<typeof loadCooldownEvents> | null = null;
     let cooldownEventsError = '';
@@ -253,11 +265,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           };
           return {
             id: acc.id, uid: acc.uid, email: acc.email, nickname: acc.nickname || acc.email,
+            displayName: acc.displayName || '',
             paymentType: acc.paymentType || 'free', status: acc.status,
             isActive: active ? active.id === acc.id : false,
             totalCredits: acc.totalCredits ?? 0,
             todayConsumed: usageSummary?.perAccountConsumed[acc.id] ?? 0,
             todayGrants: usageSummary?.perAccountGrants[acc.id] ?? 0,
+            tokenStats: tokenLedgerSummary?.perAccount[acc.uid] || null,
             basePackage: basePkg, activityPackage: actPkg,
             checkinStreak: acc.checkinStreak ?? 0, todayCheckedIn: isTodayCheckedIn(acc),
             rateLimitUntil: acc.rateLimitUntil, lastUsed: acc.lastUsed,
@@ -284,6 +298,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         usageSummary,
         recentRecords: this.usageTracker?.getRecentOfficialRequests(60) || [],
         modelStats: this.usageTracker?.getModelStatsSnapshot() || null,
+        tokenLedger: tokenLedgerSummary,
         cooldownEvents, cooldownEventsError
       }
     });
@@ -471,10 +486,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
+  private async handleRefreshTokenLedger(): Promise<void> {
+    if (!this.tokenLedger) return;
+    try {
+      await this.tokenLedger.getSummary(true);
+      this.postStateToWebview();
+    } catch (err: any) {
+      console.warn('[SidebarProvider] Token 账本刷新失败:', err?.message || err);
+    }
+  }
+
   public async handleRefreshStatus(): Promise<void> {
     await this.withOperating(t('msg.refreshing'), 'err.refreshFailed', async () => {
       await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
       this.refreshUsageStats(true);
+      void this.tokenLedger?.getSummary(true).then(() => this.schedulePostState(50)).catch(() => {});
       this.sendNotify('success', t('msg.refreshDone'));
     });
   }
@@ -560,12 +586,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
   }
 
-  private async handleUpdateAccountMeta(accountId: string, notes: string, tags: string[]): Promise<void> {
+  private async handleUpdateAccountMeta(
+    accountId: string,
+    displayName: string | undefined,
+    notes: string,
+    tags: string[]
+  ): Promise<void> {
     if (!accountId) return;
     if (typeof (this.store as any).updateMeta === 'function') {
-      const ok = await (this.store as any).updateMeta(accountId, { notes, tags });
+      const ok = await (this.store as any).updateMeta(accountId, { displayName, notes, tags });
       if (ok === false) { this.sendNotify('error', t('err.accountMissing')); return; }
     } else {
+      if (displayName !== undefined) await (this.store as any).updateDisplayName?.(accountId, displayName);
       await this.store.updateNotes?.(accountId, notes);
       await this.store.updateTags?.(accountId, tags);
     }

@@ -62,6 +62,21 @@
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               </div>
+              <div class="usage-stat-bar token-stat-bar" id="tokenStatsBar" role="button" tabindex="0" title="{{i:ui.tokenStatsTitle}}">
+                <div class="token-stat-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="0.5"/><rect x="12" y="8" width="3" height="10" rx="0.5"/><rect x="17" y="5" width="3" height="13" rx="0.5"/></svg>
+                  <span>{{i:ui.tokenStats}}</span>
+                </div>
+                <div style="flex:1"></div>
+                <div id="tokenSummaryBadges" class="usage-summary-badges">
+                  <span id="todayTokensBadge" class="usage-badge-pill token-pill-emerald">0 tok</span>
+                  <span id="todayCostBadge" class="usage-badge-pill token-pill-amber">$0.00</span>
+                </div>
+                <button type="button" class="usage-detail-btn" id="btnOpenTokenDetail" title="{{i:ui.tokenStatsTitle}}">
+                  <span>{{i:ui.detailBtn}}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </details>
@@ -384,6 +399,10 @@
           <div id="editMetaAccountName" style="font-size:12.5px;font-weight:600;"></div>
         </div>
         <div>
+          <label for="editMetaDisplayName" style="display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.editMetaDisplayNameLabel}}</label>
+          <input type="text" id="editMetaDisplayName" maxlength="64" placeholder="{{i:ui.editMetaDisplayNamePlaceholder}}" autocomplete="off">
+        </div>
+        <div>
           <label for="editMetaTags" style="display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:4px;">{{i:ui.editMetaTagsLabel}}</label>
           <input type="text" id="editMetaTags" placeholder="{{i:ui.editMetaTagsPlaceholder}}">
         </div>
@@ -418,6 +437,7 @@
       <div class="usage-modal-tabs" id="usageModalTabs">
         <button type="button" class="usage-modal-tab is-active" data-tab="model">{{i:ui.tabModelStats}}</button>
         <button type="button" class="usage-modal-tab" data-tab="logs">{{i:ui.tabUsageRecords}}</button>
+        <button type="button" class="usage-modal-tab" data-tab="tokens">{{i:ui.tabTokenStats}}</button>
       </div>
       <div class="modal-body">
         <div id="tabContentModel" class="usage-tab-content">
@@ -442,9 +462,39 @@
           </div>
           <div id="usageRecordsList" class="usage-list"><div class="empty-state usage-list-empty">{{i:ui.usageEmpty}}</div></div>
         </div>
+        <div id="tabContentTokens" class="usage-tab-content" hidden>
+          <div class="model-modal-toolbar">
+            <div class="token-toolbar-controls">
+              <div class="model-stats-segmented" id="tokenStatsRange">
+                <button type="button" class="model-seg-btn is-active" data-range="today">{{i:ui.rangeToday}}</button>
+                <button type="button" class="model-seg-btn" data-range="7d">{{i:ui.range7d}}</button>
+                <button type="button" class="model-seg-btn" data-range="30d">{{i:ui.range30d}}</button>
+                <button type="button" class="model-seg-btn" data-range="all">{{i:ui.rangeAll}}</button>
+              </div>
+              <div class="model-stats-segmented" id="tokenStatsMode">
+                <button type="button" class="model-seg-btn is-active" data-mode="total">{{i:ui.tokenModeTotal}}</button>
+                <button type="button" class="model-seg-btn" data-mode="weighted">{{i:ui.tokenModeWeighted}}</button>
+                <button type="button" class="model-seg-btn" data-mode="usd">{{i:ui.tokenModeUsd}}</button>
+              </div>
+            </div>
+            <div class="model-modal-filters">
+              <div class="model-filter-field"><select class="model-stats-select" id="tokenStatsAccount" title="{{i:ui.modelStatsAccountTitle}}" aria-label="{{i:ui.modelStatsAccountTitle}}"></select></div>
+              <div class="model-filter-field">
+                <select class="model-stats-select" id="tokenStatsSource" title="{{i:ui.tokenSourceTitle}}" aria-label="{{i:ui.tokenSourceTitle}}">
+                  <option value="all">{{i:ui.tokenSourceAll}}</option>
+                  <option value="ide">{{i:ui.tokenSourceIde}}</option>
+                  <option value="cli">{{i:ui.tokenSourceCli}}</option>
+                  <option value="workbuddy">{{i:ui.tokenSourceWorkbuddy}}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div id="tokenStatsKpiBar" class="model-kpi-grid"></div>
+          <div id="tokenStatsBody" class="model-modal-body-grid"><div class="empty-state usage-list-empty">{{i:ui.tokenEmpty}}</div></div>
+        </div>
       </div>
       <div class="modal-footer">
-        <span class="model-modal-hint">{{i:ui.modelDailyHint}}</span>
+        <span class="model-modal-hint" id="usageModalHint">{{i:ui.modelDailyHint}}</span>
         <button class="modal-cancel-btn" id="usageModalCancel" type="button">{{i:common.close}}</button>
       </div>
     </div>
@@ -539,7 +589,7 @@
                 <div><div class="settings-card-title">{{i:ui.updateSection}}</div><div class="settings-card-desc">{{i:ui.updateDesc}}</div></div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                <span id="currentVersionTag" class="version-tag-pill">v1.3.8</span>
+                <span id="currentVersionTag" class="version-tag-pill">v1.4.0</span>
                 <button class="settings-action-btn btn-outline" id="btnManualCheckUpdate" type="button">{{i:ui.checkUpdateBtn}}</button>
               </div>
             </div>
