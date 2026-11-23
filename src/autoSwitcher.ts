@@ -5,10 +5,10 @@ import { SeamlessSwitcher, SwitchResult } from './seamlessSwitcher';
 import { OAuthService } from './oauthService';
 import { httpRequest } from './httpClient';
 import { getOtherLockedUids } from './accountLock';
-import { API_ENDPOINTS } from './constants';
+import { API_ENDPOINTS, getCodeBuddyBaseUrl } from './constants';
 import { UsageTracker } from './usageTracker';
 import { t } from './i18n';
-import { isCnAccount } from './domain';
+import { buildEnterpriseHeaders, extractEnterpriseInfo, isCnAccount } from './domain';
 
 export type RotationStrategy = 'highest_quota' | 'lru' | 'round_robin' | 'health_priority';
 
@@ -24,10 +24,11 @@ function getVscodeSafe(): typeof vscode | undefined {
 }
 
 function combinedQuotaPercent(acc: CodeBuddyAccount): number | null {
+  if (acc.quotaUnlimited) return 100;
   const base = acc.basePackage;
   const act = acc.activityPackage;
   if (base && act) {
-    const total = (base.total || 0) + (act.total || 0);
+    const total = Math.max(0, base.total || 0) + Math.max(0, act.total || 0);
     if (total > 0) {
       return Math.max(0, Math.min(100, ((base.remain || 0) + (act.remain || 0)) / total * 100));
     }
@@ -148,18 +149,23 @@ export class AutoSwitcher extends EventEmitter {
     this.switchTimestamps.push(now);
   }
 
-  /** 候选账号轻量探针预检（国际版 codebuddy.ai 不走国内接口，不误判 401） */
+  /** 候选账号轻量探针预检（企业账号走企业额度接口，国际个人版跳过不误判 401） */
   public async probeAccount(account: CodeBuddyAccount): Promise<{ valid: boolean; reason?: string }> {
-    if (!isCnAccount(account.domain)) {
+    const ent = extractEnterpriseInfo(account);
+    if (!ent.enterpriseId && !isCnAccount(account.domain)) {
       return { valid: true, reason: 'intl_skip_probe' };
     }
-    const url = `${API_ENDPOINTS.CODEBUDDY_CN_BASE}${API_ENDPOINTS.CHECKIN_ACTIVITY_STATUS}`;
+    const baseUrl = getCodeBuddyBaseUrl(account.domain);
+    const url = ent.enterpriseId
+      ? `${baseUrl}${API_ENDPOINTS.ENTERPRISE_USER_USAGE}`
+      : `${API_ENDPOINTS.CODEBUDDY_CN_BASE}${API_ENDPOINTS.CHECKIN_ACTIVITY_STATUS}`;
     try {
       const res = await httpRequest(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${account.accessToken}`,
           'X-User-Id': account.uid,
+          ...buildEnterpriseHeaders(ent.enterpriseId),
           'Content-Type': 'application/json'
         },
         body: {},

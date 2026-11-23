@@ -1,5 +1,6 @@
 import { URL } from 'url';
 import { API_ENDPOINTS, DEFAULT_HEADERS, getCodeBuddyBaseUrl } from './constants';
+import { resolveEnterprisePaymentType } from './domain';
 import { httpRequest } from './httpClient';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { t } from './i18n';
@@ -29,6 +30,9 @@ export interface OAuthAccountProfile {
   phoneNumber?: string;
   email?: string;
   accountType?: string;
+  type?: string;
+  enterpriseId?: string;
+  enterpriseName?: string;
   uin?: string;
   [key: string]: any;
 }
@@ -197,12 +201,20 @@ export class OAuthService {
     }
 
     const p = res.data.data;
+    const enterpriseId = typeof (p.enterpriseId || p.enterprise_id) === 'string'
+      ? String(p.enterpriseId || p.enterprise_id).trim() || undefined
+      : undefined;
+    const enterpriseName = typeof (p.enterpriseName || p.enterprise_name) === 'string'
+      ? String(p.enterpriseName || p.enterprise_name).trim() || undefined
+      : undefined;
     return {
       uid: p.uid || p.oneidAccountId || '',
       nickname: p.nickname || p.phoneNumber || t('oauth.defaultNickname'),
       phoneNumber: p.phoneNumber,
       email: p.phoneNumber || p.nickname || p.uid,
       accountType: p.type || p.accountType || 'personal',
+      enterpriseId,
+      enterpriseName,
       uin: p.uin,
       ...p
     };
@@ -294,7 +306,10 @@ export class OAuthService {
       tokenType: tokenData.tokenType || 'Bearer',
       expiresAt,
       domain: resolvedDomain,
-      paymentType: 'free',
+      paymentType: resolveEnterprisePaymentType(profile.accountType, profile.enterpriseId),
+      ...(profile.enterpriseId ? { enterpriseId: profile.enterpriseId } : {}),
+      ...(profile.enterpriseName ? { enterpriseName: profile.enterpriseName } : {}),
+      ...(profile.accountType ? { accountType: profile.accountType } : {}),
       authRaw: tokenData,
       profileRaw: profile,
       status: 'idle',

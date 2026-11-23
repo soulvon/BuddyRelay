@@ -10,7 +10,7 @@ import { TokenLedger } from './tokenLedger';
 import { acquireLock, tryClaimSchedulerLeader, releaseSchedulerLeader } from './accountLock';
 import { checkForUpdates } from './updater';
 import { formatAccountLabel } from './importExportService';
-import { isCnAccount } from './domain';
+import { isCnAccount, isEnterpriseAccount } from './domain';
 import { t } from './i18n';
 
 export interface SchedulerCoordinatorDeps {
@@ -250,6 +250,7 @@ export class SchedulerCoordinator implements vscode.Disposable {
       (acc) =>
         acc.status !== 'disabled' &&
         acc.status !== 'expired' &&
+        !isEnterpriseAccount(acc) &&
         isCnAccount(acc.domain) &&
         (!acc.todayCheckedIn || acc.lastCheckinDate !== today)
     );

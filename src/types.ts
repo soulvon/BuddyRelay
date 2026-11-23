@@ -33,8 +33,18 @@ export interface CodeBuddyAccount {
   expiresAt: number;
   /** 域名 */
   domain: string;
-  /** 计费类型 (free / pro / enterprise) */
+  /** 计费类型 (free / pro / enterprise / ultimate / exclusive) */
   paymentType?: string;
+  /** 企业租户 ID（企业版账号必填，用于 X-Enterprise-Id / X-Tenant-Id 与独立额度接口） */
+  enterpriseId?: string;
+  /** 企业名称 */
+  enterpriseName?: string;
+  /** 账号类型 (personal / pro / ultimate / exclusive) */
+  accountType?: string;
+  /** 企业周期额度是否为不限额 (-1) */
+  quotaUnlimited?: boolean;
+  /** 企业周期额度重置时间戳 (毫秒) */
+  quotaResetAt?: number;
   /** 原始配额信息快照 */
   quotaRaw?: Record<string, any>;
   /** 官方 auth 原始结构 */

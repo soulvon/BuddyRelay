@@ -1,8 +1,15 @@
-import { API_ENDPOINTS } from './constants';
+import { API_ENDPOINTS, getCodeBuddyBaseUrl } from './constants';
 import { httpRequest } from './httpClient';
 import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore';
 import { t } from './i18n';
-import { isCnAccount } from './domain';
+import {
+  buildEnterpriseHeaders,
+  EnterpriseIdentity,
+  extractEnterpriseInfo,
+  isCnAccount,
+  isEnterpriseAccount,
+  resolveEnterprisePaymentType
+} from './domain';
 
 /**
  * 北京时间 (UTC+8) 的今日日期 YYYY-MM-DD。
@@ -27,9 +34,38 @@ export function isTodayCheckedIn(acc: {
 }
 
 export interface DetailedQuotaResult {
-  totalCredits: number;
+  totalCredits?: number;
   basePackage: QuotaPackageItem;
   activityPackage: QuotaPackageItem;
+  isEnterprise?: boolean;
+  quotaUnlimited?: boolean;
+  quotaResetAt?: number;
+  enterpriseId?: string;
+  enterpriseName?: string;
+  accountType?: string;
+  paymentType?: string;
+}
+
+function resolveDomainHost(domain?: string, fallbackBase?: string): string {
+  const d = String(domain || '').trim();
+  if (d && d !== 'cn' && d !== 'intl' && !/^https?:\/\//i.test(d)) return d;
+  if (/^https?:\/\//i.test(d)) {
+    try { return new URL(d).hostname; } catch { /* ignore */ }
+  }
+  try { return new URL(fallbackBase || API_ENDPOINTS.CODEBUDDY_CN_BASE).hostname; } catch { return 'www.codebuddy.cn'; }
+}
+
+function parseResetTimestamp(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return raw < 10_000_000_000 ? raw * 1000 : raw;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const num = Number(raw);
+    if (Number.isFinite(num) && num > 0) return num < 10_000_000_000 ? num * 1000 : num;
+    const ms = Date.parse(raw);
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return undefined;
 }
 
 export interface CheckinStatusResult {
@@ -77,24 +113,138 @@ export class CheckinService {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
+  private resolveEndpointBase(domain?: string): string {
+    if (this.baseUrl !== API_ENDPOINTS.CODEBUDDY_CN_BASE) {
+      return this.baseUrl;
+    }
+    return getCodeBuddyBaseUrl(domain).replace(/\/+$/, '');
+  }
+
   /**
-   * 1. 查询账号签到活动状态
+   * 1.0a 从 /v2/plugin/accounts 自动探测存量账号绑定的企业租户身份
    */
+  public async discoverEnterpriseIdentity(account: CodeBuddyAccount): Promise<EnterpriseIdentity | null> {
+    if (!account.accessToken) return null;
+    const base = this.resolveEndpointBase(account.domain);
+    const url = base + API_ENDPOINTS.OAUTH_ACCOUNTS;
+    try {
+      const res = await httpRequest<{ code: number; data?: { accounts?: Array<Record<string, any>> } }>(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + account.accessToken,
+          'X-Domain': resolveDomainHost(account.domain, base),
+          ...buildEnterpriseHeaders(account)
+        },
+        timeout: 8000
+      });
+      const list = res.status === 200 && res.data?.code === 0 ? res.data?.data?.accounts : null;
+      if (!Array.isArray(list) || list.length === 0) return null;
+
+      const byUid = list.find((a) => a && String(a.uid || '') === account.uid && a.enterpriseId);
+      const entOnly = list.filter((a) => a && a.enterpriseId && a.pluginEnabled !== false);
+      const picked = byUid || (entOnly.length === 1 ? entOnly[0] : null);
+      if (!picked || !picked.enterpriseId) return null;
+
+      return {
+        enterpriseId: String(picked.enterpriseId).trim(),
+        enterpriseName: String(picked.enterpriseName || picked.enterprise_name || '').trim(),
+        accountType: String(picked.type || picked.accountType || '').trim()
+      };
+    } catch {
+      return null;
+    }
+  }
+
   /**
-   * 1.0 查询账号真实可用算力点数 (通过官方 get-user-resource 聚合 CycleCapacityRemainPrecise)
+   * 1.0b 查询企业版周期额度 (/v2/billing/meter/get-enterprise-user-usage)
+   */
+  public async queryEnterpriseRemainingQuota(
+    account: CodeBuddyAccount,
+    ent: EnterpriseIdentity
+  ): Promise<DetailedQuotaResult | null> {
+    if (!account.accessToken || !account.uid || !ent.enterpriseId) return null;
+    const base = this.resolveEndpointBase(account.domain);
+    const url = base + API_ENDPOINTS.ENTERPRISE_USER_USAGE;
+    try {
+      const res = await httpRequest<any>(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + account.accessToken,
+          'X-User-Id': account.uid,
+          ...buildEnterpriseHeaders(ent.enterpriseId),
+          'X-Domain': resolveDomainHost(account.domain, base),
+          'Content-Type': 'application/json'
+        },
+        body: {},
+        timeout: 10000
+      });
+      if (res.status !== 200 || !res.data || (res.data.code !== undefined && res.data.code !== 0)) {
+        return null;
+      }
+      const raw = res.data?.data?.data || res.data?.data || res.data;
+      if (!raw || typeof raw.limitNum !== 'number') return null;
+
+      const used = typeof raw.credit === 'number' && Number.isFinite(raw.credit)
+        ? Math.max(0, Math.round(raw.credit * 100) / 100)
+        : 0;
+      const quotaResetAt = parseResetTimestamp(raw.cycleResetTime ?? raw.cycleEndTime);
+      const paymentType = resolveEnterprisePaymentType(ent.accountType, ent.enterpriseId);
+      const baseMeta = {
+        isEnterprise: true,
+        quotaResetAt,
+        enterpriseId: ent.enterpriseId,
+        ...(ent.enterpriseName ? { enterpriseName: ent.enterpriseName } : {}),
+        ...(ent.accountType ? { accountType: ent.accountType } : {}),
+        paymentType
+      };
+
+      if (raw.limitNum === -1) {
+        return {
+          ...baseMeta,
+          totalCredits: undefined,
+          quotaUnlimited: true,
+          basePackage: { title: t('pkg.enterpriseQuota'), count: 1, remain: used, total: -1, percent: 100 },
+          activityPackage: { title: t('pkg.activity'), count: 0, remain: 0, total: 0, percent: 100 }
+        };
+      }
+
+      const limit = Math.max(0, Math.round(raw.limitNum * 100) / 100);
+      const remain = Math.max(0, Math.round((raw.limitNum - used) * 100) / 100);
+      const percent = limit > 0 ? Math.max(0, Math.min(100, Math.round((remain / limit) * 1000) / 10)) : 0;
+      return {
+        ...baseMeta,
+        totalCredits: remain,
+        quotaUnlimited: false,
+        basePackage: { title: t('pkg.enterpriseQuota'), count: 1, remain, total: limit, percent },
+        activityPackage: { title: t('pkg.activity'), count: 0, remain: 0, total: 0, percent }
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 1.0 查询账号真实可用算力点数（企业账号走 get-enterprise-user-usage，个人账号走 get-user-resource，空包自动回溯探测企业身份）
    */
   public async queryRealRemainingQuota(account: CodeBuddyAccount): Promise<DetailedQuotaResult | null> {
     if (!account.accessToken || !account.uid) {
       return null;
     }
 
+    const existingEnt = extractEnterpriseInfo(account);
+    if (existingEnt.enterpriseId) {
+      return await this.queryEnterpriseRemainingQuota(account, existingEnt);
+    }
+
+    const base = this.resolveEndpointBase(account.domain);
     const headers: Record<string, string> = {
       'Authorization': 'Bearer ' + account.accessToken,
       'X-User-Id': account.uid,
+      'X-Domain': resolveDomainHost(account.domain, base),
       'Content-Type': 'application/json'
     };
 
-    const url = this.baseUrl + API_ENDPOINTS.USER_RESOURCE;
+    const url = base + API_ENDPOINTS.USER_RESOURCE;
     // 注意：严禁加 PackageEndTimeRange 时间窗——实测基础体验包（TCACA_code_008）的
     // 包结束时间不在 now~now+5y 窗口内，会被整体滤掉导致显示 0/500（月发放仍在）。
     // Status [0,3]（生效中/已耗尽）语义已足够，耗尽的包 remain=0 不影响聚合。
@@ -130,60 +280,67 @@ export class CheckinService {
 
       if (res.status === 200 && res.data?.code === 0) {
         const pkgs = res.data?.data?.Response?.Data?.Accounts || [];
-        const basePkgs: any[] = [];
-        const actPkgs: any[] = [];
+        if (pkgs.length > 0) {
+          const basePkgs: any[] = [];
+          const actPkgs: any[] = [];
 
-        for (const pkg of pkgs) {
-          const code = pkg.PackageCode || '';
-          const name = pkg.PackageName || '';
-          if (
-            name.includes('基础') ||
-            name.includes('体验') ||
-            code === 'TCACA_code_001_PqouKr6QWV' ||
-            code === 'TCACA_code_006_DbXS0lrypC' ||
-            code === 'TCACA_code_008_cfWoLwvjU4'
-          ) {
-            basePkgs.push(pkg);
-          } else {
-            actPkgs.push(pkg);
+          for (const pkg of pkgs) {
+            const code = pkg.PackageCode || '';
+            const name = pkg.PackageName || '';
+            if (
+              name.includes('基础') ||
+              name.includes('体验') ||
+              code === 'TCACA_code_001_PqouKr6QWV' ||
+              code === 'TCACA_code_006_DbXS0lrypC' ||
+              code === 'TCACA_code_008_cfWoLwvjU4'
+            ) {
+              basePkgs.push(pkg);
+            } else {
+              actPkgs.push(pkg);
+            }
           }
+
+          const bRemain = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
+          const bTotal = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
+          const bCount = basePkgs.length || 1;
+          const finalBTotal = bTotal > 0 ? bTotal : 500;
+          const bPercent = finalBTotal > 0 ? Math.max(0, Math.min(100, (bRemain / finalBTotal) * 100)) : 0;
+
+          const aRemain = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
+          const aTotal = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
+          const aCount = actPkgs.length;
+          const aPercent = aTotal > 0 ? Math.max(0, Math.min(100, (aRemain / aTotal) * 100)) : 0;
+
+          const totalCredits = Math.round((bRemain + aRemain) * 100) / 100;
+
+          return {
+            totalCredits,
+            quotaUnlimited: false,
+            basePackage: {
+              title: t('pkg.base'),
+              count: bCount,
+              remain: Math.round(bRemain * 100) / 100,
+              total: Math.round(finalBTotal * 100) / 100,
+              percent: Math.round(bPercent * 10) / 10
+            },
+            activityPackage: {
+              title: t('pkg.activity'),
+              count: aCount,
+              remain: Math.round(aRemain * 100) / 100,
+              total: Math.round(aTotal * 100) / 100,
+              percent: Math.round(aPercent * 10) / 10
+            }
+          };
         }
-
-        const bRemain = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
-        const bTotal = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
-        const bCount = basePkgs.length || 1;
-        const finalBTotal = bTotal > 0 ? bTotal : 500;
-        const bPercent = finalBTotal > 0 ? Math.max(0, Math.min(100, (bRemain / finalBTotal) * 100)) : 0;
-
-        const aRemain = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
-        const aTotal = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
-        const aCount = actPkgs.length;
-        const aPercent = aTotal > 0 ? Math.max(0, Math.min(100, (aRemain / aTotal) * 100)) : 0;
-
-        const totalCredits = Math.round((bRemain + aRemain) * 100) / 100;
-
-        return {
-          totalCredits,
-          basePackage: {
-            title: t('pkg.base'),
-            count: bCount,
-            remain: Math.round(bRemain * 100) / 100,
-            total: Math.round(finalBTotal * 100) / 100,
-            percent: Math.round(bPercent * 10) / 10
-          },
-          activityPackage: {
-            title: t('pkg.activity'),
-            count: aCount,
-            remain: Math.round(aRemain * 100) / 100,
-            total: Math.round(aTotal * 100) / 100,
-            percent: Math.round(aPercent * 10) / 10
-          }
-        };
       }
     } catch (_) {
-      // 容错返回 null
+      // 容错进入企业身份探测
     }
 
+    const discovered = await this.discoverEnterpriseIdentity(account);
+    if (discovered?.enterpriseId) {
+      return await this.queryEnterpriseRemainingQuota(account, discovered);
+    }
     return null;
   }
 
@@ -194,7 +351,8 @@ export class CheckinService {
 
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...buildEnterpriseHeaders(account)
     };
     if (account.uid) {
       headers['X-User-Id'] = account.uid;
@@ -299,7 +457,8 @@ export class CheckinService {
 
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...buildEnterpriseHeaders(account)
     };
     if (account.uid) {
       headers['X-User-Id'] = account.uid;
@@ -361,7 +520,13 @@ export class CheckinService {
       return {};
     }
     return {
-      totalCredits: realQuota.totalCredits,
+      totalCredits: realQuota.quotaUnlimited ? undefined : (realQuota.totalCredits ?? 0),
+      quotaUnlimited: Boolean(realQuota.quotaUnlimited),
+      ...(realQuota.quotaResetAt !== undefined ? { quotaResetAt: realQuota.quotaResetAt } : {}),
+      ...(realQuota.enterpriseId ? { enterpriseId: realQuota.enterpriseId } : {}),
+      ...(realQuota.enterpriseName ? { enterpriseName: realQuota.enterpriseName } : {}),
+      ...(realQuota.accountType ? { accountType: realQuota.accountType } : {}),
+      ...(realQuota.paymentType ? { paymentType: realQuota.paymentType } : {}),
       basePackage: realQuota.basePackage,
       activityPackage: realQuota.activityPackage
     };
@@ -476,7 +641,7 @@ export class CheckinService {
     account: CodeBuddyAccount,
     store?: AccountStore
   ): Promise<CheckinStatusResult> {
-    if (!isCnAccount(account.domain)) {
+    if (!isCnAccount(account.domain) && !isEnterpriseAccount(account)) {
       return {
         active: true,
         todayCheckedIn: false,
@@ -487,11 +652,27 @@ export class CheckinService {
       };
     }
 
-    const status = await this.queryStatus(account);
     const realQuota = await this.queryRealRemainingQuota(account);
+    const isEnt = Boolean(realQuota?.isEnterprise || isEnterpriseAccount(account));
+
+    let status: CheckinStatusResult;
+    try {
+      status = await this.queryStatus(account);
+    } catch (err: any) {
+      if (!isEnt || !realQuota) throw err;
+      status = {
+        active: false,
+        todayCheckedIn: false,
+        streakDays: account.checkinStreak || 0,
+        dailyCredit: 0,
+        todayCredit: 0,
+        totalCredits: realQuota.totalCredits ?? 0
+      };
+    }
+
     const quotaPatch = this.buildQuotaPatch(realQuota);
     const finalCredits = realQuota
-      ? realQuota.totalCredits
+      ? (realQuota.totalCredits ?? 0)
       : (typeof account.totalCredits === 'number' ? account.totalCredits : 0);
 
     if (store) {
@@ -521,8 +702,8 @@ export class CheckinService {
       if (acc.status === 'disabled' || acc.status === 'expired') {
         continue;
       }
-      // 状态/配额接口挂在国内域名, 国际账号无从查询, 直接跳过
-      if (!isCnAccount(acc.domain)) {
+      // 个人版国际账号无查询接口直接跳过；国内账号与企业账号均同步
+      if (!isCnAccount(acc.domain) && !isEnterpriseAccount(acc)) {
         continue;
       }
       try {
@@ -585,6 +766,20 @@ export class CheckinService {
           creditAwarded: 0,
           streakDays: acc.checkinStreak || 0,
           message: t('ci.skipUnavailable', acc.status)
+        });
+        continue;
+      }
+      if (isEnterpriseAccount(acc)) {
+        report.alreadyCheckedInCount++;
+        report.results.push({
+          accountId: acc.id,
+          email: acc.email,
+          uid: acc.uid,
+          success: true,
+          alreadyCheckedIn: true,
+          creditAwarded: 0,
+          streakDays: acc.checkinStreak || 0,
+          message: t('ci.skipEnterprise')
         });
         continue;
       }

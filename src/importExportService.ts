@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { AccountStore, CodeBuddyAccount, cleanDisplayName, maskName, maskUid, resolveAccountDisplayName } from './accountStore';
 import { CheckinService, todayCN } from './checkinService';
 import { CockpitImporter } from './cockpitImporter';
+import { extractEnterpriseInfo, resolveEnterprisePaymentType } from './domain';
 import { readHostLoginUid } from './hostSession';
 import { t } from './i18n';
 
@@ -68,7 +69,17 @@ export function normalizeImportedAccount(raw: any): CodeBuddyAccount | null {
     .replace(/[\x00-\x1f\x7f]/g, '')
     .trim()
     .slice(0, MAX_PAYMENT_TYPE_LEN);
-  const paymentType = rawPayment || 'free';
+  const ent = extractEnterpriseInfo({
+    enterpriseId: data.enterpriseId ?? data.enterprise_id,
+    enterpriseName: data.enterpriseName ?? data.enterprise_name,
+    accountType: data.accountType ?? data.account_type,
+    profileRaw: data.profileRaw || data.profile_raw,
+    authRaw: data.authRaw || data.auth_raw,
+    accessToken
+  });
+  const paymentType = (rawPayment === 'free' || !rawPayment) && ent.enterpriseId
+    ? resolveEnterprisePaymentType(ent.accountType, ent.enterpriseId)
+    : (rawPayment || 'free');
 
   const nickname = data.nickname || jwt?.nickname || data.email || jwt?.preferred_username || uidStr;
   const email = data.email || jwt?.preferred_username || data.nickname || uidStr;
@@ -94,6 +105,11 @@ export function normalizeImportedAccount(raw: any): CodeBuddyAccount | null {
     expiresAt,
     domain: String(data.domain || 'www.codebuddy.cn'),
     paymentType,
+    ...(ent.enterpriseId ? { enterpriseId: ent.enterpriseId } : {}),
+    ...(ent.enterpriseName ? { enterpriseName: ent.enterpriseName } : {}),
+    ...(ent.accountType ? { accountType: ent.accountType } : {}),
+    ...(typeof data.quotaUnlimited === 'boolean' ? { quotaUnlimited: data.quotaUnlimited } : {}),
+    ...(typeof data.quotaResetAt === 'number' ? { quotaResetAt: data.quotaResetAt } : {}),
     quotaRaw: data.quotaRaw || data.quota_raw,
     authRaw: data.authRaw || data.auth_raw,
     profileRaw: data.profileRaw || data.profile_raw,
@@ -185,6 +201,10 @@ export async function importAccountsFromText(
         if (acc.refreshToken) existing.refreshToken = acc.refreshToken;
         if (acc.expiresAt) existing.expiresAt = acc.expiresAt;
         if (acc.quotaRaw) existing.quotaRaw = acc.quotaRaw;
+        if (acc.enterpriseId) existing.enterpriseId = acc.enterpriseId;
+        if (acc.enterpriseName) existing.enterpriseName = acc.enterpriseName;
+        if (acc.accountType) existing.accountType = acc.accountType;
+        if (acc.paymentType && acc.paymentType !== 'free') existing.paymentType = acc.paymentType;
         if (existing.status === 'expired') existing.status = 'idle';
         existing.displayName = preservedDisplayName;
         existing.tags = preservedTags;

@@ -877,11 +877,42 @@ body.vscode-light .grid-card {
 .grid-plan-chip.tier-trial { --chip-tone: var(--chip-trial); }
 .grid-plan-chip.tier-pro { --chip-tone: var(--chip-pro); }
 .grid-plan-chip.tier-team { --chip-tone: var(--chip-team); }
-.grid-plan-chip.tier-enterprise { --chip-tone: var(--chip-enterprise); }
+.grid-plan-chip.tier-enterprise,
+.grid-plan-chip.tier-ultimate,
+.grid-plan-chip.tier-exclusive { --chip-tone: var(--chip-enterprise); }
 body.vscode-light .grid-plan-chip {
   background: transparent;
   color: var(--chip-tone);
   border-color: var(--chip-tone);
+}
+.grid-enterprise-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--chip-enterprise);
+  background: rgba(143, 122, 196, 0.14);
+  border: 1px solid rgba(143, 122, 196, 0.35);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.vscode-light .grid-enterprise-chip {
+  background: rgba(143, 122, 196, 0.08);
+  border-color: rgba(143, 122, 196, 0.45);
+}
+.grid-quota-subhint {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .grid-health-badge {

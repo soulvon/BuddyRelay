@@ -4,6 +4,7 @@ import * as child_process from 'child_process';
 import { PATHS, PATCH_V5 } from './constants';
 import { atomicWriteJsonSync, readJsonFileSafe } from './atomicFile';
 import { CodeBuddyAccount, AccountStore, resolveAccountDisplayName } from './accountStore';
+import { extractEnterpriseInfo } from './domain';
 import { SessionHealer, normalizeLinkTarget } from './sessionHealer';
 import { t } from './i18n';
 import {
@@ -310,7 +311,18 @@ export class SeamlessSwitcher {
     const refresh = account.refreshToken || (account.authRaw as any)?.refreshToken || '';
     const domain = account.domain || (account.authRaw as any)?.domain || 'www.codebuddy.cn';
     const expiresAt = account.expiresAt || (nowMs + 7200 * 1000);
-    const accountObj = { id: uid, uid, label, nickname: label, pluginEnabled: true, lastLogin: true };
+    const ent = extractEnterpriseInfo(account);
+    const accountObj = {
+      id: uid,
+      uid,
+      label,
+      nickname: label,
+      pluginEnabled: true,
+      lastLogin: true,
+      ...(ent.enterpriseId ? { enterpriseId: ent.enterpriseId } : {}),
+      ...(ent.enterpriseName ? { enterpriseName: ent.enterpriseName } : {}),
+      ...(ent.accountType ? { type: ent.accountType } : {})
+    };
 
     const commandPayload = {
       session: {

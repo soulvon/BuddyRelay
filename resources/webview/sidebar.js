@@ -137,6 +137,27 @@
     return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
+  function fmtDateCN(ts) {
+    const raw = Number(ts || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return '';
+    const ms = raw < 1e12 ? raw * 1000 : raw;
+    const d = new Date(ms + 8 * 3600 * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+  }
+
+  function isEntAccount(acc) {
+    if (!acc) return false;
+    const pt = String(acc.paymentType || '').toLowerCase();
+    return Boolean(acc.enterpriseId || pt === 'enterprise' || pt === 'ultimate' || pt === 'exclusive');
+  }
+
+  function isLowQuotaAccount(acc) {
+    if (!acc || acc.quotaUnlimited) return false;
+    if (isEntAccount(acc)) return Boolean(acc.basePackage && acc.basePackage.total > 0 && acc.basePackage.percent <= 30);
+    return Boolean(acc.activityPackage && acc.activityPackage.percent <= 30);
+  }
+
   function getAccountOriginName(acc) {
     return (acc && (acc.nickname || acc.email)) || '';
   }
@@ -823,7 +844,7 @@
   function getTagCounts() {
     const total = currentAccounts.length;
     const checked = currentAccounts.filter((a) => a.todayCheckedIn).length;
-    const low = currentAccounts.filter((a) => a.activityPackage && a.activityPackage.percent <= 30).length;
+    const low = currentAccounts.filter((a) => isLowQuotaAccount(a)).length;
     const counts = { all: total, checked, unchecked: total - checked, low };
     const customSet = new Set();
     currentAccounts.forEach((a) => {
@@ -911,10 +932,11 @@
       summaryDailyMax.textContent = '/ ' + total;
 
       const activeAccounts = currentAccounts.filter((a) => a.status !== 'disabled');
-      const totalRemain = activeAccounts.reduce((s, a) => s + (a.totalCredits || 0), 0);
+      const totalRemain = activeAccounts.reduce((s, a) => s + (a.quotaUnlimited ? 0 : Math.max(0, a.totalCredits || 0)), 0);
       const totalCap = activeAccounts.reduce((s, a) => {
-        const base = (a.basePackage && a.basePackage.total) || 0;
-        const act = (a.activityPackage && a.activityPackage.total) || 0;
+        if (a.quotaUnlimited) return s;
+        const base = Math.max(0, (a.basePackage && a.basePackage.total) || 0);
+        const act = isEntAccount(a) ? 0 : Math.max(0, (a.activityPackage && a.activityPackage.total) || 0);
         return s + base + act;
       }, 0);
       const creditPct = totalCap > 0 ? Math.round((totalRemain / totalCap) * 1000) / 10 : 0;
@@ -940,7 +962,9 @@
 
   function sortAccountList(list) {
     if (sortBy === 'quota') {
-      return [...list].sort((a, b) => (b.totalCredits || 0) - (a.totalCredits || 0));
+      return [...list].sort((a, b) =>
+        (b.quotaUnlimited ? Number.MAX_SAFE_INTEGER : (b.totalCredits || 0))
+        - (a.quotaUnlimited ? Number.MAX_SAFE_INTEGER : (a.totalCredits || 0)));
     }
     if (sortBy === 'recent') {
       return [...list].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
@@ -961,13 +985,14 @@
           (a.displayName || '').toLowerCase().includes(searchQuery) ||
           (a.nickname || '').toLowerCase().includes(searchQuery) ||
           (a.email || '').toLowerCase().includes(searchQuery) ||
+          (a.enterpriseName || '').toLowerCase().includes(searchQuery) ||
           (a.uid || '').toLowerCase().includes(searchQuery) ||
           (a.notes || '').toLowerCase().includes(searchQuery) ||
           (Array.isArray(a.tags) && a.tags.some((tag) => String(tag).toLowerCase().includes(searchQuery))));
       }
       if (activeTag === 'checked') list = list.filter((a) => a.todayCheckedIn);
       else if (activeTag === 'unchecked') list = list.filter((a) => !a.todayCheckedIn);
-      else if (activeTag === 'low') list = list.filter((a) => a.activityPackage && a.activityPackage.percent <= 30);
+      else if (activeTag === 'low') list = list.filter((a) => isLowQuotaAccount(a));
       else if (activeTag.startsWith('custom:')) {
         const tag = activeTag.slice(7);
         list = list.filter((a) => Array.isArray(a.tags) && a.tags.includes(tag));
@@ -1000,6 +1025,7 @@
         JSON.stringify(lastCooldownEvents ? lastCooldownEvents.byUid || {} : {}),
         list.map((a) => [
           a.id, a.uid, a.displayName || '', a.nickname, a.email, a.status, a.isActive ? 1 : 0,
+          a.paymentType || '', a.enterpriseId || '', a.enterpriseName || '', a.quotaUnlimited ? 1 : 0, a.quotaResetAt || 0,
           a.totalCredits, a.todayConsumed, a.todayGrants, a.todayCheckedIn ? 1 : 0,
           a.checkinStreak, a.notes || '', (a.tags || []).join('|'),
           a.tokenStats ? [a.tokenStats.todayTokens, a.tokenStats.todayCostUsd, a.tokenStats.totalTokens, a.tokenStats.totalCalls].join('/') : '',
@@ -1025,10 +1051,24 @@
         const titleTip = hasCustomName ? (displayName + ' (' + maskName(originRaw) + ')') : displayName;
         const displayUid = maskUid(acc.uid);
         const planText = String(acc.paymentType || 'free').toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        const planLabel = planText ? planText.charAt(0).toUpperCase() + planText.slice(1) : 'Free';
-        const planTier = 'tier-' + (['free', 'trial', 'pro', 'team', 'enterprise'].indexOf(planText) >= 0 ? planText : 'unknown');
+        const planLabel = planText === 'ultimate'
+          ? t('js.planUltimate')
+          : (planText === 'exclusive'
+            ? t('js.planExclusive')
+            : (planText === 'enterprise'
+              ? t('js.planEnterprise')
+              : (planText ? planText.charAt(0).toUpperCase() + planText.slice(1) : 'Free')));
+        const planTier = 'tier-' + (['free', 'trial', 'pro', 'team', 'enterprise', 'ultimate', 'exclusive'].indexOf(planText) >= 0 ? planText : 'unknown');
+        const isEntAcc = isEntAccount(acc);
+        const isUnlimited = Boolean(acc.quotaUnlimited);
+        const rawEntName = acc.enterpriseName ? String(acc.enterpriseName).trim() : '';
+        const displayEntName = rawEntName ? maskName(rawEntName) : '';
+        const entChipHtml = (isEntAcc && displayEntName)
+          ? '<span class="grid-enterprise-chip" title="' + escAttr(displayEntName) + '">' + escHtml(displayEntName) + '</span>'
+          : '';
 
-        const totalVal = fmtNum(acc.totalCredits);
+        const totalVal = isUnlimited ? escHtml(t('js.unlimitedQuota')) : fmtNum(acc.totalCredits);
+        const totalUnitHtml = isUnlimited ? '' : ('<span class="grid-quota-unit">' + escHtml(t('js.unitPoint')) + '</span>');
         const base = acc.basePackage || { title: t('pkg.base'), count: 1, remain: 0, total: 500, percent: 0 };
         const baseLevel = levelClass(base.percent, base.remain);
         const act = acc.activityPackage || { title: t('pkg.activity'), count: 30, remain: acc.totalCredits || 0, total: 3000, percent: 50 };
@@ -1070,7 +1110,11 @@
             : '<button type="button" class="grid-switch-btn" data-action="switch" data-id="' + safeId + '" ' + (isSwitchingThis || isDisabled ? 'disabled' : '') + ' title="' + escAttr(isDisabled ? t('js.switchDisabledTitle') : t('js.switchTitle')) + '">' + switchBtnLabel + '</button>');
 
         const isCheckingThis = checkingId === acc.id;
-        const checkinBtn = '<button type="button" class="status-toggle-btn ' + (acc.todayCheckedIn ? 'is-enabled is-done' : 'is-disabled is-pending') + '" data-action="checkin" data-id="' + safeId + '" ' + (acc.todayCheckedIn || isDisabled || isCheckingThis ? 'disabled' : '') + ' title="' + escAttr(acc.todayCheckedIn ? t('js.checkinDoneTitle') : (isDisabled ? t('js.checkinDisabledTitle') : t('js.checkinDoTitle'))) + '">' + (isCheckingThis ? '<span class="btn-mini-spinner"></span>' : '') + escHtml(acc.todayCheckedIn ? t('js.checkedInShort') : t('js.checkinBtn')) + '</button>';
+        const checkinDisabled = isEntAcc || acc.todayCheckedIn || isDisabled || isCheckingThis;
+        const checkinTitle = isEntAcc
+          ? t('ci.skipEnterprise')
+          : (acc.todayCheckedIn ? t('js.checkinDoneTitle') : (isDisabled ? t('js.checkinDisabledTitle') : t('js.checkinDoTitle')));
+        const checkinBtn = '<button type="button" class="status-toggle-btn ' + (acc.todayCheckedIn ? 'is-enabled is-done' : 'is-disabled is-pending') + '" data-action="checkin" data-id="' + safeId + '" ' + (checkinDisabled ? 'disabled' : '') + ' title="' + escAttr(checkinTitle) + '">' + (isCheckingThis ? '<span class="btn-mini-spinner"></span>' : '') + escHtml(acc.todayCheckedIn ? t('js.checkedInShort') : t('js.checkinBtn')) + '</button>';
         const isRefreshingThis = refreshingIds.has(acc.id);
         const statusToggleBtn = '<button type="button" class="status-switch ' + (isDisabled ? 'is-off' : 'is-on') + '" data-action="toggleStatus" data-id="' + safeId + '" title="' + escAttr(isDisabled ? t('js.enableTitle') : t('js.disableTitle')) + '" aria-label="' + escAttr(isDisabled ? t('js.ariaEnable') : t('js.ariaDisable')) + '"><span class="status-switch-thumb"></span></button>';
 
@@ -1090,6 +1134,47 @@
 
         const basePct = Math.max(0, Math.min(100, Number(base.percent || 0)));
         const actPct = Math.max(0, Math.min(100, Number(act.percent || 0)));
+        let quotaBarsHtml = '';
+        if (isEntAcc) {
+          const entTitle = (acc.basePackage && acc.basePackage.title) ? acc.basePackage.title : t('pkg.enterpriseQuota');
+          const entRemain = Math.max(0, Number(base.remain || 0));
+          const entTotal = Math.max(0, Number(base.total || 0));
+          const entPct = isUnlimited ? 100 : basePct;
+          const entLevel = isUnlimited ? 'is-ok' : baseLevel;
+          const entRightVal = isUnlimited ? escHtml(t('js.unlimitedQuota')) : (fmtNum(entRemain) + ' / ' + fmtNum(entTotal));
+          const entUsedCredits = isUnlimited ? entRemain : Math.max(0, entTotal - entRemain);
+          const entUsedText = (isUnlimited || entTotal > 0) ? escHtml(t('js.enterpriseUsed', fmtNum(entUsedCredits))) : '';
+          const resetDateStr = fmtDateCN(acc.quotaResetAt);
+          const entResetText = resetDateStr ? escHtml(t('js.enterpriseResetAt', resetDateStr)) : '';
+          const subhintHtml = (entUsedText || entResetText)
+            ? '<div class="grid-quota-subhint"><span>' + entUsedText + '</span><span>' + entResetText + '</span></div>'
+            : '';
+          quotaBarsHtml = `
+              <div class="grid-quota-item">
+                <div class="grid-quota-head">
+                  <span>${escHtml(entTitle)}</span>
+                  <span class="grid-quota-val ${entLevel}" data-field="base">${entRightVal}</span>
+                </div>
+                <div class="quota-bar"><div class="quota-bar-fill ${entLevel}" data-field="baseBar" style="width:${entPct}%"></div></div>
+                ${subhintHtml}
+              </div>`;
+        } else {
+          quotaBarsHtml = `
+              <div class="grid-quota-item">
+                <div class="grid-quota-head">
+                  <span>${escHtml(base.title)}</span>
+                  <span class="grid-quota-val ${baseLevel}" data-field="base">${fmtNum(base.remain)} / ${fmtNum(base.total)}</span>
+                </div>
+                <div class="quota-bar"><div class="quota-bar-fill ${baseLevel}" data-field="baseBar" style="width:${basePct}%"></div></div>
+              </div>
+              <div class="grid-quota-item">
+                <div class="grid-quota-head">
+                  <span>${escHtml(act.title)}</span>
+                  <span class="grid-quota-val ${actLevel}" data-field="act">${fmtNum(act.remain)} / ${fmtNum(act.total)}</span>
+                </div>
+                <div class="quota-bar"><div class="quota-bar-fill ${actLevel}" data-field="actBar" style="width:${actPct}%"></div></div>
+              </div>`;
+        }
         const ts = acc.tokenStats;
         let tokenBarHtml = '';
         if (ts && ts.todayTokens > 0) {
@@ -1115,6 +1200,7 @@
             </div>
             <div class="grid-card-meta">
               <span class="grid-plan-chip ${planTier}">${escHtml(planLabel)}</span>
+              ${entChipHtml}
               ${healthBadge}
               ${tagsHtml}
             </div>
@@ -1124,23 +1210,10 @@
               <div class="grid-quota-item" style="margin-bottom: 2px;">
                 <div class="grid-quota-head" style="align-items: center;">
                   <span style="font-weight: 500;">${escHtml(t('js.totalCredits'))}</span>
-                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal}<span class="grid-quota-unit">${escHtml(t('js.unitPoint'))}</span></span>
+                  <span class="grid-quota-val is-neutral" data-field="total">${totalVal}${totalUnitHtml}</span>
                 </div>
               </div>
-              <div class="grid-quota-item">
-                <div class="grid-quota-head">
-                  <span>${escHtml(base.title)}</span>
-                  <span class="grid-quota-val ${baseLevel}" data-field="base">${fmtNum(base.remain)} / ${fmtNum(base.total)}</span>
-                </div>
-                <div class="quota-bar"><div class="quota-bar-fill ${baseLevel}" data-field="baseBar" style="width:${basePct}%"></div></div>
-              </div>
-              <div class="grid-quota-item">
-                <div class="grid-quota-head">
-                  <span>${escHtml(act.title)}</span>
-                  <span class="grid-quota-val ${actLevel}" data-field="act">${fmtNum(act.remain)} / ${fmtNum(act.total)}</span>
-                </div>
-                <div class="quota-bar"><div class="quota-bar-fill ${actLevel}" data-field="actBar" style="width:${actPct}%"></div></div>
-              </div>
+              ${quotaBarsHtml}
             </div>
             <div class="grid-card-extra">
               <div class="grid-extra-row"><span>${escHtml(t('js.streakLabel'))}</span><span class="grid-extra-val" data-field="streak">${escHtml(t('js.streakDaysUnit', acc.checkinStreak || 0))}</span></div>

@@ -21,12 +21,14 @@ export const en: Record<string, string> = {
   'status.creditsUnit': '{0} pts',
   'status.freePlan': 'Free',
   'status.ready': 'Ready',
+  'status.unlimited': 'Unlimited',
   'status.rateLimited': '429 cooling',
   'status.tooltipNone': '**BuddyRelay** · Not signed in\n\nClick to add or switch accounts',
   'status.tooltipHeader': '**BuddyRelay** · Current session{0}\n\n',
   'status.privacyOn': ' (privacy mode on)',
   'status.tooltipAccount': 'Account: **{0}**\n\n',
   'status.tooltipOriginAccount': 'Original account: {0}\n\n',
+  'status.tooltipEnterprise': 'Enterprise: {0}\n\n',
   'status.tooltipUid': 'User UID: `{0}`\n\n',
   'status.tooltipCredits': 'Remaining credits: **{0}**\n\n',
   'status.tooltipTodayStats': "Today's usage: **{0} pts** · Gained: **+{1} pts**\n\n",
@@ -206,6 +208,7 @@ export const en: Record<string, string> = {
   'err.htmlMissing': 'Sidebar resources not found',
   'pkg.base': 'Base package',
   'pkg.activity': 'Activity package',
+  'pkg.enterpriseQuota': 'Enterprise cycle quota',
   'intl.skipIntl': 'Skipped international account',
 
   // ── autoSwitcher ──
@@ -312,6 +315,7 @@ export const en: Record<string, string> = {
   'ci.checkinError': 'Check-in error: {0}',
   'ci.syncAlreadyChecked': 'Already checked in today ({0}-day streak)',
   'ci.skipUnavailable': 'Skipped unavailable account (status: {0})',
+  'ci.skipEnterprise': 'Enterprise accounts do not use personal daily check-in',
 
   // ── growthTaskService ──
   'task.defaultName': 'task',
@@ -710,5 +714,11 @@ export const en: Record<string, string> = {
   'js.cardTokensTotal': 'Total {0}',
   'js.cardTokensTotalOnly': 'Total {0} ({1})',
   'js.cardTokensPending': 'No local token records yet',
-  'js.cardTokensHint': 'Click to view token usage & cost details for this account'
+  'js.cardTokensHint': 'Click to view token usage & cost details for this account',
+  'js.unlimitedQuota': 'Unlimited',
+  'js.enterpriseUsed': 'Used {0} pts this cycle',
+  'js.enterpriseResetAt': 'Resets {0}',
+  'js.planUltimate': 'Ultimate',
+  'js.planExclusive': 'Exclusive',
+  'js.planEnterprise': 'Enterprise'
 };

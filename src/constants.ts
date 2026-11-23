@@ -22,6 +22,7 @@ export const API_ENDPOINTS = {
   OAUTH_TOKEN: '/v2/plugin/auth/token',
   OAUTH_REFRESH: '/v2/plugin/auth/token/refresh',
   OAUTH_ACCOUNT: '/v2/plugin/login/account',
+  OAUTH_ACCOUNTS: '/v2/plugin/accounts',
 
   // 签到与活动链路 (对齐 Cockpit Tools / Buddy加油站)
   CHECKIN_ACTIVITY_STATUS: '/v2/billing/meter/checkin-activity-status',
@@ -31,6 +32,7 @@ export const API_ENDPOINTS = {
   // 计量与用量信息
   PAYMENT_TYPE: '/v2/billing/meter/get-payment-type',
   USER_RESOURCE: '/v2/billing/meter/get-user-resource',
+  ENTERPRISE_USER_USAGE: '/v2/billing/meter/get-enterprise-user-usage',
   USAGE_STATUS: '/v2/billing/meter/usage-status'
 } as const;
 
@@ -213,9 +215,9 @@ export const PATHS = {
 export const PATCH_V5 = {
   VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
-  // v5 特征码：R2/R3/R4/R5 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
-  // R5 (2026-11-16)：dgw 跨平台复用 __byokDir("data")；__ensureJunction 动态读取 session-master.json
-  V5_MARKER: '/*__BYOK_V5_R5__*/',
+  // v5 特征码：R2/R3/R4/R5/R6 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
+  // R6 (2026-11-23)：切号同步 genie.enterpriseId 租户状态，且同 UID 跨企业切号不跳过
+  V5_MARKER: '/*__BYOK_V5_R6__*/',
 
   // 锚点 1: 会话服务类构造函数注入全局会话实例
   // 类名随宿主构建漂移 (AM -> HM)，硬编码类名必失效；
@@ -242,10 +244,10 @@ export const PATCH_V5 = {
   // 挂起或拒绝时 watcher 永不启动（2026-11-02 事故实证）。构造函数实例化必然执行。
   // __byokStarted 防重入；构造首句时 logService 未赋值由 __byokLog 的 try/catch 保护。
 
-  // 注入的完整 WATCHER_METHODS 源码块 (v5 R5: 跨平台目录 / 动态母体建链 / 回执闭环 / 启动诊断黑匣子)
+  // 注入的完整 WATCHER_METHODS 源码块 (v5 R6: 跨平台目录 / 动态母体建链 / 企业租户同步 / 回执闭环 / 启动诊断黑匣子)
   // 注意：此处 marker 必须与 V5_MARKER 一致，否则自愈判定永远认为"未打补丁"而反复重打
   WATCHER_METHODS:
-    '/*__BYOK_V5_R5__*/' +
+    '/*__BYOK_V5_R6__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
     '__byokDir(k){try{const pm=globalThis.__byokPath;if(!pm)return "";const h=process.env.HOME||process.env.USERPROFILE||"";const mac=process.platform==="darwin";const win=process.platform==="win32";if(k==="data"){if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_CONFIG_HOME||pm.join(h,".config");return process.env.APPDATA||pm.join(h,"AppData","Roaming")}if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_DATA_HOME||pm.join(h,".local","share");return process.env.LOCALAPPDATA||pm.join(h,"AppData","Local")}catch(e){return ""}}' +
     '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const d=this.__byokDir("data");if(!d)return;const f=pm.join(d,"CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);try{fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}finally{try{if(fs.existsSync(t))fs.unlinkSync(t)}catch(_){}}}catch(_){}}' +
@@ -280,8 +282,9 @@ export const PATCH_V5 = {
     '}' +
     '__byokApplySwitch(s,ts){' +
     'const nextUid=s.account.uid;' +
+    'const nextEnt=String(s.account.enterpriseId||"");' +
     'const done=()=>{' +
-    'try{this.storageService.store("genie.userId",nextUid,-1,1)}catch(_){}' +
+    'try{this.storageService.store("genie.userId",nextUid,-1,1);if(nextEnt)this.storageService.store("genie.enterpriseId",nextEnt,-1,1);else if(typeof this.storageService.remove==="function")this.storageService.remove("genie.enterpriseId",-1);const st=this.apiClient&&this.apiClient.stateService;if(st){if(typeof st.setItem==="function")st.setItem("genie.userId",nextUid);if(nextEnt&&typeof st.setItem==="function")st.setItem("genie.enterpriseId",nextEnt);else if(!nextEnt&&typeof st.removeItem==="function")st.removeItem("genie.enterpriseId")}}catch(_){}' +
     'this.currentSession=s;' +
     'this._onDidChangeSession.fire(s);' +
     'this.scheduleRefresh();' +
@@ -332,8 +335,10 @@ export const PATCH_V5 = {
     'const s=cmd&&cmd.session;' +
     'if(!s||!s.account||!s.auth){this.__byokLog("bad cmd");this.__byokReceipt({ok:!1,err:"bad_cmd",ts:cmd?cmd.ts||0:0});return}' +
     'const cur=this.currentSession&&this.currentSession.account?this.currentSession.account.uid:null;' +
+    'const curEnt=this.currentSession&&this.currentSession.account?String(this.currentSession.account.enterpriseId||""):"";' +
     'const next=s.account.uid;' +
-    'if(cur===next){this.__byokLog("same uid skip");this.__byokReceipt({ok:!0,skipped:!0,uid:next,ts:cmd.ts||0});return}' +
+    'const nextEnt=String(s.account.enterpriseId||"");' +
+    'if(cur===next&&curEnt===nextEnt){this.__byokLog("same uid skip");this.__byokReceipt({ok:!0,skipped:!0,uid:next,ts:cmd.ts||0});return}' +
     'this.__byokApplySwitch(s,cmd.ts||0);' +
     '});' +
     '},2000);' +

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { PATHS } from './constants';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { extractEnterpriseInfo, resolveEnterprisePaymentType } from './domain';
 import { t } from './i18n';
 
 export interface CockpitEnvelope {
@@ -188,6 +189,19 @@ export class CockpitImporter {
         ? raw.id
         : '';
 
+    const ent = extractEnterpriseInfo({
+      enterpriseId: raw.enterprise_id ?? raw.enterpriseId,
+      enterpriseName: raw.enterprise_name ?? raw.enterpriseName,
+      accountType: raw.account_type ?? raw.accountType,
+      profileRaw: raw.profile_raw,
+      authRaw: raw.auth_raw,
+      accessToken
+    });
+    const rawPayType = String(raw.payment_type || 'free').trim();
+    const paymentType = (rawPayType === 'free' || !rawPayType) && ent.enterpriseId
+      ? resolveEnterprisePaymentType(ent.accountType, ent.enterpriseId)
+      : (rawPayType || 'free');
+
     return {
       id: safeRawId || `codebuddy_cn_${uid.replace(/-/g, '')}`,
       uid,
@@ -198,7 +212,10 @@ export class CockpitImporter {
       tokenType,
       expiresAt,
       domain: raw.domain || raw.auth_raw?.domain || 'www.codebuddy.cn',
-      paymentType: raw.payment_type || 'free',
+      paymentType,
+      ...(ent.enterpriseId ? { enterpriseId: ent.enterpriseId } : {}),
+      ...(ent.enterpriseName ? { enterpriseName: ent.enterpriseName } : {}),
+      ...(ent.accountType ? { accountType: ent.accountType } : {}),
       quotaRaw: raw.quota_raw,
       authRaw: raw.auth_raw,
       profileRaw: raw.profile_raw,

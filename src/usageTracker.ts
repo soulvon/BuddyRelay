@@ -2,6 +2,7 @@ import * as path from 'path';
 import { PATHS } from './constants';
 import { atomicWriteJsonSync, readJsonFileSafe, withFileLockSync } from './atomicFile';
 import { CodeBuddyAccount, resolveAccountDisplayName } from './accountStore';
+import { buildEnterpriseHeaders } from './domain';
 import { todayCN } from './checkinService';
 import { t } from './i18n';
 
@@ -233,7 +234,7 @@ export class UsageTracker {
   }
 
   public async refreshOfficialStats(
-    items: Array<{ id: string; token: string; uid: string }>,
+    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string }>,
     opts?: { force?: boolean }
   ): Promise<boolean> {
     this.loadDailyStats();
@@ -258,7 +259,7 @@ export class UsageTracker {
       const results: Array<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> = [];
       for (let k = 0; k < valid.length; k += FETCH_CONCURRENCY) {
         const batch = valid.slice(k, k + FETCH_CONCURRENCY);
-        results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid)))));
+        results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid, undefined, i.enterpriseId)))));
       }
 
       const today = todayCN();
@@ -320,11 +321,13 @@ export class UsageTracker {
   public static async fetchOfficialDaily(
     token: string,
     uid: string,
-    targetDate?: string
+    targetDate?: string,
+    enterpriseId?: string
   ): Promise<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> {
-    const headers = {
+    const headers: Record<string, string> = {
       Authorization: 'Bearer ' + token,
       'X-User-Id': uid,
+      ...buildEnterpriseHeaders(enterpriseId),
       'Content-Type': 'application/json',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
@@ -363,7 +366,7 @@ export class UsageTracker {
     }
 
     let grantsSum = 0;
-    if (dateStr === todayStr) {
+    if (dateStr === todayStr && !enterpriseId) {
       try {
         const res = await fetch('https://www.codebuddy.cn/v2/billing/meter/get-user-resource', {
           method: 'POST',
@@ -444,7 +447,7 @@ export class UsageTracker {
   }
 
   public async refreshModelStats(
-    items: Array<{ id: string; token: string; uid: string }>,
+    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string }>,
     opts?: { days?: number; force?: boolean }
   ): Promise<boolean> {
     if (this.modelStatsBusy) return false;
@@ -456,7 +459,7 @@ export class UsageTracker {
     const wantDates = Array.from({ length: wantDays }, (_, i) => this.formatTime(now - i * 86400_000).dateStr);
     const todayBlocked = now - this.lastModelStatsTodayTs < (force ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS);
     const valid = (items || []).filter((i) => i?.id && i.token && i.uid);
-    const jobs: Array<{ item: { id: string; token: string; uid: string }; date: string }> = [];
+    const jobs: Array<{ item: { id: string; token: string; uid: string; enterpriseId?: string }; date: string }> = [];
     for (const item of valid) {
       const synced = new Set(this.modelStats.syncedDays[item.id] || []);
       for (const date of wantDates) {
@@ -471,7 +474,7 @@ export class UsageTracker {
       for (let k = 0; k < jobs.length; k += FETCH_CONCURRENCY) {
         const batch = jobs.slice(k, k + FETCH_CONCURRENCY);
         await Promise.all(batch.map(async (job) => {
-          const r = await UsageTracker.fetchOfficialDaily(job.item.token, job.item.uid, job.date);
+          const r = await UsageTracker.fetchOfficialDaily(job.item.token, job.item.uid, job.date, job.item.enterpriseId);
           if (!r) return;
           const models: Record<string, ModelDayStat> = {};
           for (const row of r.rows) {

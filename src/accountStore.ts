@@ -673,6 +673,9 @@ export class AccountStore extends EventEmitter {
       if (k === 'id' || k === 'status' || v === undefined) continue;
       (acc as any)[k] = v;
     }
+    if ((fields as any).quotaUnlimited === true && 'totalCredits' in fields && fields.totalCredits === undefined) {
+      delete acc.totalCredits;
+    }
     this._pendingUpsertIds.add(acc.id);
     await this.persist();
   }

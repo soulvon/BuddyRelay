@@ -14,7 +14,7 @@ import { checkForUpdates, getCurrentVersion } from './updater';
 import { UsageTracker } from './usageTracker';
 import { t, getLangDict } from './i18n';
 import { detectHostEdition } from './host';
-import { isCnAccount } from './domain';
+import { isCnAccount, extractEnterpriseInfo, isEnterpriseAccount } from './domain';
 import { PATHS } from './constants';
 import { loadCooldownEvents } from './cooldownLogWatcher';
 import { TokenLedger } from './tokenLedger';
@@ -267,6 +267,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
             id: acc.id, uid: acc.uid, email: acc.email, nickname: acc.nickname || acc.email,
             displayName: acc.displayName || '',
             paymentType: acc.paymentType || 'free', status: acc.status,
+            enterpriseId: acc.enterpriseId || '',
+            enterpriseName: acc.enterpriseName || '',
+            accountType: acc.accountType || '',
+            quotaUnlimited: Boolean(acc.quotaUnlimited),
+            quotaResetAt: acc.quotaResetAt || 0,
             isActive: active ? active.id === acc.id : false,
             totalCredits: acc.totalCredits ?? 0,
             todayConsumed: usageSummary?.perAccountConsumed[acc.id] ?? 0,
@@ -448,8 +453,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   public refreshUsageStats(force: boolean = false): void {
     if (!this.usageTracker) return;
     const usageItems = (this.store.getAll?.() ?? [])
-      .filter((a) => isCnAccount(a.domain) && typeof a.totalCredits === 'number')
-      .map((a) => ({ id: a.id, credits: a.totalCredits as number, token: a.accessToken || '', uid: a.uid || '' }));
+      .filter((a) => (isCnAccount(a.domain) || isEnterpriseAccount(a)) && (typeof a.totalCredits === 'number' || Boolean(a.quotaUnlimited)))
+      .map((a) => ({
+        id: a.id,
+        credits: typeof a.totalCredits === 'number' ? a.totalCredits : 0,
+        token: a.accessToken || '',
+        uid: a.uid || '',
+        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined
+      }));
     const changedIds = new Set(this.usageTracker.detectChangedAccounts(usageItems) || []);
     const eligible = usageItems.filter((i) => i.token && i.uid);
     const targets = force ? eligible : eligible.filter((i) => changedIds.has(i.id));
@@ -462,8 +473,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async handleRefreshModelStats(days: number, force: boolean): Promise<void> {
     if (!this.usageTracker) return;
     const eligible = (this.store.getAll?.() ?? [])
-      .filter((a) => isCnAccount(a.domain) && a.accessToken && a.uid)
-      .map((a) => ({ id: a.id, token: a.accessToken || '', uid: a.uid || '' }));
+      .filter((a) => (isCnAccount(a.domain) || isEnterpriseAccount(a)) && a.accessToken && a.uid)
+      .map((a) => ({
+        id: a.id,
+        token: a.accessToken || '',
+        uid: a.uid || '',
+        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined
+      }));
     if (!eligible.length) return;
     try {
       const changed = await this.usageTracker.refreshModelStats(eligible, { days, force });

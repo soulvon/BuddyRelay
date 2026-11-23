@@ -115,8 +115,9 @@ export class StatusBarManager implements vscode.Disposable {
 
     const rawName = resolveAccountDisplayName(active) || t('status.unnamedAccount');
     const name = isPrivacy ? maskName(rawName) : rawName;
-    const creditsText =
-      typeof active.totalCredits === 'number'
+    const creditsText = active.quotaUnlimited
+      ? t('status.unlimited')
+      : typeof active.totalCredits === 'number'
         ? t('status.creditsUnit', fmtNum(active.totalCredits))
         : active.paymentType === 'free'
         ? t('status.freePlan')
@@ -168,8 +169,18 @@ export class StatusBarManager implements vscode.Disposable {
     if (customTrimmed && originRaw && customTrimmed !== originRaw) {
       md.appendMarkdown(t('status.tooltipOriginAccount', isPrivacy ? maskName(originRaw) : originRaw));
     }
+    if (active.enterpriseName) {
+      md.appendMarkdown(t('status.tooltipEnterprise', isPrivacy ? maskName(active.enterpriseName) : active.enterpriseName));
+    }
     md.appendMarkdown(t('status.tooltipUid', isPrivacy ? maskUid(active.uid) : active.uid));
-    md.appendMarkdown(t('status.tooltipCredits', typeof active.totalCredits === 'number' ? t('status.creditsReady', fmtNum(active.totalCredits)) : t('status.ready')));
+    md.appendMarkdown(t(
+      'status.tooltipCredits',
+      active.quotaUnlimited
+        ? t('status.unlimited')
+        : typeof active.totalCredits === 'number'
+          ? t('status.creditsReady', fmtNum(active.totalCredits))
+          : t('status.ready')
+    ));
     md.appendMarkdown(t('status.tooltipTodayStats', fmtNum(todayConsumed), fmtNum(todayGrants)));
     const accTok = this.tokenLedger?.getCachedSummary()?.perAccount[active.uid];
     if (accTok && accTok.totalTokens > 0) {

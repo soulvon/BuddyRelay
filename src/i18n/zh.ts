@@ -23,12 +23,14 @@ export const zh: Record<string, string> = {
   'status.creditsUnit': '{0}点',
   'status.freePlan': '免费版',
   'status.ready': '就绪',
+  'status.unlimited': '企业不限额',
   'status.rateLimited': '429冷却',
   'status.tooltipNone': '**BuddyRelay** · 当前未登录\n\n点击立即添加或切换账号',
   'status.tooltipHeader': '**BuddyRelay** · 当前会话{0}\n\n',
   'status.privacyOn': ' (隐私模式开启)',
   'status.tooltipAccount': '当前账号：**{0}**\n\n',
   'status.tooltipOriginAccount': '原账号：{0}\n\n',
+  'status.tooltipEnterprise': '所属企业：{0}\n\n',
   'status.tooltipUid': '用户 UID：`{0}`\n\n',
   'status.tooltipCredits': '剩余算力：**{0}**\n\n',
   'status.tooltipTodayStats': '今日消耗：**{0} 点** · 获取：**+{1} 点**\n\n',
@@ -209,6 +211,7 @@ export const zh: Record<string, string> = {
   'err.htmlMissing': '未找到侧栏资源',
   'pkg.base': '基础体验包',
   'pkg.activity': '活动赠送包',
+  'pkg.enterpriseQuota': '企业周期额度',
   'intl.skipIntl': '跳过国际版账号',
 
   // ── autoSwitcher ──
@@ -315,6 +318,7 @@ export const zh: Record<string, string> = {
   'ci.checkinError': '签到异常: {0}',
   'ci.syncAlreadyChecked': '今日已完成签到 (连续 {0} 天)',
   'ci.skipUnavailable': '跳过不可用账号 (状态: {0})',
+  'ci.skipEnterprise': '企业版账号不参与个人每日签到',
 
   // ── growthTaskService ──
   'task.defaultName': '任务',
@@ -713,5 +717,11 @@ export const zh: Record<string, string> = {
   'js.cardTokensTotal': '累计 {0}',
   'js.cardTokensTotalOnly': '累计 {0} ({1})',
   'js.cardTokensPending': '暂无本地 Token 记录',
-  'js.cardTokensHint': '点击查看该账号的 Token 消耗与费用详情'
+  'js.cardTokensHint': '点击查看该账号的 Token 消耗与费用详情',
+  'js.unlimitedQuota': '不限额',
+  'js.enterpriseUsed': '本期已用 {0} 点',
+  'js.enterpriseResetAt': '重置于 {0}',
+  'js.planUltimate': '企业旗舰',
+  'js.planExclusive': '企业专享',
+  'js.planEnterprise': '企业版'
 };
