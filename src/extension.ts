@@ -35,7 +35,7 @@ export async function activate(context: vscode.ExtensionContext) {
     appRoot: vscode.env.appRoot
   });
   const oauthService = new OAuthService();
-  const checkinService = new CheckinService();
+  const checkinService = new CheckinService(undefined, oauthService);
   const importer = new CockpitImporter();
   const usageTracker = new UsageTracker();
   const tokenLedger = new TokenLedger();

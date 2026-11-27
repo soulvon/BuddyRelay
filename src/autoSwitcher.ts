@@ -75,6 +75,7 @@ export class AutoSwitcher extends EventEmitter {
 
   private breakerTrippedUntil: number = 0;
   private switchTimestamps: number[] = [];
+  private lastRefreshFailAt: Map<string, number> = new Map();
 
   constructor(
     store: AccountStore,
@@ -476,18 +477,24 @@ export class AutoSwitcher extends EventEmitter {
         await this.store.clearRateLimit(acc.id);
         recoveredCount++;
       }
+      if (acc.status === 'disabled') continue;
       if (canRefreshNetwork && this.autoRefreshTokens && acc.refreshToken && acc.expiresAt) {
         const remainingMs = acc.expiresAt - now;
-        if (remainingMs > 0 && remainingMs < 60 * 60 * 1000) {
+        const lastFail = this.lastRefreshFailAt.get(acc.id) || 0;
+        const needsRefresh = remainingMs < 60 * 60 * 1000 || acc.status === 'expired';
+        if (needsRefresh && now - lastFail >= 10 * 60 * 1000) {
           try {
-            const refreshed = await this.oauthService.refreshAccessToken(acc.refreshToken, acc.domain);
+            const entId = extractEnterpriseInfo(acc).enterpriseId || undefined;
+            const refreshed = await this.oauthService.refreshAccessToken(acc.refreshToken, acc.domain, entId);
             acc.accessToken = refreshed.accessToken;
             if (refreshed.refreshToken) acc.refreshToken = refreshed.refreshToken;
             acc.expiresAt = now + (refreshed.expiresIn || 7200) * 1000;
+            if (acc.status === 'expired') acc.status = 'idle';
+            this.lastRefreshFailAt.delete(acc.id);
             await this.store.upsert(acc);
             refreshedCount++;
           } catch {
-            // 刷新失败待下次重试
+            this.lastRefreshFailAt.set(acc.id, now);
           }
         }
       }

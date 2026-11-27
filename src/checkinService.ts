@@ -1,21 +1,29 @@
 import { API_ENDPOINTS, getCodeBuddyBaseUrl } from './constants';
-import { httpRequest } from './httpClient';
-import { CodeBuddyAccount, AccountStore, QuotaPackageItem } from './accountStore';
+import { httpRequest, HttpCompatResponse } from './httpClient';
+import { CodeBuddyAccount, AccountStore } from './accountStore';
+import { OAuthService } from './oauthService';
 import { t } from './i18n';
 import {
   buildEnterpriseHeaders,
   EnterpriseIdentity,
   extractEnterpriseInfo,
   isCnAccount,
-  isEnterpriseAccount,
-  resolveEnterprisePaymentType
+  isEnterpriseAccount
 } from './domain';
+import {
+  buildEmptyPersonalQuota,
+  DetailedQuotaResult,
+  parseEnterpriseQuotaPayload,
+  parseLegacyUserResourceAccounts,
+  parseUserResourceSummary,
+  QuotaLabels
+} from './quotaParser';
+
+export type { DetailedQuotaResult } from './quotaParser';
 
 /**
  * 北京时间 (UTC+8) 的今日日期 YYYY-MM-DD。
- * 签到是国内 (codebuddy.cn) 活动，服务端按北京日期判定"今日"；
- * 此前全链用 toISOString() (UTC 日期)，北京 0:00~8:00 期间会与昨日记录撞车，
- * 导致定点签到被误判为"已签"跳过、UI 显示假"已签"。
+ * 签到是国内 (codebuddy.cn) 活动，服务端按北京日期判定"今日"。
  */
 export function todayCN(): string {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -23,27 +31,12 @@ export function todayCN(): string {
 
 /**
  * "今日已签"唯一权威口径：布尔值必须配合 lastCheckinDate 是北京今日才可信。
- * 防止 pool.json 中跨天残留的 todayCheckedIn=true 造成 UI 假"已签"；
- * 缺 lastCheckinDate 的老数据按未签显示，点签到会走 queryStatus 自愈补写。
  */
 export function isTodayCheckedIn(acc: {
   todayCheckedIn?: boolean;
   lastCheckinDate?: string;
 }): boolean {
   return Boolean(acc.todayCheckedIn) && acc.lastCheckinDate === todayCN();
-}
-
-export interface DetailedQuotaResult {
-  totalCredits?: number;
-  basePackage: QuotaPackageItem;
-  activityPackage: QuotaPackageItem;
-  isEnterprise?: boolean;
-  quotaUnlimited?: boolean;
-  quotaResetAt?: number;
-  enterpriseId?: string;
-  enterpriseName?: string;
-  accountType?: string;
-  paymentType?: string;
 }
 
 function resolveDomainHost(domain?: string, fallbackBase?: string): string {
@@ -55,17 +48,19 @@ function resolveDomainHost(domain?: string, fallbackBase?: string): string {
   try { return new URL(fallbackBase || API_ENDPOINTS.CODEBUDDY_CN_BASE).hostname; } catch { return 'www.codebuddy.cn'; }
 }
 
-function parseResetTimestamp(raw: unknown): number | undefined {
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-    return raw < 10_000_000_000 ? raw * 1000 : raw;
-  }
-  if (typeof raw === 'string' && raw.trim()) {
-    const num = Number(raw);
-    if (Number.isFinite(num) && num > 0) return num < 10_000_000_000 ? num * 1000 : num;
-    const ms = Date.parse(raw);
-    if (Number.isFinite(ms) && ms > 0) return ms;
-  }
-  return undefined;
+function isExplicitPersonalAccount(account: CodeBuddyAccount): boolean {
+  if (extractEnterpriseInfo(account).enterpriseId) return false;
+  const t1 = String(account.accountType || '').trim().toLowerCase();
+  const t2 = String(account.profileRaw?.type || account.profileRaw?.accountType || '').trim().toLowerCase();
+  return t1 === 'personal' || t2 === 'personal';
+}
+
+function isUnauthorizedResponse(res: HttpCompatResponse<any>): boolean {
+  if (res.status === 401) return true;
+  const code = res.data?.code;
+  if (code === 401 || code === 10002) return true;
+  const msg = String(res.data?.msg || res.data?.message || '');
+  return /unauthorized|token.*expir|invalid.*token|not.*login|login.*expir/i.test(msg);
 }
 
 export interface CheckinStatusResult {
@@ -102,15 +97,42 @@ export interface BatchCheckinReport {
   results: CheckinExecutionResult[];
 }
 
+export interface BatchSyncReport {
+  total: number;
+  synced: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
+interface QuotaQueryOutcome {
+  quota: DetailedQuotaResult | null;
+  unauthorized: boolean;
+  error?: string;
+}
+
 /**
- * CodeBuddy 每日签到与加油站链路服务
- * 深度对齐 Cockpit Tools 与官方 Buddy加油站逻辑 (POST checkin-activity-status + daily-checkin)
+ * CodeBuddy 每日签到与配额对账服务
+ * - 个人额度优先使用 CodeBuddy 5.0.0 聚合接口 /billing/meter/get-user-resource-summary，旧接口 /v2/billing/meter/get-user-resource 兜底
+ * - 企业额度走 /v2/billing/meter/get-enterprise-user-usage
+ * - 令牌过期或遇 401 时自动经 refreshToken 续期重试，避免个人号闲置后刷新死锁
  */
 export class CheckinService {
   private baseUrl: string;
+  private oauthService?: OAuthService;
 
-  constructor(baseUrl: string = API_ENDPOINTS.CODEBUDDY_CN_BASE) {
+  constructor(baseUrl: string = API_ENDPOINTS.CODEBUDDY_CN_BASE, oauthService?: OAuthService) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.oauthService = oauthService;
+  }
+
+  private getOAuthService(): OAuthService {
+    if (!this.oauthService) {
+      this.oauthService = new OAuthService(
+        this.baseUrl !== API_ENDPOINTS.CODEBUDDY_CN_BASE ? this.baseUrl : undefined
+      );
+    }
+    return this.oauthService;
   }
 
   private resolveEndpointBase(domain?: string): string {
@@ -120,11 +142,58 @@ export class CheckinService {
     return getCodeBuddyBaseUrl(domain).replace(/\/+$/, '');
   }
 
+  private getQuotaLabels(): QuotaLabels {
+    return {
+      base: t('pkg.base'),
+      activity: t('pkg.activity'),
+      enterprise: t('pkg.enterpriseQuota')
+    };
+  }
+
   /**
-   * 1.0a 从 /v2/plugin/accounts 自动探测存量账号绑定的企业租户身份
+   * 尝试使用 refreshToken 续期并写回 Store；若原状态为 expired 则自动恢复为 idle（不覆写并发切换后的 active）。
+   */
+  public async tryRefreshAccountToken(
+    account: CodeBuddyAccount,
+    store?: AccountStore
+  ): Promise<CodeBuddyAccount | null> {
+    if (!account.refreshToken) return null;
+    try {
+      const domainArg = this.baseUrl !== API_ENDPOINTS.CODEBUDDY_CN_BASE ? this.baseUrl : account.domain;
+      const entId = extractEnterpriseInfo(account).enterpriseId || undefined;
+      const refreshed = await this.getOAuthService().refreshAccessToken(account.refreshToken, domainArg, entId);
+      if (!refreshed?.accessToken) return null;
+      const nextExpiresAt = Date.now() + (refreshed.expiresIn || 7200) * 1000;
+      const tokenPatch: Partial<Omit<CodeBuddyAccount, 'id'>> = {
+        accessToken: refreshed.accessToken,
+        ...(refreshed.refreshToken ? { refreshToken: refreshed.refreshToken } : {}),
+        expiresAt: nextExpiresAt
+      };
+      const updated: CodeBuddyAccount = {
+        ...account,
+        ...tokenPatch,
+        status: account.status === 'expired' ? 'idle' : account.status
+      };
+      if (store) {
+        const latest = typeof store.get === 'function' ? store.get(account.id) : undefined;
+        if (latest?.status === 'expired' && typeof store.updateStatus === 'function') {
+          await store.updateStatus(account.id, 'idle', tokenPatch);
+        } else {
+          await this.persistCheckedFields(store, account, tokenPatch);
+        }
+      }
+      return updated;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 1.0a 从 /v2/plugin/accounts 探测历史存量账号绑定的企业租户身份。
+   * 严格防护：显式个人号或同 UID 在列表中存在个人条目时绝不误判为企业号。
    */
   public async discoverEnterpriseIdentity(account: CodeBuddyAccount): Promise<EnterpriseIdentity | null> {
-    if (!account.accessToken) return null;
+    if (!account.accessToken || isExplicitPersonalAccount(account)) return null;
     const base = this.resolveEndpointBase(account.domain);
     const url = base + API_ENDPOINTS.OAUTH_ACCOUNTS;
     try {
@@ -140,9 +209,15 @@ export class CheckinService {
       const list = res.status === 200 && res.data?.code === 0 ? res.data?.data?.accounts : null;
       if (!Array.isArray(list) || list.length === 0) return null;
 
+      const hasPersonalSameUid = list.some(
+        (a) => a && String(a.uid || '') === account.uid && !a.enterpriseId
+      );
+      if (hasPersonalSameUid) return null;
+
       const byUid = list.find((a) => a && String(a.uid || '') === account.uid && a.enterpriseId);
+      const hasAnyPersonal = list.some((a) => a && !a.enterpriseId);
       const entOnly = list.filter((a) => a && a.enterpriseId && a.pluginEnabled !== false);
-      const picked = byUid || (entOnly.length === 1 ? entOnly[0] : null);
+      const picked = byUid || (!hasAnyPersonal && entOnly.length === 1 ? entOnly[0] : null);
       if (!picked || !picked.enterpriseId) return null;
 
       return {
@@ -155,14 +230,13 @@ export class CheckinService {
     }
   }
 
-  /**
-   * 1.0b 查询企业版周期额度 (/v2/billing/meter/get-enterprise-user-usage)
-   */
-  public async queryEnterpriseRemainingQuota(
+  private async queryEnterpriseQuotaWithState(
     account: CodeBuddyAccount,
     ent: EnterpriseIdentity
-  ): Promise<DetailedQuotaResult | null> {
-    if (!account.accessToken || !account.uid || !ent.enterpriseId) return null;
+  ): Promise<QuotaQueryOutcome> {
+    if (!account.accessToken || !account.uid || !ent.enterpriseId) {
+      return { quota: null, unauthorized: false, error: t('err.ciNoToken', account.email) };
+    }
     const base = this.resolveEndpointBase(account.domain);
     const url = base + API_ENDPOINTS.ENTERPRISE_USER_USAGE;
     try {
@@ -179,65 +253,43 @@ export class CheckinService {
         timeout: 10000,
         retries: 2
       });
+      if (isUnauthorizedResponse(res)) {
+        return { quota: null, unauthorized: true, error: res.data?.msg || `HTTP ${res.status}` };
+      }
       if (res.status !== 200 || !res.data || (res.data.code !== undefined && res.data.code !== 0)) {
-        return null;
+        return { quota: null, unauthorized: false, error: res.data?.msg || `HTTP ${res.status}` };
       }
       const raw = res.data?.data?.data || res.data?.data || res.data;
-      if (!raw || typeof raw.limitNum !== 'number') return null;
-
-      const used = typeof raw.credit === 'number' && Number.isFinite(raw.credit)
-        ? Math.max(0, Math.round(raw.credit * 100) / 100)
-        : 0;
-      const quotaResetAt = parseResetTimestamp(raw.cycleResetTime ?? raw.cycleEndTime);
-      const paymentType = resolveEnterprisePaymentType(ent.accountType, ent.enterpriseId);
-      const baseMeta = {
-        isEnterprise: true,
-        quotaResetAt,
-        enterpriseId: ent.enterpriseId,
-        ...(ent.enterpriseName ? { enterpriseName: ent.enterpriseName } : {}),
-        ...(ent.accountType ? { accountType: ent.accountType } : {}),
-        paymentType
-      };
-
-      if (raw.limitNum === -1) {
-        return {
-          ...baseMeta,
-          totalCredits: undefined,
-          quotaUnlimited: true,
-          basePackage: { title: t('pkg.enterpriseQuota'), count: 1, remain: used, total: -1, percent: 100 },
-          activityPackage: { title: t('pkg.activity'), count: 0, remain: 0, total: 0, percent: 100 }
-        };
-      }
-
-      const limit = Math.max(0, Math.round(raw.limitNum * 100) / 100);
-      const remain = Math.max(0, Math.round((raw.limitNum - used) * 100) / 100);
-      const percent = limit > 0 ? Math.max(0, Math.min(100, Math.round((remain / limit) * 1000) / 10)) : 0;
-      return {
-        ...baseMeta,
-        totalCredits: remain,
-        quotaUnlimited: false,
-        basePackage: { title: t('pkg.enterpriseQuota'), count: 1, remain, total: limit, percent },
-        activityPackage: { title: t('pkg.activity'), count: 0, remain: 0, total: 0, percent }
-      };
-    } catch {
-      return null;
+      const parsed = parseEnterpriseQuotaPayload(raw, ent, this.getQuotaLabels());
+      return { quota: parsed, unauthorized: false, error: parsed ? undefined : 'invalid enterprise quota payload' };
+    } catch (err: any) {
+      return { quota: null, unauthorized: false, error: err?.message || String(err) };
     }
   }
 
   /**
-   * 1.0 查询账号真实可用算力点数（企业账号走 get-enterprise-user-usage，个人账号走 get-user-resource，空包自动回溯探测企业身份）
+   * 1.0b 查询企业版周期额度 (/v2/billing/meter/get-enterprise-user-usage)
    */
-  public async queryRealRemainingQuota(account: CodeBuddyAccount): Promise<DetailedQuotaResult | null> {
+  public async queryEnterpriseRemainingQuota(
+    account: CodeBuddyAccount,
+    ent: EnterpriseIdentity
+  ): Promise<DetailedQuotaResult | null> {
+    const out = await this.queryEnterpriseQuotaWithState(account, ent);
+    return out.quota;
+  }
+
+  private async queryQuotaWithState(account: CodeBuddyAccount): Promise<QuotaQueryOutcome> {
     if (!account.accessToken || !account.uid) {
-      return null;
+      return { quota: null, unauthorized: false, error: t('err.ciNoToken', account.email) };
     }
 
     const existingEnt = extractEnterpriseInfo(account);
     if (existingEnt.enterpriseId) {
-      return await this.queryEnterpriseRemainingQuota(account, existingEnt);
+      return await this.queryEnterpriseQuotaWithState(account, existingEnt);
     }
 
     const base = this.resolveEndpointBase(account.domain);
+    const labels = this.getQuotaLabels();
     const headers: Record<string, string> = {
       'Authorization': 'Bearer ' + account.accessToken,
       'X-User-Id': account.uid,
@@ -245,105 +297,77 @@ export class CheckinService {
       'Content-Type': 'application/json'
     };
 
-    const url = base + API_ENDPOINTS.USER_RESOURCE;
-    // 注意：严禁加 PackageEndTimeRange 时间窗——实测基础体验包（TCACA_code_008）的
-    // 包结束时间不在 now~now+5y 窗口内，会被整体滤掉导致显示 0/500（月发放仍在）。
-    // Status [0,3]（生效中/已耗尽）语义已足够，耗尽的包 remain=0 不影响聚合。
-    const body = {
-      PageNumber: 1,
-      PageSize: 100,
-      ProductCode: 'p_tcaca',
-      Status: [0, 3]
-    };
+    let emptyPersonalQuota: DetailedQuotaResult | null = null;
+    let lastError: string | undefined;
 
+    // 通道 1（首选）：CodeBuddy 5.0.0 官方聚合接口（国内/国际、付费/免费全覆盖，无分页截断）
     try {
-      const res = await httpRequest<{
-        code: number;
-        msg: string;
-        data?: {
-          Response?: {
-            Data?: {
-              Accounts?: Array<{
-                PackageCode?: string;
-                PackageName?: string;
-                CycleCapacityRemainPrecise?: string | number;
-                CycleCapacitySizePrecise?: string | number;
-              }>;
-            };
-          };
-        };
-      }>(url, {
+      const res = await httpRequest<any>(base + API_ENDPOINTS.USER_RESOURCE_SUMMARY, {
         method: 'POST',
         headers,
-        body,
+        body: {},
         timeout: 10000,
         retries: 2
       });
+      if (isUnauthorizedResponse(res)) {
+        return { quota: null, unauthorized: true, error: res.data?.msg || `HTTP ${res.status}` };
+      }
+      if (res.status === 200 && res.data?.code === 0 && res.data?.data) {
+        const parsed = parseUserResourceSummary(res.data.data, labels);
+        if (parsed) {
+          if (!parsed.empty) return { quota: parsed.quota, unauthorized: false };
+          emptyPersonalQuota = parsed.quota;
+        }
+      } else if (res.status !== 404) {
+        lastError = res.data?.msg || `HTTP ${res.status}`;
+      }
+    } catch (err: any) {
+      lastError = err?.message || String(err);
+    }
 
+    // 通道 2（兼容兜底）：旧分页接口 /v2/billing/meter/get-user-resource
+    try {
+      const res = await httpRequest<any>(base + API_ENDPOINTS.USER_RESOURCE, {
+        method: 'POST',
+        headers,
+        body: { PageNumber: 1, PageSize: 100, ProductCode: 'p_tcaca', Status: [0, 3] },
+        timeout: 10000,
+        retries: 2
+      });
+      if (isUnauthorizedResponse(res)) {
+        return { quota: null, unauthorized: true, error: res.data?.msg || `HTTP ${res.status}` };
+      }
       if (res.status === 200 && res.data?.code === 0) {
         const pkgs = res.data?.data?.Response?.Data?.Accounts || [];
-        if (pkgs.length > 0) {
-          const basePkgs: any[] = [];
-          const actPkgs: any[] = [];
-
-          for (const pkg of pkgs) {
-            const code = pkg.PackageCode || '';
-            const name = pkg.PackageName || '';
-            if (
-              name.includes('基础') ||
-              name.includes('体验') ||
-              code === 'TCACA_code_001_PqouKr6QWV' ||
-              code === 'TCACA_code_006_DbXS0lrypC' ||
-              code === 'TCACA_code_008_cfWoLwvjU4'
-            ) {
-              basePkgs.push(pkg);
-            } else {
-              actPkgs.push(pkg);
-            }
-          }
-
-          const bRemain = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
-          const bTotal = basePkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
-          const bCount = basePkgs.length || 1;
-          const finalBTotal = bTotal > 0 ? bTotal : 500;
-          const bPercent = finalBTotal > 0 ? Math.max(0, Math.min(100, (bRemain / finalBTotal) * 100)) : 0;
-
-          const aRemain = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacityRemainPrecise || 0)) || 0), 0);
-          const aTotal = actPkgs.reduce((s, p) => s + (parseFloat(String(p.CycleCapacitySizePrecise || 0)) || 0), 0);
-          const aCount = actPkgs.length;
-          const aPercent = aTotal > 0 ? Math.max(0, Math.min(100, (aRemain / aTotal) * 100)) : 0;
-
-          const totalCredits = Math.round((bRemain + aRemain) * 100) / 100;
-
-          return {
-            totalCredits,
-            quotaUnlimited: false,
-            basePackage: {
-              title: t('pkg.base'),
-              count: bCount,
-              remain: Math.round(bRemain * 100) / 100,
-              total: Math.round(finalBTotal * 100) / 100,
-              percent: Math.round(bPercent * 10) / 10
-            },
-            activityPackage: {
-              title: t('pkg.activity'),
-              count: aCount,
-              remain: Math.round(aRemain * 100) / 100,
-              total: Math.round(aTotal * 100) / 100,
-              percent: Math.round(aPercent * 10) / 10
-            }
-          };
-        }
+        const parsed = parseLegacyUserResourceAccounts(pkgs, labels);
+        if (parsed) return { quota: parsed, unauthorized: false };
+        if (!emptyPersonalQuota) emptyPersonalQuota = buildEmptyPersonalQuota(labels, 0);
+      } else {
+        lastError = res.data?.msg || `HTTP ${res.status}`;
       }
-    } catch (_) {
-      // 容错进入企业身份探测
+    } catch (err: any) {
+      lastError = err?.message || String(err);
     }
 
+    // 通道 3：历史无 enterpriseId 存量企业号回溯探测（显式个人号自动跳过，防串企）
     const discovered = await this.discoverEnterpriseIdentity(account);
     if (discovered?.enterpriseId) {
-      return await this.queryEnterpriseRemainingQuota(account, discovered);
+      return await this.queryEnterpriseQuotaWithState(account, discovered);
     }
-    return null;
+
+    // 通道 4：官方接口确认有效但当前 0 资源包的个人号，如实返回 0 额度
+    if (emptyPersonalQuota) {
+      return { quota: emptyPersonalQuota, unauthorized: false };
+    }
+    return { quota: null, unauthorized: false, error: lastError };
+  }
+
+  /**
+   * 1.0 查询账号真实可用算力点数
+   */
+  public async queryRealRemainingQuota(account: CodeBuddyAccount): Promise<DetailedQuotaResult | null> {
+    const out = await this.queryQuotaWithState(account);
+    return out.quota;
   }
 
   public async queryStatus(account: CodeBuddyAccount): Promise<CheckinStatusResult> {
@@ -351,8 +375,10 @@ export class CheckinService {
       throw new Error(t('err.ciNoToken', account.email));
     }
 
+    const base = this.resolveEndpointBase(account.domain);
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${account.accessToken}`,
+      'X-Domain': resolveDomainHost(account.domain, base),
       'Content-Type': 'application/json',
       ...buildEnterpriseHeaders(account)
     };
@@ -361,22 +387,19 @@ export class CheckinService {
     }
 
     let rawData: any = null;
+    let sawUnauthorized = false;
 
     // 首选官方 Buddy 加油站最新活动接口
     try {
-      const primaryUrl = `${this.baseUrl}${API_ENDPOINTS.CHECKIN_ACTIVITY_STATUS}`;
-      const res = await httpRequest<{
-        code: number;
-        msg: string;
-        data?: Record<string, any>;
-      }>(primaryUrl, {
+      const primaryUrl = `${base}${API_ENDPOINTS.CHECKIN_ACTIVITY_STATUS}`;
+      const res = await httpRequest<{ code: number; msg: string; data?: Record<string, any> }>(primaryUrl, {
         method: 'POST',
         headers,
         body: {},
         timeout: 10000,
         retries: 2
       });
-
+      if (isUnauthorizedResponse(res)) sawUnauthorized = true;
       if (res.status === 200 && res.data && res.data.code === 0 && res.data.data) {
         rawData = res.data.data;
       }
@@ -385,27 +408,29 @@ export class CheckinService {
     }
 
     // 降级回退到 legacy 签到状态接口
-    if (!rawData) {
+    if (!rawData && !sawUnauthorized) {
       try {
-        const fallbackUrl = `${this.baseUrl}${API_ENDPOINTS.CHECKIN_STATUS_LEGACY}`;
-        const res = await httpRequest<{
-          code: number;
-          msg: string;
-          data?: Record<string, any>;
-        }>(fallbackUrl, {
+        const fallbackUrl = `${base}${API_ENDPOINTS.CHECKIN_STATUS_LEGACY}`;
+        const res = await httpRequest<{ code: number; msg: string; data?: Record<string, any> }>(fallbackUrl, {
           method: 'POST',
           headers,
           body: {},
           timeout: 10000,
           retries: 2
         });
-
+        if (isUnauthorizedResponse(res)) sawUnauthorized = true;
         if (res.status === 200 && res.data && res.data.code === 0 && res.data.data) {
           rawData = res.data.data;
         }
       } catch (err: any) {
         throw new Error(t('err.statusQueryFailed', err.message));
       }
+    }
+
+    if (sawUnauthorized) {
+      const authErr: any = new Error(t('err.tokenExpiredReauth'));
+      authErr.unauthorized = true;
+      throw authErr;
     }
 
     if (!rawData) {
@@ -459,8 +484,10 @@ export class CheckinService {
       return resBase;
     }
 
+    const base = this.resolveEndpointBase(account.domain);
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${account.accessToken}`,
+      'X-Domain': resolveDomainHost(account.domain, base),
       'Content-Type': 'application/json',
       ...buildEnterpriseHeaders(account)
     };
@@ -468,14 +495,10 @@ export class CheckinService {
       headers['X-User-Id'] = account.uid;
     }
 
-    const checkinUrl = `${this.baseUrl}${API_ENDPOINTS.DAILY_CHECKIN}`;
+    const checkinUrl = `${base}${API_ENDPOINTS.DAILY_CHECKIN}`;
 
     try {
-      const res = await httpRequest<{
-        code: number;
-        msg: string;
-        data?: Record<string, any>;
-      }>(checkinUrl, {
+      const res = await httpRequest<{ code: number; msg: string; data?: Record<string, any> }>(checkinUrl, {
         method: 'POST',
         headers,
         body: {},
@@ -495,7 +518,6 @@ export class CheckinService {
         return resBase;
       }
 
-      // 处理已签到或已领取的官方错误提示
       const errMsg = res.data?.msg || `HTTP ${res.status}`;
       if (
         errMsg.includes('已签到') ||
@@ -520,9 +542,7 @@ export class CheckinService {
   }
 
   private buildQuotaPatch(realQuota: DetailedQuotaResult | null): Partial<CodeBuddyAccount> {
-    if (!realQuota) {
-      return {};
-    }
+    if (!realQuota) return {};
     return {
       totalCredits: realQuota.quotaUnlimited ? undefined : (realQuota.totalCredits ?? 0),
       quotaUnlimited: Boolean(realQuota.quotaUnlimited),
@@ -569,22 +589,25 @@ export class CheckinService {
       message: ''
     };
 
-    // 国际账号无签到活动, 明确拒绝而非打到国内接口吃 401
     if (!isCnAccount(account.domain)) {
       resBase.error = t('intl.cnOnlyTitle');
       resBase.message = t('intl.cnOnlyDetail');
       return resBase;
     }
 
+    let workingAcc = account;
+    if (workingAcc.expiresAt && workingAcc.expiresAt <= Date.now() + 60_000 && workingAcc.refreshToken) {
+      workingAcc = (await this.tryRefreshAccountToken(workingAcc, store)) || workingAcc;
+    }
+
     try {
-      // 1. 先查状态
-      const status = await this.queryStatus(account);
+      const status = await this.queryStatus(workingAcc);
 
       if (status.todayCheckedIn) {
         const result: CheckinExecutionResult = {
-          accountId: account.id,
-          email: account.email,
-          uid: account.uid,
+          accountId: workingAcc.id,
+          email: workingAcc.email,
+          uid: workingAcc.uid,
           success: true,
           alreadyCheckedIn: true,
           creditAwarded: 0,
@@ -593,9 +616,8 @@ export class CheckinService {
         };
 
         if (store) {
-          // 余额必须来自 get-user-resource 实时资源包，绝不用签到活动累计值覆盖
-          const realQuota = await this.queryRealRemainingQuota(account);
-          await this.persistCheckedFields(store, account, {
+          const realQuota = await this.queryRealRemainingQuota(workingAcc);
+          await this.persistCheckedFields(store, workingAcc, {
             todayCheckedIn: true,
             checkinStreak: status.streakDays,
             ...this.buildQuotaPatch(realQuota),
@@ -606,13 +628,11 @@ export class CheckinService {
         return result;
       }
 
-      // 2. 未签到，执行签到
-      const execResult = await this.executeDailyCheckin(account);
+      const execResult = await this.executeDailyCheckin(workingAcc);
 
       if (execResult.success && store) {
-        // 签到到账后重新拉取实时资源包余额（新领的算力会体现在资源包中）
-        const realQuota = await this.queryRealRemainingQuota(account);
-        await this.persistCheckedFields(store, account, {
+        const realQuota = await this.queryRealRemainingQuota(workingAcc);
+        await this.persistCheckedFields(store, workingAcc, {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays || status.streakDays + 1,
           ...this.buildQuotaPatch(realQuota),
@@ -621,12 +641,11 @@ export class CheckinService {
         });
       }
       return execResult;
-    } catch (err: any) {
-      // 查询失败时直接尝试签到
-      const execResult = await this.executeDailyCheckin(account);
+    } catch {
+      const execResult = await this.executeDailyCheckin(workingAcc);
       if (execResult.success && store) {
-        const realQuota = await this.queryRealRemainingQuota(account);
-        await this.persistCheckedFields(store, account, {
+        const realQuota = await this.queryRealRemainingQuota(workingAcc);
+        await this.persistCheckedFields(store, workingAcc, {
           todayCheckedIn: true,
           checkinStreak: execResult.streakDays,
           ...this.buildQuotaPatch(realQuota),
@@ -640,89 +659,151 @@ export class CheckinService {
 
   /**
    * 4. 同步单个账号状态与额度积分至 Store
+   * - 令牌已过期或接口 401 时自动续期重试一次；续期失败则标 expired 并明确报错
+   * - 国内/国际个人号与企业号统一查真实额度，个人号拿到额度后不再被签到接口失败阻断
    */
   public async syncAccountStatus(
     account: CodeBuddyAccount,
     store?: AccountStore
   ): Promise<CheckinStatusResult> {
-    if (!isCnAccount(account.domain) && !isEnterpriseAccount(account)) {
-      return {
-        active: true,
-        todayCheckedIn: false,
-        streakDays: account.checkinStreak || 0,
-        dailyCredit: 0,
-        todayCredit: 0,
-        totalCredits: typeof account.totalCredits === 'number' ? account.totalCredits : 0
-      };
+    if (!account.accessToken) {
+      throw new Error(t('err.ciNoToken', account.email));
     }
 
-    const realQuota = await this.queryRealRemainingQuota(account);
-    const isEnt = Boolean(realQuota?.isEnterprise || isEnterpriseAccount(account));
+    let workingAcc = account;
+    let refreshedInCycle = false;
+    if (workingAcc.expiresAt && workingAcc.expiresAt <= Date.now() + 60_000 && workingAcc.refreshToken) {
+      const refreshed = await this.tryRefreshAccountToken(workingAcc, store);
+      if (refreshed) {
+        workingAcc = refreshed;
+        refreshedInCycle = true;
+      }
+    }
 
-    let status: CheckinStatusResult;
-    try {
-      status = await this.queryStatus(account);
-    } catch (err: any) {
-      if (!isEnt || !realQuota) throw err;
-      status = {
-        active: false,
-        todayCheckedIn: false,
-        streakDays: account.checkinStreak || 0,
-        dailyCredit: 0,
-        todayCredit: 0,
-        totalCredits: realQuota.totalCredits ?? 0
-      };
+    const hasCustomQuotaOverride = this.queryRealRemainingQuota !== CheckinService.prototype.queryRealRemainingQuota;
+    let quotaOut: QuotaQueryOutcome = hasCustomQuotaOverride
+      ? { quota: await this.queryRealRemainingQuota(workingAcc), unauthorized: false }
+      : await this.queryQuotaWithState(workingAcc);
+
+    if (quotaOut.unauthorized && !refreshedInCycle && workingAcc.refreshToken) {
+      const refreshed = await this.tryRefreshAccountToken(workingAcc, store);
+      if (refreshed) {
+        workingAcc = refreshed;
+        refreshedInCycle = true;
+        quotaOut = await this.queryQuotaWithState(workingAcc);
+      }
+    }
+
+    if (quotaOut.unauthorized) {
+      if (store && typeof store.updateStatus === 'function') {
+        await store.updateStatus(account.id, 'expired');
+      }
+      throw new Error(t('err.tokenExpiredReauth'));
+    }
+
+    const realQuota = quotaOut.quota;
+    const isEnt = Boolean(realQuota?.isEnterprise || isEnterpriseAccount(workingAcc));
+    const isCn = isCnAccount(workingAcc.domain);
+
+    let status: CheckinStatusResult | null = null;
+    if (isCn && !isEnt) {
+      try {
+        status = await this.queryStatus(workingAcc);
+      } catch (err: any) {
+        if (err?.unauthorized && !refreshedInCycle && workingAcc.refreshToken) {
+          const refreshed = await this.tryRefreshAccountToken(workingAcc, store);
+          if (refreshed) {
+            workingAcc = refreshed;
+            refreshedInCycle = true;
+            try { status = await this.queryStatus(workingAcc); } catch { /* fall through */ }
+          }
+        }
+        if (!status && !realQuota) {
+          if (err?.unauthorized && store && typeof store.updateStatus === 'function') {
+            await store.updateStatus(account.id, 'expired');
+          }
+          throw err;
+        }
+      }
+    } else if (!realQuota) {
+      throw new Error(quotaOut.error || t('err.statusUnavailable'));
     }
 
     const quotaPatch = this.buildQuotaPatch(realQuota);
     const finalCredits = realQuota
       ? (realQuota.totalCredits ?? 0)
-      : (typeof account.totalCredits === 'number' ? account.totalCredits : 0);
+      : (typeof workingAcc.totalCredits === 'number' ? workingAcc.totalCredits : 0);
+
+    const effectiveStatus: CheckinStatusResult = status || {
+      active: !isEnt,
+      todayCheckedIn: Boolean(workingAcc.todayCheckedIn),
+      streakDays: workingAcc.checkinStreak || 0,
+      dailyCredit: 0,
+      todayCredit: 0,
+      totalCredits: finalCredits,
+      lastCheckinDate: workingAcc.lastCheckinDate
+    };
 
     if (store) {
-      await this.persistCheckedFields(store, account, {
-        todayCheckedIn: status.todayCheckedIn,
-        checkinStreak: status.streakDays,
+      const fields: Partial<Omit<CodeBuddyAccount, 'id'>> = {
         ...quotaPatch,
-        lastCheckinDate: status.lastCheckinDate,
-        lastCheckinTime: Date.now()
-      });
+        lastCheckinTime: Date.now(),
+        ...(status ? {
+          todayCheckedIn: status.todayCheckedIn,
+          checkinStreak: status.streakDays,
+          lastCheckinDate: status.lastCheckinDate
+        } : {})
+      };
+      await this.persistCheckedFields(store, workingAcc, fields);
+    }
+    if (!realQuota && quotaOut.error) {
+      throw new Error(quotaOut.error);
     }
     return {
-      ...status,
+      ...effectiveStatus,
       totalCredits: finalCredits
     };
   }
 
   /**
-   * 5. 批量同步号池状态与额度积分
+   * 5a. 批量同步号池状态与额度积分（返回结构化汇总，允许有 refreshToken 的 expired 账号自动续期救活）
+   */
+  public async batchSyncStatusDetailed(
+    accounts: CodeBuddyAccount[],
+    store?: AccountStore
+  ): Promise<BatchSyncReport> {
+    const report: BatchSyncReport = { total: accounts.length, synced: 0, skipped: 0, failed: 0, errors: [] };
+    for (const acc of accounts) {
+      if (acc.status === 'disabled' || (acc.status === 'expired' && !acc.refreshToken)) {
+        report.skipped++;
+        continue;
+      }
+      try {
+        await this.syncAccountStatus(acc, store);
+        report.synced++;
+      } catch (err: any) {
+        report.failed++;
+        const label = acc.displayName || acc.nickname || acc.email || acc.id;
+        report.errors.push(`${label}: ${err?.message || String(err)}`);
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    return report;
+  }
+
+  /**
+   * 5. 批量同步号池状态与额度积分（返回成功数）
    */
   public async batchSyncStatus(
     accounts: CodeBuddyAccount[],
     store?: AccountStore
   ): Promise<number> {
-    let synced = 0;
-    for (const acc of accounts) {
-      if (acc.status === 'disabled' || acc.status === 'expired') {
-        continue;
-      }
-      // 个人版国际账号无查询接口直接跳过；国内账号与企业账号均同步
-      if (!isCnAccount(acc.domain) && !isEnterpriseAccount(acc)) {
-        continue;
-      }
-      try {
-        await this.syncAccountStatus(acc, store);
-        synced++;
-      } catch (_) {
-        // 忽略单个网络超时
-      }
-      await new Promise(r => setTimeout(r, 200));
-    }
-    return synced;
+    const report = await this.batchSyncStatusDetailed(accounts, store);
+    return report.synced;
   }
 
   /**
-   * 4. 批量为号池中全量账号执行签到
+   * 6. 批量为号池中全量账号执行签到
    */
   public async batchCheckin(
     accounts: CodeBuddyAccount[],
@@ -737,7 +818,6 @@ export class CheckinService {
       results: []
     };
 
-    // 签到活动挂在国内域名 (codebuddy.cn), 国际账号明确跳过并留痕, 不静默吞掉
     const cnAccounts = accounts.filter(acc => isCnAccount(acc.domain));
     const intlSkipped = accounts.length - cnAccounts.length;
     if (intlSkipped > 0) {
@@ -759,7 +839,7 @@ export class CheckinService {
     }
 
     for (const acc of cnAccounts) {
-      if (acc.status === 'disabled' || acc.status === 'expired') {
+      if (acc.status === 'disabled' || (acc.status === 'expired' && !acc.refreshToken)) {
         report.failedCount++;
         report.results.push({
           accountId: acc.id,
@@ -802,7 +882,6 @@ export class CheckinService {
         report.failedCount++;
       }
 
-      // 礼貌延迟 300ms 避免并发触发风控
       await new Promise(r => setTimeout(r, 300));
     }
 

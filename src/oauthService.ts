@@ -1,6 +1,6 @@
 import { URL } from 'url';
 import { API_ENDPOINTS, DEFAULT_HEADERS, getCodeBuddyBaseUrl } from './constants';
-import { resolveEnterprisePaymentType } from './domain';
+import { buildEnterpriseHeaders, resolveEnterprisePaymentType } from './domain';
 import { httpRequest } from './httpClient';
 import { CodeBuddyAccount, AccountStore } from './accountStore';
 import { t } from './i18n';
@@ -56,6 +56,12 @@ export class OAuthService {
 
   private resolveBaseUrl(domainOrBaseUrl?: string): string {
     if (!domainOrBaseUrl) {
+      return this.baseUrl;
+    }
+    if (/^https?:\/\//i.test(domainOrBaseUrl)) {
+      return domainOrBaseUrl.replace(/\/+$/, '');
+    }
+    if (this.baseUrl !== API_ENDPOINTS.CODEBUDDY_CN_BASE) {
       return this.baseUrl;
     }
     return this.normalizeBase(domainOrBaseUrl);
@@ -225,7 +231,7 @@ export class OAuthService {
   /**
    * 4. 刷新 Access Token（按账号 domain 自动路由国内/国际端点）
    */
-  public async refreshAccessToken(refreshToken: string, domain?: string): Promise<OAuthTokenData> {
+  public async refreshAccessToken(refreshToken: string, domain?: string, enterpriseId?: string): Promise<OAuthTokenData> {
     const base = this.resolveBaseUrl(domain);
     const url = `${base}${API_ENDPOINTS.OAUTH_REFRESH}`;
     const dom = this.resolveDomainHeader(base, domain);
@@ -240,6 +246,7 @@ export class OAuthService {
         'X-Refresh-Token': refreshToken,
         'X-Auth-Refresh-Source': 'plugin',
         'X-Domain': dom,
+        ...buildEnterpriseHeaders(enterpriseId),
         'Content-Type': 'application/json'
       },
       body: {},

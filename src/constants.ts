@@ -31,6 +31,7 @@ export const API_ENDPOINTS = {
 
   // 计量与用量信息
   PAYMENT_TYPE: '/v2/billing/meter/get-payment-type',
+  USER_RESOURCE_SUMMARY: '/billing/meter/get-user-resource-summary',
   USER_RESOURCE: '/v2/billing/meter/get-user-resource',
   ENTERPRISE_USER_USAGE: '/v2/billing/meter/get-enterprise-user-usage',
   USAGE_STATUS: '/v2/billing/meter/usage-status'

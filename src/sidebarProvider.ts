@@ -516,10 +516,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   public async handleRefreshStatus(): Promise<void> {
     await this.withOperating(t('msg.refreshing'), 'err.refreshFailed', async () => {
-      await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
+      let report: { total: number; synced: number; failed: number; errors: string[] } | null = null;
+      if (typeof this.checkinService.batchSyncStatusDetailed === 'function') {
+        report = await this.checkinService.batchSyncStatusDetailed(this.store.getAll(), this.store);
+      } else {
+        await this.checkinService.batchSyncStatus(this.store.getAll(), this.store);
+      }
       this.refreshUsageStats(true);
       void this.tokenLedger?.getSummary(true).then(() => this.schedulePostState(50)).catch(() => {});
-      this.sendNotify('success', t('msg.refreshDone'));
+      if (!report || report.failed === 0) {
+        this.sendNotify('success', t('msg.refreshDone'));
+      } else if (report.synced > 0) {
+        this.sendNotify('warn', t('msg.refreshPartial', report.synced, report.failed), report.errors.slice(0, 5).join('\n'));
+      } else {
+        this.sendNotify('error', t('err.refreshFailed', report.errors[0] || t('err.unknownError')), report.errors.slice(0, 5).join('\n'));
+      }
     });
   }
 
