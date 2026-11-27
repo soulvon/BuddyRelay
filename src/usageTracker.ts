@@ -1,8 +1,9 @@
 import * as path from 'path';
-import { PATHS } from './constants';
+import { PATHS, getCodeBuddyBaseUrl } from './constants';
 import { atomicWriteJsonSync, readJsonFileSafe, withFileLockSync } from './atomicFile';
 import { CodeBuddyAccount, resolveAccountDisplayName } from './accountStore';
 import { buildEnterpriseHeaders } from './domain';
+import { httpRequest } from './httpClient';
 import { todayCN } from './checkinService';
 import { t } from './i18n';
 
@@ -234,7 +235,7 @@ export class UsageTracker {
   }
 
   public async refreshOfficialStats(
-    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string }>,
+    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string; domain?: string }>,
     opts?: { force?: boolean }
   ): Promise<boolean> {
     this.loadDailyStats();
@@ -259,7 +260,7 @@ export class UsageTracker {
       const results: Array<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> = [];
       for (let k = 0; k < valid.length; k += FETCH_CONCURRENCY) {
         const batch = valid.slice(k, k + FETCH_CONCURRENCY);
-        results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid, undefined, i.enterpriseId)))));
+        results.push(...(await Promise.all(batch.map((i) => UsageTracker.fetchOfficialDaily(i.token, i.uid, undefined, i.enterpriseId, i.domain)))));
       }
 
       const today = todayCN();
@@ -322,15 +323,18 @@ export class UsageTracker {
     token: string,
     uid: string,
     targetDate?: string,
-    enterpriseId?: string
+    enterpriseId?: string,
+    domain?: string
   ): Promise<{ consumed: number; grants: number; rows: Array<Record<string, any>> } | null> {
     const headers: Record<string, string> = {
       Authorization: 'Bearer ' + token,
       'X-User-Id': uid,
       ...buildEnterpriseHeaders(enterpriseId),
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      'Content-Type': 'application/json'
     };
+    const base = domain && /^https?:\/\//i.test(domain)
+      ? domain.replace(/\/+$/, '')
+      : getCodeBuddyBaseUrl(domain).replace(/\/+$/, '');
     const todayStr = todayCN();
     const dateStr = targetDate || todayStr;
     const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
@@ -341,19 +345,20 @@ export class UsageTracker {
     let pageNum = 1;
     try {
       for (let page = 0; page < OFFICIAL_MAX_PAGES; page++) {
-        const res = await fetch('https://www.codebuddy.cn/billing/meter/get-user-request-usage', {
+        const res = await httpRequest<any>(`${base}/billing/meter/get-user-request-usage`, {
           method: 'POST',
           headers,
-          signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({
+          timeout: 15000,
+          retries: 2,
+          body: {
             startTime: dateStr + ' 00:00:00',
             endTime: dateStr + ' 23:59:59',
             pageNum,
             pageSize: 200
-          })
+          }
         });
-        if (!res.ok) return null;
-        const json: any = await res.json().catch(() => null);
+        if (res.status < 200 || res.status >= 300) return null;
+        const json = res.data;
         if (!json || json.code !== 0 || !json.data) return null;
         const rows: Array<Record<string, any>> = json.data.data || [];
         consumedSum += rows.reduce((s, r) => s + Number(r.credit || 0), 0);
@@ -368,15 +373,15 @@ export class UsageTracker {
     let grantsSum = 0;
     if (dateStr === todayStr && !enterpriseId) {
       try {
-        const res = await fetch('https://www.codebuddy.cn/v2/billing/meter/get-user-resource', {
+        const res = await httpRequest<any>(`${base}/v2/billing/meter/get-user-resource`, {
           method: 'POST',
           headers,
-          signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({ PageNumber: 1, PageSize: 100, ProductCode: 'p_tcaca', Status: [0, 3] })
+          timeout: 15000,
+          retries: 2,
+          body: { PageNumber: 1, PageSize: 100, ProductCode: 'p_tcaca', Status: [0, 3] }
         });
-        if (res.ok) {
-          const json: any = await res.json().catch(() => null);
-          const packs = json?.data?.Response?.Data?.Accounts || [];
+        if (res.status >= 200 && res.status < 300) {
+          const packs = res.data?.data?.Response?.Data?.Accounts || [];
           for (const p of packs) {
             const ct = Number(p.CreateTime || 0);
             if (ct >= dayStart && ct < dayEnd) grantsSum += Number(p.CapacitySize || 0);
@@ -447,7 +452,7 @@ export class UsageTracker {
   }
 
   public async refreshModelStats(
-    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string }>,
+    items: Array<{ id: string; token: string; uid: string; enterpriseId?: string; domain?: string }>,
     opts?: { days?: number; force?: boolean }
   ): Promise<boolean> {
     if (this.modelStatsBusy) return false;
@@ -459,7 +464,7 @@ export class UsageTracker {
     const wantDates = Array.from({ length: wantDays }, (_, i) => this.formatTime(now - i * 86400_000).dateStr);
     const todayBlocked = now - this.lastModelStatsTodayTs < (force ? FORCE_FETCH_GAP_MS : AUTO_FETCH_GAP_MS);
     const valid = (items || []).filter((i) => i?.id && i.token && i.uid);
-    const jobs: Array<{ item: { id: string; token: string; uid: string; enterpriseId?: string }; date: string }> = [];
+    const jobs: Array<{ item: { id: string; token: string; uid: string; enterpriseId?: string; domain?: string }; date: string }> = [];
     for (const item of valid) {
       const synced = new Set(this.modelStats.syncedDays[item.id] || []);
       for (const date of wantDates) {
@@ -474,7 +479,7 @@ export class UsageTracker {
       for (let k = 0; k < jobs.length; k += FETCH_CONCURRENCY) {
         const batch = jobs.slice(k, k + FETCH_CONCURRENCY);
         await Promise.all(batch.map(async (job) => {
-          const r = await UsageTracker.fetchOfficialDaily(job.item.token, job.item.uid, job.date, job.item.enterpriseId);
+          const r = await UsageTracker.fetchOfficialDaily(job.item.token, job.item.uid, job.date, job.item.enterpriseId, job.item.domain);
           if (!r) return;
           const models: Record<string, ModelDayStat> = {};
           for (const row of r.rows) {

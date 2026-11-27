@@ -120,6 +120,22 @@ async function startMockServer() {
         return;
       }
 
+      if (req.url === '/billing/meter/get-user-request-usage') {
+        if (!req.headers['x-enterprise-id'] || !req.headers['x-tenant-id']) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ code: 400, msg: 'missing enterprise headers' }));
+          return;
+        }
+        res.end(JSON.stringify({
+          code: 0,
+          data: {
+            total: 1,
+            data: [{ requestId: 'req-ent-1', credit: 12.5, model: 'demo-model', client: 'ide', requestTime: '2026-11-23 10:00:00' }]
+          }
+        }));
+        return;
+      }
+
       res.statusCode = 404;
       res.end(JSON.stringify({ code: 404 }));
     });
@@ -316,36 +332,18 @@ async function main() {
 
       // ── Group 3: UsageTracker.fetchOfficialDaily 企业请求头 ─────────────────
       console.log('\n--- Group 3: UsageTracker 企业请求头 ---');
-      const origFetch = globalThis.fetch;
-      const capturedFetchHeaders = [];
-      globalThis.fetch = async (_url, init) => {
-        capturedFetchHeaders.push(init?.headers || {});
-        return {
-          ok: true,
-          json: async () => ({
-            code: 0,
-            data: {
-              total: 1,
-              data: [{ requestId: 'req-ent-1', credit: 12.5, model: 'demo-model', client: 'ide', requestTime: '2026-11-23 10:00:00' }]
-            }
-          })
-        };
-      };
-      let usageDailyRes = null;
-      try {
-        usageDailyRes = await UsageTracker.fetchOfficialDaily('tok-finite', 'uid-ent-finite', '2026-11-23', 'ent-alpha-01');
-      } finally {
-        globalThis.fetch = origFetch;
-      }
+      const reqBeforeUt = requests.length;
+      const usageDailyRes = await UsageTracker.fetchOfficialDaily('tok-finite', 'uid-ent-finite', '2026-11-23', 'ent-alpha-01', baseUrl);
+      const utReq = requests.slice(reqBeforeUt).find((r) => r.url === '/billing/meter/get-user-request-usage');
       check(
         'UsageTracker.fetchOfficialDaily 转发 X-Enterprise-Id/X-Tenant-Id 并累计消耗',
         Boolean(
           usageDailyRes &&
             approxEq(usageDailyRes.consumed, 12.5) &&
-            capturedFetchHeaders[0]?.['X-Enterprise-Id'] === 'ent-alpha-01' &&
-            capturedFetchHeaders[0]?.['X-Tenant-Id'] === 'ent-alpha-01'
+            utReq?.headers?.['x-enterprise-id'] === 'ent-alpha-01' &&
+            utReq?.headers?.['x-tenant-id'] === 'ent-alpha-01'
         ),
-        JSON.stringify({ usageDailyRes, headers: capturedFetchHeaders[0] })
+        JSON.stringify({ usageDailyRes, headers: utReq?.headers })
       );
 
       // ── Group 4: AutoSwitcher 无限额保护与探针路由 ─────────────────────────

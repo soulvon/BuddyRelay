@@ -271,37 +271,49 @@ async function fetchGitHubWebRedirect(): Promise<UnifiedReleaseInfo> {
 }
 
 async function getLatestReleaseWithFallback(): Promise<UnifiedReleaseInfo> {
+  const channelErrors: string[] = [];
+  const briefErr = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.replace(/\{[\s\S]*\}/g, '').replace(/\s+/g, ' ').trim().slice(0, 100) || 'unknown error';
+  };
+
   // 1. 首选通道: Open VSX 官方市场（无 60 次/小时限频）
   try {
     return await fetchOpenVsx();
-  } catch {
-    // 静默降级
+  } catch (err) {
+    channelErrors.push(`OpenVSX: ${briefErr(err)}`);
   }
 
   // 2. 备用通道: GitHub Web Releases 网页路由（不计入 REST API 配额）
   try {
     return await fetchGitHubWebRedirect();
-  } catch {
-    // 继续降级
+  } catch (err) {
+    channelErrors.push(`GitHub Web: ${briefErr(err)}`);
   }
 
   // 3. 末级兜底: GitHub REST API
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
-  const release: GitHubRelease = await fetchGitHubApi(url);
-  const latestVersion = release.tag_name.startsWith('v')
-    ? release.tag_name.slice(1)
-    : release.tag_name;
-  const vsixAsset = release.assets?.find(a => a.name.endsWith('.vsix'));
-  if (!vsixAsset) {
-    throw new Error(`no vsix asset in GitHub release ${latestVersion}`);
+  try {
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
+    const release: GitHubRelease = await fetchGitHubApi(url);
+    const latestVersion = release.tag_name.startsWith('v')
+      ? release.tag_name.slice(1)
+      : release.tag_name;
+    const vsixAsset = release.assets?.find(a => a.name.endsWith('.vsix'));
+    if (!vsixAsset) {
+      throw new Error(`no vsix asset in GitHub release ${latestVersion}`);
+    }
+    return {
+      version: latestVersion,
+      downloadUrl: vsixAsset.browser_download_url,
+      releaseUrl: release.html_url,
+      body: release.body || '',
+      source: 'github-api'
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    channelErrors.push(`GitHub API: ${/rate limit/i.test(msg) ? 'rate limited' : briefErr(err)}`);
+    throw new Error(channelErrors.join(' | '));
   }
-  return {
-    version: latestVersion,
-    downloadUrl: vsixAsset.browser_download_url,
-    releaseUrl: release.html_url,
-    body: release.body || '',
-    source: 'github-api'
-  };
 }
 
 async function enrichChangelog(info: UnifiedReleaseInfo): Promise<UnifiedReleaseInfo> {
@@ -321,7 +333,11 @@ async function enrichChangelog(info: UnifiedReleaseInfo): Promise<UnifiedRelease
 }
 
 function sanitizeErrMessage(msg: string): string {
-  const raw = String(msg || '');
+  const raw = String(msg || '').trim();
+  if (!raw) return 'Unknown network error';
+  if (raw.includes('OpenVSX:') && raw.includes('GitHub Web:')) {
+    return raw.slice(0, 240);
+  }
   if (/rate limit/i.test(raw)) {
     return 'GitHub rate limited (fallback channels all failed)';
   }

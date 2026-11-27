@@ -314,8 +314,9 @@ async function run() {
     console.log('[测试 6/6] UsageTracker 超时/时区安全性与 Webview XSS/标签栏同步');
     const utSrc = fs.readFileSync(path.join(ROOT, 'src', 'usageTracker.ts'), 'utf8');
     check(
-      'UsageTracker.fetchOfficialDaily 给 fetch 配备 AbortSignal.timeout',
-      /fetch\([\s\S]{0,300}AbortSignal\.timeout/.test(utSrc)
+      'UsageTracker.fetchOfficialDaily 统一走 httpRequest 并配置 timeout 与 retries',
+      !utSrc.includes('await fetch(') &&
+      /httpRequest<any>\([\s\S]{0,300}timeout:\s*15000[\s\S]{0,80}retries:\s*2/.test(utSrc)
     );
     check(
       'UsageTracker 每月 1 号判断直接按字符串 YYYY-MM-DD 取日历日，不受 UTC 时区回退影响',

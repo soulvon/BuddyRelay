@@ -2,7 +2,7 @@
   "name": "buddy-relay",
   "displayName": "BuddyRelay - Multi-Account Switcher for CodeBuddy/WorkBuddy",
   "description": "A third-party multi-account manager & hot account switcher for CodeBuddy / WorkBuddy desktop IDEs. Switch accounts without restart, keep session history, monitor quota, and run scheduled check-in & tasks locally.",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "publisher": "soulvon",
   "keywords": [
     "codebuddy",

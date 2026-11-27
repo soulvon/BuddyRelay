@@ -459,7 +459,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         credits: typeof a.totalCredits === 'number' ? a.totalCredits : 0,
         token: a.accessToken || '',
         uid: a.uid || '',
-        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined
+        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined,
+        domain: a.domain
       }));
     const changedIds = new Set(this.usageTracker.detectChangedAccounts(usageItems) || []);
     const eligible = usageItems.filter((i) => i.token && i.uid);
@@ -478,7 +479,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         id: a.id,
         token: a.accessToken || '',
         uid: a.uid || '',
-        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined
+        enterpriseId: extractEnterpriseInfo(a).enterpriseId || undefined,
+        domain: a.domain
       }));
     if (!eligible.length) return;
     try {

@@ -13,13 +13,20 @@ export * from './checkinService';
 export * from './seamlessSwitcher';
 export * from './autoSwitcher';
 export { detectHostEdition, isCnAccount } from './host';
-export { httpRequestRaw, httpJsonRequest, downloadToFile } from './httpClient';
+export {
+  httpRequestRaw,
+  httpJsonRequest,
+  downloadToFile,
+  formatNetworkError,
+  resolveProxyForUrl
+} from './httpClient';
 export type {
   HttpMethod,
   HttpRequestOptions,
   HttpRawResponse,
   HttpCompatResponse,
-  DownloadToFileOptions
+  DownloadToFileOptions,
+  ResolvedProxyInfo
 } from './httpClient';
 export type {
   AutoSwitchStrategy,

@@ -91,7 +91,8 @@ export class OAuthService {
         ...DEFAULT_HEADERS.NO_AUTH_HEADERS
       },
       body: {},
-      timeout: 10000
+      timeout: 10000,
+      retries: 1
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data?.state) {
@@ -137,7 +138,8 @@ export class OAuthService {
           headers: {
             ...DEFAULT_HEADERS.NO_AUTH_HEADERS
           },
-          timeout: 8000
+          timeout: 8000,
+          retries: 0
         });
 
         // 成功取得 Token
@@ -240,7 +242,8 @@ export class OAuthService {
         'X-Domain': dom,
         'Content-Type': 'application/json'
       },
-      body: {}
+      body: {},
+      retries: 1
     });
 
     if (res.status !== 200 || !res.data || res.data.code !== 0 || !res.data.data) {

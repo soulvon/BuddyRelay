@@ -6,6 +6,7 @@
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { getCurrentVersion } from './updater';
+import { getProxyDiagnosticSummary } from './httpClient';
 import { t } from './i18n';
 
 /** GitHub 对新建 issue 的 URL 有长度上限，编码后超过这个值基本打不开 */
@@ -28,7 +29,8 @@ export function buildDiagnostic(title: string, detail?: string): string {
     `- CodeBuddy: ${vscode.version} (${vscode.env.appName})`,
     `- 系统: ${os.type()} ${os.release()} ${os.arch()}`,
     `- Electron: ${process.versions.electron || '-'}`,
-    `- Node: ${process.versions.node}`
+    `- Node: ${process.versions.node}`,
+    `- 网络代理: ${getProxyDiagnosticSummary()}`
   ];
   const body = detail && detail.trim() ? detail.trim() : '';
   if (body) {

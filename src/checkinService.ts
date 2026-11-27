@@ -176,7 +176,8 @@ export class CheckinService {
           'Content-Type': 'application/json'
         },
         body: {},
-        timeout: 10000
+        timeout: 10000,
+        retries: 2
       });
       if (res.status !== 200 || !res.data || (res.data.code !== undefined && res.data.code !== 0)) {
         return null;
@@ -275,7 +276,8 @@ export class CheckinService {
         method: 'POST',
         headers,
         body,
-        timeout: 10000
+        timeout: 10000,
+        retries: 2
       });
 
       if (res.status === 200 && res.data?.code === 0) {
@@ -371,7 +373,8 @@ export class CheckinService {
         method: 'POST',
         headers,
         body: {},
-        timeout: 10000
+        timeout: 10000,
+        retries: 2
       });
 
       if (res.status === 200 && res.data && res.data.code === 0 && res.data.data) {
@@ -393,7 +396,8 @@ export class CheckinService {
           method: 'POST',
           headers,
           body: {},
-          timeout: 10000
+          timeout: 10000,
+          retries: 2
         });
 
         if (res.status === 200 && res.data && res.data.code === 0 && res.data.data) {
