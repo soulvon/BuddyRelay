@@ -341,6 +341,13 @@ async function run() {
     console.log('[测试 7/7] 自定义显示名称保存、合并保留、脱敏与状态栏/QuickPick/SidebarProvider 透传');
     const { formatAccountLabel, normalizeImportedAccount, importAccountsFromText } = require(path.join(ROOT, 'out', 'importExportService.js'));
     const { StatusBarManager } = require(path.join(ROOT, 'out', 'statusBar.js'));
+    const { buildIssueUrl } = require(path.join(ROOT, 'out', 'diagnostics.js'));
+    const issueUrl = buildIssueUrl('## 切号异常: 测试标题\n\n- BuddyRelay: 1.4.2\n\n### 详情\n```\nerr line\n```');
+    check(
+      'buildIssueUrl 剥离 # 标题防 VS Code openExternal 双重编码出现 %23%23',
+      !issueUrl.includes('%23') && issueUrl.includes('title=') && issueUrl.includes('body='),
+      issueUrl
+    );
 
     const poolDisplay = path.join(tmpDir, 'pool-display.json');
     const storeDisplay = new AccountStore(undefined, poolDisplay);

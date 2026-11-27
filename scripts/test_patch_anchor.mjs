@@ -419,6 +419,55 @@ async function runTests() {
     Object.assign(PATHS, savedPaths);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // 11. CodeBuddy 5.0.0 (1.122.1) 80KB 类体 + 异步 getV2ReconcileData + Catalog 迁移
+  // ──────────────────────────────────────────────────────────
+  console.log('[测试 11] CodeBuddy 5.0.0 (1.122.1) 锚点与 Catalog SQLite 迁移适配');
+  const f11 = path.join(tmpDir, 'main_500_synth.js');
+  const pad28k = `padMethod(){const Helper=class{constructor(){this.h=1}};const s="${'x'.repeat(28000)}";return s}`;
+  const synth500 = [
+    'const boot=1;',
+    'Kme=class{constructor(e,t,i){this.logService=e;this._catalogEpoch="";this._v2Subscribers=new Map;}',
+    pad28k,
+    'async getV2ReconcileData(e,t){return{enabled:!0,version:{},sessions:[]}}',
+    '};',
+    'sk=class{constructor(t,i,r,n,s){this.instantiationService=t,this.logService=i,this.storageService=r}',
+    'async storeSession(t){return t}',
+    'async restoreSession(){return null}',
+    '};'
+  ].join('');
+  fs.writeFileSync(f11, synth500, 'utf8');
+  const c11 = sw.checkPatch(f11);
+  check('5.0.0 合成宿主 checkPatch 识别唯一会话类锚点', c11.anchorsValid === true && c11.details?.amCount === 1, JSON.stringify(c11.details));
+  const r11 = sw.healPatch(f11);
+  check('5.0.0 合成宿主 healPatch 成功且语法校验通过', r11.success === true, `${r11.message} / ${r11.error || ''}`);
+  const p11 = fs.readFileSync(f11, 'utf8');
+  check(
+    '5.0.0 会话钩子精准注入 Kme 而非 28KB 窗内的 Helper 类',
+    p11.includes(`Kme=class{constructor(e,t,i){${PATCH_V5.SESSION_HOOK}`) && !p11.includes(`Helper=class{constructor(){${PATCH_V5.SESSION_HOOK}`)
+  );
+  check('5.0.0 R7 补丁含 Catalog SQLite 迁移逻辑', p11.includes('UPDATE conversations SET user_id=?') && p11.includes('/*__BYOK_V5_R7__*/'));
+  fs.unlinkSync(f11 + '.byok-origin');
+  const rest11 = sw.restoreOriginal(f11);
+  check('5.0.0 无备份下 stripInjectedPatch 仍能干净还原', rest11.success === true && fs.readFileSync(f11, 'utf8') === synth500, `${rest11.message} / ${rest11.error || ''}`);
+
+  const SAMPLE_500_MAIN = path.join(os.tmpdir(), 'cb_500_sample', 'main.js');
+  if (fs.existsSync(SAMPLE_500_MAIN)) {
+    const f500Real = path.join(tmpDir, 'real-500-main.js');
+    fs.copyFileSync(SAMPLE_500_MAIN, f500Real);
+    const b500 = sw.checkPatch(f500Real);
+    check('真实 1.122.1 (5.0.0) main.js checkPatch 识别成功', b500.anchorsValid === true && b500.details?.amCount === 1, JSON.stringify(b500.details));
+    const h500 = sw.healPatch(f500Real);
+    check('真实 1.122.1 (5.0.0) main.js healPatch 与 node --check 全部通过', h500.success === true, `${h500.message} / ${h500.error || ''}`);
+    const out500 = fs.readFileSync(f500Real, 'utf8');
+    check(
+      '真实 1.122.1 注入 Kme 会话钩子、WATCHER_METHODS 与构造启动',
+      out500.includes(`Kme=class{constructor(e,t,i){${PATCH_V5.SESSION_HOOK}`) &&
+        out500.includes(`${PATCH_V5.WATCHER_METHODS}async restoreSession(`) &&
+        /constructor\([^)]*\)\{this\.startByokWatcher\(\);this\.instantiationService=/.test(out500)
+    );
+  }
+
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { /* 清理失败不影响结论 */ }
 
   console.log(`\n=== 结果: ${passed} passed, ${failed} failed ===`);

@@ -215,9 +215,10 @@ export const PATHS = {
 export const PATCH_V5 = {
   VERSION: 'v5',
   PATCH_FLAG: '__byokApplySwitch',
-  // v5 特征码：R2/R3/R4/R5/R6 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
+  // v5 特征码：R2/R3/R4/R5/R6/R7 结构差异用于强制自愈升级（旧 marker 补丁视为未打，重打最新结构）
   // R6 (2026-11-23)：切号同步 genie.enterpriseId 租户状态，且同 UID 跨企业切号不跳过
-  V5_MARKER: '/*__BYOK_V5_R6__*/',
+  // R7 (2026-11-27)：适配 CodeBuddy 5.0.0 (1.122.1) 异步 SQLite Catalog 会话迁移与 80KB 锚点窗口
+  V5_MARKER: '/*__BYOK_V5_R7__*/',
 
   // 锚点 1: 会话服务类构造函数注入全局会话实例
   // 类名随宿主构建漂移 (AM -> HM)，硬编码类名必失效；
@@ -244,10 +245,10 @@ export const PATCH_V5 = {
   // 挂起或拒绝时 watcher 永不启动（2026-11-02 事故实证）。构造函数实例化必然执行。
   // __byokStarted 防重入；构造首句时 logService 未赋值由 __byokLog 的 try/catch 保护。
 
-  // 注入的完整 WATCHER_METHODS 源码块 (v5 R6: 跨平台目录 / 动态母体建链 / 企业租户同步 / 回执闭环 / 启动诊断黑匣子)
+  // 注入的完整 WATCHER_METHODS 源码块 (v5 R7: 跨平台目录 / 动态母体建链 / 企业租户同步 / 5.0.0 Catalog SQLite 迁移 / 回执闭环 / 启动诊断黑匣子)
   // 注意：此处 marker 必须与 V5_MARKER 一致，否则自愈判定永远认为"未打补丁"而反复重打
   WATCHER_METHODS:
-    '/*__BYOK_V5_R6__*/' +
+    '/*__BYOK_V5_R7__*/' +
     '__byokLog(m){try{this.logService.info("[BYOK-SWITCH] "+m)}catch(_){}}' +
     '__byokDir(k){try{const pm=globalThis.__byokPath;if(!pm)return "";const h=process.env.HOME||process.env.USERPROFILE||"";const mac=process.platform==="darwin";const win=process.platform==="win32";if(k==="data"){if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_CONFIG_HOME||pm.join(h,".config");return process.env.APPDATA||pm.join(h,"AppData","Roaming")}if(mac)return pm.join(h,"Library","Application Support");if(!win)return process.env.XDG_DATA_HOME||pm.join(h,".local","share");return process.env.LOCALAPPDATA||pm.join(h,"AppData","Local")}catch(e){return ""}}' +
     '__byokReceipt(r){try{const fs=globalThis.__byokFs,pm=globalThis.__byokPath;if(!fs||!pm)return;const d=this.__byokDir("data");if(!d)return;const f=pm.join(d,"CodeBuddy CN","byok-switch-result.json");const t=f+".tmp_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);try{fs.writeFileSync(t,JSON.stringify(r),"utf8");fs.renameSync(t,f)}finally{try{if(fs.existsSync(t))fs.unlinkSync(t)}catch(_){}}}catch(_){}}' +
@@ -309,7 +310,24 @@ export const PATCH_V5 = {
     '}catch(e){this.__byokLog("sess sync err "+e.message)}' +
     'this.__byokLog("switched to uid="+nextUid);' +
     '};' +
-    'try{this.storeSession(s).then(()=>{done();this.__byokReceipt({ok:!0,uid:s.account.uid,ts:ts})}).catch(e=>{this.__byokLog("store fail "+e.message);this.__byokReceipt({ok:!1,uid:s.account.uid,ts:ts,err:"store_fail: "+e.message})})}' +
+    'const migrateCatalog=async()=>{' +
+    'try{' +
+    'const cs=globalThis.__cbSession;' +
+    'if(!cs||cs._sessions||typeof cs.catalog!=="function")return;' +
+    'const cat=await cs.catalog();' +
+    'if(!cat||typeof cat.withImmediateTransaction!=="function")return;' +
+    'let changed=0;' +
+    'await cat.withImmediateTransaction(async tx=>{' +
+    'const r1=await tx.run("UPDATE conversations SET user_id=? WHERE user_id!=?",[nextUid,nextUid]);' +
+    'changed=Number(r1&&r1.changes||0);' +
+    'try{await tx.run("UPDATE OR IGNORE conversation_runtime_sources SET user_id=? WHERE user_id!=?",[nextUid,nextUid])}catch(_){}' +
+    'try{await tx.run("UPDATE OR IGNORE catalog_applied_events SET user_id=? WHERE user_id!=?",[nextUid,nextUid])}catch(_){}' +
+    '});' +
+    'if(changed>0&&typeof cat.advanceVersion==="function")await cat.advanceVersion();' +
+    'this.__byokLog("migrated "+changed+" catalog sessions to uid="+nextUid);' +
+    '}catch(e){this.__byokLog("catalog sync err "+(e&&e.message||e))}' +
+    '};' +
+    'try{this.storeSession(s).then(()=>migrateCatalog().then(()=>{done();this.__byokReceipt({ok:!0,uid:s.account.uid,ts:ts})})).catch(e=>{this.__byokLog("store fail "+e.message);this.__byokReceipt({ok:!1,uid:s.account.uid,ts:ts,err:"store_fail: "+e.message})})}' +
     'catch(e){this.__byokLog("store err "+e.message);this.__byokReceipt({ok:!1,uid:s.account.uid,ts:ts,err:"store_err: "+e.message})}' +
     '}' +
     'startByokWatcher(){' +

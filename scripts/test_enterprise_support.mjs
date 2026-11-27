@@ -415,8 +415,8 @@ async function main() {
         JSON.stringify(writtenCmd?.session?.account)
       );
       check(
-        'PATCH_V5 升级至 R6 并同步 genie.enterpriseId 与跨企业同 UID 检查',
-        PATCH_V5.V5_MARKER === '/*__BYOK_V5_R6__*/' &&
+        'PATCH_V5 升级至 R6+ 并同步 genie.enterpriseId 与跨企业同 UID 检查',
+        /^\/\*__BYOK_V5_R(?:[6-9]|\d{2,})__\*\/$/.test(PATCH_V5.V5_MARKER) &&
           PATCH_V5.WATCHER_METHODS.includes('genie.enterpriseId') &&
           PATCH_V5.WATCHER_METHODS.includes('curEnt===nextEnt')
       );

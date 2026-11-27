@@ -198,20 +198,37 @@ export class PatchEngine {
     return content.includes(PATCH_V5.PATCH_FLAG);
   }
 
-  /** 动态发现会话服务类构造函数锚点（优先 GV_OLD 完整体，漂移时退化为语义签名） */
+  /** 动态发现会话服务类构造函数锚点（优先 GV_OLD 完整体，漂移时退化为语义签名，兼容 5.0.0 80KB 类体与同步/异步签名） */
   public resolveSessionClassAnchor(src: string): string | null {
     let idx = src.indexOf(PATCH_V5.GV_OLD);
     if (idx < 0) {
-      const sigMatches = src.match(/getV2ReconcileData\([^)]*\)\{/g) || [];
-      if (sigMatches.length !== 1) return null;
-      idx = src.indexOf(sigMatches[0]);
+      const defRe = /(?:^|[^\w$.])((?:async\s+)?getV2ReconcileData\([^)]*\)\{)/g;
+      const defs: Array<{ pos: number }> = [];
+      let dm: RegExpExecArray | null;
+      while ((dm = defRe.exec(src)) !== null) {
+        defs.push({ pos: dm.index + dm[0].length - dm[1].length });
+      }
+      if (defs.length !== 1) return null;
+      idx = defs[0].pos;
     }
-    const win = src.slice(Math.max(0, idx - 20000), idx);
-    const classDefRe = /[A-Za-z_$][\w$]*=class\{constructor\([^)]*\)\{/g;
-    let last: RegExpExecArray | null = null;
+    const win = src.slice(Math.max(0, idx - 80000), idx);
+    const classDefRe = /(?:[A-Za-z_$][\w$]*=class(?:\s+extends\s+[A-Za-z_$][\w$.]*)?|class\s+[A-Za-z_$][\w$]*(?:\s+extends\s+[A-Za-z_$][\w$.]*)?)\{constructor\([^)]*\)\{/g;
+    let lastAny: string | null = null;
+    let lastSession: string | null = null;
     let m: RegExpExecArray | null;
-    while ((m = classDefRe.exec(win)) !== null) last = m;
-    return last ? last[0] : null;
+    while ((m = classDefRe.exec(win)) !== null) {
+      lastAny = m[0];
+      const headSlice = win.slice(m.index, m.index + 1500);
+      if (
+        headSlice.includes('this._sessions') ||
+        headSlice.includes('this._catalogEpoch') ||
+        headSlice.includes('this._v2Subscribers') ||
+        headSlice.includes('[CodeBuddySession]')
+      ) {
+        lastSession = m[0];
+      }
+    }
+    return lastSession || lastAny;
   }
 
   /** 从已注入过历史结构的主程序文件中还原干净源码 */

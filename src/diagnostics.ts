@@ -39,11 +39,19 @@ export function buildDiagnostic(title: string, detail?: string): string {
   return lines.join('\n');
 }
 
-/** 预填好标题与正文的反馈链接；按编码后长度裁剪，超长链接必然打不开 */
+/** 预填好标题与正文的反馈链接；剥离 # 标题防 VS Code openExternal 二次编码成 %23%23，并按长度裁剪 */
 export function buildIssueUrl(text: string): string {
-  const heading = text.split('\n').find(line => line.startsWith('## ')) || '## BuddyRelay 问题反馈';
+  const rawLines = text.split('\n');
+  const heading = rawLines.find(line => line.startsWith('## ')) || '## BuddyRelay 问题反馈';
   const title = heading.replace(/^##\s*/, '').trim().slice(0, 120);
-  let body = text;
+  let body = rawLines
+    .filter((line, idx) => !(idx === 0 && line.startsWith('## ')))
+    .map((line) => {
+      const m = line.match(/^#{1,6}\s+(.+)$/);
+      return m ? `**${m[1].trim()}**` : line;
+    })
+    .join('\n')
+    .trim();
   while (encodeURIComponent(body).length > ISSUE_URL_SAFE_LIMIT) {
     const keep = Math.floor(body.length * 0.6);
     body = `${body.slice(0, keep)}\n…(内容过长已截断)`;
